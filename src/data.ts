@@ -1,0 +1,223 @@
+import { ResourceSector, SomaliaRegion, PartnershipPhase } from "./types";
+
+export const resourceSectors: ResourceSector[] = [
+  {
+    id: "mining",
+    name: "Mining & Minerals",
+    title: "Unearthing Diverse Mineral Wealth",
+    description: "Somalia hosts highly promising, underexplored crystalline basement rocks containing high-grade ores, base metals, and extensive industrial material deposits.",
+    detailedDescription: "The geological framework of Somalia consists of Proterozoic basement complexes in the north, overlain by Mesozoic to Cenozoic sedimentary basins. This structure is highly conducive to diverse mineralization, including precious metals, base metals, and world-class industrial minerals that are essential for global manufacturing.",
+    resources: ["High-Purity Gypsum", "Copper Ores", "Gold Quartz", "Iron Ore", "Lead-Zinc", "Quartz & Feldspar", "Gemstones (Emerald, Sapphire)"],
+    keyRegions: ["North West State", "Puntland", "Galmudug"],
+    image: "/src/assets/images/barren_desert_terrain_1783614828138.jpg",
+    metrics: [
+      { label: "Gypsum Purity", value: "95% - 99%" },
+      { label: "Estimated Deposits", value: "Billions of Tons" },
+      { label: "JV Licensing Mode", value: "Concession / PSA" }
+    ],
+    opportunities: [
+      "Large-scale commercial gypsum extraction & calcination plants.",
+      "Greenfield copper & zinc exploration joint ventures in crystalline basement rocks.",
+      "Modern gold exploration and small-to-medium scale processing infrastructure."
+    ],
+    geologicalContext: "North-eastern and north-western basement terrains resemble the mineral-rich Arab-Nubian Shield, hosting pegmatites, hydrothermal veins, and volcanogenic massive sulfide (VMS) prospects."
+  },
+  {
+    id: "agriculture",
+    name: "Agriculture & Land",
+    title: "Unlocking High-Yield Agro-Industrial Basins",
+    description: "With over 8 million hectares of arable land and major river systems, Somalia offers fertile ground for commercial agriculture, sesame, and high-value fruit exports.",
+    detailedDescription: "The southern regions of Somalia are traversed by the Jubba and Shabelle rivers, forming highly fertile alluvial basins. Historically a major global banana exporter, the region possesses massive untapped potential for commercial farming, modern irrigation schemes, agro-processing, and oilseed cultivation to serve Middle Eastern and European markets.",
+    resources: ["Premium Sesame Seeds", "Bananas (Cavendish)", "Citrus & Lemons", "Sesame Oil", "Sugar Cane", "Maize & Sorghum", "Livestock Feed"],
+    keyRegions: ["South West State", "Hirshabelle", "Jubaland"],
+    image: "/src/assets/images/sector_agri_new_1783614035335.jpg",
+    metrics: [
+      { label: "Arable Land", value: "8.1M Hectares" },
+      { label: "River Length", value: "Over 1,100 km" },
+      { label: "Key Export Crop", value: "Sesame (Top Global tier)" }
+    ],
+    opportunities: [
+      "Integrated sesame seed sorting, cleaning, and cold-pressing oil mills.",
+      "Rehabilitation of gravity-fed irrigation canals and commercial banana plantations.",
+      "Commercial fodder production and climate-resilient animal husbandry feedlots."
+    ],
+    geologicalContext: "Rich alluvial floodplains with high organic content, supported by favorable groundwater aquifers across the inter-riverine plateaus."
+  },
+  {
+    id: "fisheries",
+    name: "Fisheries & Marine",
+    title: "Capitalizing on Africa's Longest Coastline",
+    description: "Operating near highly productive marine upwelling zones, our fishery sector accesses massive pelagic and demersal fish stocks in the Indian Ocean and Gulf of Aden.",
+    detailedDescription: "Somalia enjoys a 3,333 km coastline—the longest in mainland Africa. The combination of the strong seasonal monsoon winds and deep ocean upwellings drives high nutrient concentrations, supporting exceptionally rich populations of yellowfin tuna, skipjack, kingfish, lobster, and deep-sea snappers, representing an elite, highly lucrative blue economy frontier.",
+    resources: ["Yellowfin Tuna", "Skipjack Tuna", "Spiny Lobster", "Mackerel & Sardines", "Red Snapper", "Grouper", "Marine Algae"],
+    keyRegions: ["Jubaland", "Puntland", "Galmudug", "Banadir"],
+    image: "/src/assets/images/sector_fisheries_new_1783614049898.jpg",
+    metrics: [
+      { label: "Coastline Length", value: "3,333 Kilometers" },
+      { label: "Annual Sustainable Yield", value: "200k+ Metric Tons" },
+      { label: "Exclusive Economic Zone", value: "1M+ Square km" }
+    ],
+    opportunities: [
+      "Modern cold storage and processing facilities at strategic deep-water ports (Kismayo, Hobyo, Bosaso).",
+      "Offshore longline and purse seine joint-venture commercial fishing operations.",
+      "Coastal artisanal fishery cooperative aggregation and export logistics."
+    ],
+    geologicalContext: "Nutrient-rich marine upwelling zones generated by the Somali Current, creating highly active spawning grounds and pelagic migratory pathways."
+  },
+  {
+    id: "energy",
+    name: "Energy & Hydrocarbons",
+    title: "Unlocking Onshore & Offshore Hydrocarbon Reservoirs",
+    description: "Somalia stands on the cusp of an energy revolution, possessing premier onshore/offshore oil & gas basins alongside world-class solar and wind energy potential.",
+    detailedDescription: "The sedimentary basins of Somalia (Mugdisho, Coriole, and Mudug) contain oil and gas structures directly analogous to those in Yemen and East Africa's oil provinces. Simultaneously, Somalia has some of the highest wind speed profiles in Africa and consistent high solar irradiance, offering outstanding hybrid microgrid and utility-scale green energy transition projects.",
+    resources: ["Offshore Oil & Gas Blocks", "Onshore Hydrocarbon Basins", "Utility-Scale Solar PV", "High-Velocity Wind Power", "Geothermal Reservoirs"],
+    keyRegions: ["Puntland", "Galmudug", "Jubaland", "North West State"],
+    image: "/src/assets/images/oil_rig_sunset_silhouette_1783614846888.jpg",
+    metrics: [
+      { label: "Offshore Oil Potential", value: "Estimated Billions of Barrels" },
+      { label: "Average Wind Speed", value: "8.5 - 11.0 m/s (Coastal)" },
+      { label: "Solar Irradiance", value: "5.8 - 6.5 kWh/m²/day" }
+    ],
+    opportunities: [
+      "Participation in offshore licensing rounds for hydrocarbon blocks with high seismic confidence.",
+      "Coastal commercial wind farm development for industrial operations and port complexes.",
+      "Solar PV-Diesel hybrid minigrid infrastructure for municipal centers."
+    ],
+    geologicalContext: "Jurassic-Cretaceous sedimentary sequences with thick source rocks, excellent reservoir sandstones, and secure regional seals."
+  }
+];
+
+export const somaliaRegions: SomaliaRegion[] = [
+  {
+    id: "northwest",
+    name: "North West State",
+    capital: "Hargeisa",
+    primarySectors: ["Mining & Minerals", "Agriculture"],
+    resources: ["Gypsum", "Gemstones", "Copper", "Limestone", "Livestock"],
+    description: "The northern basement block is characterized by mountainous, mineral-rich terrains and is highly prospective for pegmatite minerals, precious stones, and large limestone reserves.",
+    svgPath: "M 40,75 L 140,40 L 175,70 L 165,115 L 120,110 L 40,110 Z", // stylized regional shape
+    centerCoordinates: { x: 100, y: 75 }
+  },
+  {
+    id: "puntland",
+    name: "Puntland (North East)",
+    capital: "Garowe",
+    primarySectors: ["Fisheries & Marine", "Mining & Minerals", "Energy & Hydrocarbons"],
+    resources: ["High-Purity Gypsum", "Offshore Oil & Gas", "Yellowfin Tuna", "Lobster", "Frankincense"],
+    description: "Occupying the Horn of Africa, Puntland features massive coastal upwelling waters ideal for industrial fisheries, huge gypsum blocks, and promising onshore sedimentary oil basins.",
+    svgPath: "M 140,40 L 260,60 L 275,120 L 205,145 L 165,115 L 175,70 Z",
+    centerCoordinates: { x: 195, y: 85 }
+  },
+  {
+    id: "galmudug",
+    name: "Galmudug (Central)",
+    capital: "Dhusamareb",
+    primarySectors: ["Fisheries & Marine", "Agriculture", "Energy & Hydrocarbons"],
+    resources: ["Mackerel & Tuna", "Silica Sand", "Livestock", "Wind Energy"],
+    description: "Connecting the north and south, Galmudug possesses a long Indian Ocean coastline with rich fishing grounds, expanding ports, and massive coastal wind power potential.",
+    svgPath: "M 165,115 L 205,145 L 215,220 L 130,195 L 120,110 Z",
+    centerCoordinates: { x: 170, y: 160 }
+  },
+  {
+    id: "hirshabelle",
+    name: "Hirshabelle (Central-South)",
+    capital: "Jowhar",
+    primarySectors: ["Agriculture & Land", "Fisheries & Marine"],
+    resources: ["Arable River Basins", "Sesame", "Sugarcane", "Livestock", "Riverine Fisheries"],
+    description: "Traversed by the Shabelle River, Hirshabelle is an agricultural powerhouse, boasting rich soil suited for major commercial food production and sesame exports.",
+    svgPath: "M 130,195 L 215,220 L 195,260 L 125,240 L 115,210 Z",
+    centerCoordinates: { x: 160, y: 225 }
+  },
+  {
+    id: "banadir",
+    name: "Banadir (Mogadishu)",
+    capital: "Mogadishu (Federal Capital)",
+    primarySectors: ["Fisheries & Marine", "Energy & Hydrocarbons"],
+    resources: ["Deepsea Fishing Port", "Construction Materials", "Urban Solar PV", "Marine Trade"],
+    description: "The metropolitan hub hosting Mogadishu port. It acts as the financial, legal, and coordination center for natural resource contracts and joint-venture administration.",
+    svgPath: "M 125,240 L 195,260 L 180,275 L 120,250 Z",
+    centerCoordinates: { x: 155, y: 255 }
+  },
+  {
+    id: "southwest",
+    name: "South West State",
+    capital: "Baidoa",
+    primarySectors: ["Agriculture & Land", "Mining & Minerals"],
+    resources: ["Sorgo & Maize", "Livestock", "High-Grade Limestone", "Iron Ore Prospects", "Water Aquifers"],
+    description: "Encompasses the fertile space between the two rivers. Highly suited for dual-season commercial farming, livestock aggregation, and extensive limestone exploitation.",
+    svgPath: "M 80,180 L 115,210 L 125,240 L 120,250 L 70,265 L 55,210 Z",
+    centerCoordinates: { x: 90, y: 215 }
+  },
+  {
+    id: "jubaland",
+    name: "Jubaland (South West Border)",
+    capital: "Kismayo",
+    primarySectors: ["Fisheries & Marine", "Agriculture & Land", "Energy & Hydrocarbons"],
+    resources: ["Kismayo Deep Sea Port", "Cavendish Bananas", "Offshore Oil blocks", "Lobster & Crab", "Jubba River"],
+    description: "Located in the southernmost pocket, Jubaland benefits from the fertile Jubba River valley, extensive offshore oil fields, and Kismayo's deep-sea commercial fishing operations.",
+    svgPath: "M 55,210 L 70,265 L 120,250 L 105,310 L 40,290 L 10,230 Z",
+    centerCoordinates: { x: 60, y: 260 }
+  }
+];
+
+export const partnershipPhases: PartnershipPhase[] = [
+  {
+    step: 1,
+    title: "Opportunity Identification & Scoping",
+    duration: "Weeks 1-4",
+    description: "PriRecos identifies high-potential resources based on archival geological data, satellite imaging, and local reconnaissance, preparing an investment brief.",
+    deliverables: ["Project Prospectus", "Preliminary Geological Survey", "Local Resource Context Map"],
+    actors: "PriRecos Technical Team"
+  },
+  {
+    step: 2,
+    title: "Government Coordination & Licensing",
+    duration: "Weeks 5-8",
+    description: "We coordinate with the Federal Ministry of Petroleum & Mineral Resources or Ministry of Fisheries to secure standard exploration concessions, draft terms, and ensure compliance.",
+    deliverables: ["Ministry Clearances", "Environmental Impact Framework", "Pre-JV Exploration License"],
+    actors: "PriRecos Legal & Government Affairs"
+  },
+  {
+    step: 3,
+    title: "Operator Selection & Joint Venture",
+    duration: "Weeks 9-12",
+    description: "PriRecos selects a qualified international operator. We structure a Joint Venture Agreement, allocating equity, defining operational milestones, and outlining technology transfer.",
+    deliverables: ["JV Agreement", "Concession Assignment", "Corporate Governance Structure"],
+    actors: "International Operator, Investors, & PriRecos Board"
+  },
+  {
+    step: 4,
+    title: "Site Mobilization & Engineering",
+    duration: "Months 4-6",
+    description: "The operator mobilizes capital and specialized equipment to the site. PriRecos leads local labor onboarding, community engagement, and establishes security and local logistics rings.",
+    deliverables: ["Community Social Agreement", "Security Protocols Activated", "Engineering Site Plan"],
+    actors: "Operator Engineering Team, PriRecos Community Liaison"
+  },
+  {
+    step: 5,
+    title: "Project Development & Production",
+    duration: "Months 7+",
+    description: "Active extraction, agricultural harvest, or offshore commercial fishing operations begin. Resources are processed, loaded at deep-water ports, and shipped to global markets.",
+    deliverables: ["Resource Output Reports", "Export Consignments", "Local Job Training Metrics"],
+    actors: "Joint Venture Operational Team"
+  }
+];
+
+export const whySomaliaReasons = [
+  {
+    title: "Strategic Geopolitical Positioning",
+    description: "Positioned directly on the Gulf of Aden and Indian Ocean sea lanes. Somalia offers fast, direct sea routes to major commodity markets in the Middle East, India, and East Asia."
+  },
+  {
+    title: "Highly Favorable Regulatory Environment",
+    description: "The Foreign Investment Law offers full capital repatriation, 10-year tax holidays for primary infrastructure, and standard joint-venture structures protecting international operators."
+  },
+  {
+    title: "Untapped First-Mover Advantage",
+    description: "Somalia is one of the last frontiers for high-purity minerals and vast oceanic fisheries. Early movers secure prime concessions, high-grade deposits, and exclusive regional permissions."
+  },
+  {
+    title: "Active Institutional Backing",
+    description: "Multi-lateral institutions including the World Bank and IFC are actively funding infrastructure, port modernizations, and energy transmission lines across key commercial nodes."
+  }
+];

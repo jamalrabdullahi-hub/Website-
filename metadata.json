@@ -1,0 +1,6 @@
+{
+  "name": "PriRecos Corporate Website",
+  "description": "Official corporate website of Primary Resources Corporation of Somalia (PriRecos), showcasing Somali mineral, marine, agricultural, and energy sectors for joint ventures and international operators.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
