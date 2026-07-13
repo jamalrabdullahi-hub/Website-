@@ -183,25 +183,52 @@ async function sendInquiryEmail(inquiry: Inquiry) {
     }
   } else {
     console.log("=========================================================");
-    console.log("   [EMAIL ROUTER] SIMULATED EMAIL TRANSMITTAL SERVICE   ");
+    console.log("   [EMAIL ROUTER] FORWARDING TO AUTOROUTER (FORMSUBMIT)   ");
     console.log("=========================================================");
     console.log(`To:      ${emailTo}`);
     console.log(`From:    "${inquiry.companyName} via PriRecos" <${emailFrom}>`);
-    console.log(`Reply-To: ${inquiry.email}`);
     console.log(`Subject: ${emailSubject}`);
-    console.log(`Payload Size: ${emailHtml.length} bytes`);
-    console.log("------------------ MESSAGE CONTENT ----------------------");
-    console.log(`CLASSIFICATION:  ${inquiry.type}`);
-    console.log(`ORGANIZATION:    ${inquiry.companyName}`);
-    console.log(`CONTACT NAME:    ${inquiry.contactName}`);
-    console.log(`TARGET SECTOR:   ${inquiry.sector}`);
-    console.log(`CAPACITY:        ${inquiry.capital}`);
-    console.log(`MESSAGE BRIEF:\n${inquiry.message}`);
-    console.log("=========================================================");
-    console.log("[EMAIL ROUTER] Simulating dispatch because SMTP_HOST/SMTP_USER/SMTP_PASS are not defined in env settings.");
-    console.log("[EMAIL ROUTER] To enable live emails, define SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and EMAIL_TO in your env variables.");
-    console.log("=========================================================");
-    return { success: true, mode: "simulated" };
+    
+    try {
+      const formsubmitUrl = `https://formsubmit.co/ajax/${emailTo}`;
+      const payload = {
+        _subject: emailSubject,
+        _replyto: inquiry.email,
+        "Submission ID": inquiry.id,
+        "Classification": inquiry.type.toUpperCase(),
+        "Organization": inquiry.companyName,
+        "Contact Name": inquiry.contactName,
+        "Contact Email": inquiry.email,
+        "Target Resource Sector": inquiry.sector,
+        "Capacity or Allocation": inquiry.capital,
+        "Submission Date (UTC)": inquiry.submittedAt,
+        "Inquiry Details / Message": inquiry.message,
+        "_honey": "", // honeypot spam protection
+        "_template": "box" // clean box layout table template
+      };
+
+      const formsubmitResponse = await fetch(formsubmitUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (formsubmitResponse.ok) {
+        const result = await formsubmitResponse.json();
+        console.log("[EMAIL ROUTER] Formsubmit.co auto-forwarding succeeded:", result);
+        return { success: true, mode: "formsubmit" };
+      } else {
+        const errorText = await formsubmitResponse.text();
+        console.error("[EMAIL ROUTER] Formsubmit.co auto-forwarding failed with status:", formsubmitResponse.status, errorText);
+        return { success: false, error: `Formsubmit returned status ${formsubmitResponse.status}`, mode: "formsubmit" };
+      }
+    } catch (fsError) {
+      console.error("[EMAIL ROUTER] Failed to dispatch via Formsubmit auto-router:", fsError);
+      return { success: false, error: (fsError as Error).message, mode: "formsubmit" };
+    }
   }
 }
 
@@ -229,12 +256,10 @@ app.post("/api/inquiries", async (req, res) => {
 
   inquiries.unshift(newInquiry);
 
-  // Trigger automated background email routing
-  try {
-    await sendInquiryEmail(newInquiry);
-  } catch (emailError) {
+  // Trigger automated background email routing in a non-blocking way (fire-and-forget)
+  sendInquiryEmail(newInquiry).catch((emailError) => {
     console.error("[EMAIL ROUTER] Critical failure executing sendInquiryEmail task:", emailError);
-  }
+  });
 
   res.status(201).json({ success: true, inquiry: newInquiry });
 });
