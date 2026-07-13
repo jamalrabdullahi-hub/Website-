@@ -28,6 +28,37 @@ app.get("/googled5ea5aab0d17435e.html", (req, res) => {
 
 app.use(express.json());
 
+// Canonical domain and SSL redirection middleware (safe for development environment)
+app.use((req, res, next) => {
+  const host = req.headers.host || "";
+  const forwardedProto = req.headers["x-forwarded-proto"] || "http";
+  
+  // Bypass redirects for local development or AI Studio sandboxes/preview URLs to prevent loopbacks
+  const isLocalOrSandbox = 
+    host.includes("localhost") || 
+    host.includes("127.0.0.1") || 
+    host.includes("0.0.0.0") || 
+    host.includes("us-west2.run.app") ||
+    host.includes("ais-dev-") || 
+    host.includes("ais-pre-");
+    
+  if (isLocalOrSandbox) {
+    return next();
+  }
+
+  const hasWww = host.toLowerCase().startsWith("www.");
+  const isHttp = forwardedProto === "http";
+
+  if (hasWww || isHttp) {
+    const cleanHost = host.replace(/^www\./i, "");
+    const targetUrl = `https://${cleanHost}${req.originalUrl}`;
+    console.log(`[SEO REDIRECT] Redirecting incoming request from "${forwardedProto}://${host}${req.originalUrl}" to "${targetUrl}"`);
+    return res.redirect(301, targetUrl);
+  }
+
+  next();
+});
+
 // In-memory database for inquiries
 interface Inquiry {
   id: string;
