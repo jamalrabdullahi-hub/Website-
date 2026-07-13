@@ -214,10 +214,10 @@ export default function InvestmentPortal({ language }: InvestmentPortalProps) {
         {activeFunnel === null && (
           <motion.div
             key="funnel-selection"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            transition={{ duration: 0.2 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             className="grid grid-cols-1 md:grid-cols-2 gap-8"
             id="funnels-split-selection"
           >
@@ -262,7 +262,7 @@ export default function InvestmentPortal({ language }: InvestmentPortalProps) {
                 }}
                 className="w-full mt-8 bg-stone-900 hover:bg-stone-800 text-amber-500 font-sans font-bold text-xs tracking-wider uppercase py-3.5 rounded-none transition-all flex items-center justify-center gap-2 cursor-pointer group-hover:bg-amber-500 group-hover:text-stone-950"
               >
-                <span>{t("Initiate Operator Verification")}</span>
+                <span>{t("Enter Operator and partner Pipeline")}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -273,9 +273,10 @@ export default function InvestmentPortal({ language }: InvestmentPortalProps) {
         {activeFunnel !== null && !formSuccess && (
           <motion.div
             key="funnel-form"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             className="max-w-2xl mx-auto bg-white border border-stone-200 rounded-none p-6 lg:p-8 shadow-sm space-y-6"
             id="funnel-registration-form-container"
           >
@@ -439,9 +440,10 @@ export default function InvestmentPortal({ language }: InvestmentPortalProps) {
         {formSuccess && newlySubmittedInquiry && (
           <motion.div
             key="assessor-console"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             className="grid grid-cols-1 lg:grid-cols-12 gap-8"
             id="private-ai-assessor"
           >
@@ -451,7 +453,7 @@ export default function InvestmentPortal({ language }: InvestmentPortalProps) {
                 <div className="border-b border-stone-100 pb-4">
                   <span className="text-[10px] font-sans text-amber-700 uppercase tracking-widest font-bold block">{t("Secure Record")}</span>
                   <h3 className="text-lg font-sans font-bold text-stone-900 mt-1">{t("Concession Dossier")}</h3>
-                  <p className="text-[11px] text-stone-500 mt-0.5">{t("Your submitted organizational parameters mapped to PRIRECOS registries.")}</p>
+                  <p className="text-[11px] text-stone-500 mt-0.5">{t("Your submitted parameters are registered and routed to partnership@prirecos.com.")}</p>
                 </div>
 
                 <div className="space-y-4 text-xs font-sans">

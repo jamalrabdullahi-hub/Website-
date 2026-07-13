@@ -113,7 +113,7 @@ export default function Footer({ setCurrentPage, language }: FooterProps) {
             <ul className="space-y-3.5 text-xs text-stone-600">
               <li className="flex items-center space-x-2">
                 <Mail className="w-4 h-4 text-amber-500" />
-                <span className="hover:text-amber-600 transition-colors">partnerships@prirecos.com</span>
+                <span className="hover:text-amber-600 transition-colors">partnership@prirecos.com</span>
               </li>
             </ul>
           </div>

@@ -78,7 +78,7 @@ export default function ContactForm({ language }: ContactFormProps) {
             <div className="space-y-1.5 max-w-md mx-auto">
               <h4 className="text-2xl font-sans font-bold text-stone-900">{t("Communications Received")}</h4>
               <p className="text-sm text-stone-600">
-                {t("Thank you for contacting PRIRECOS. Your inquiry has been registered in our central contact index and mirrored in the Active Concession Registry for immediate transparency tracking.")}
+                {t("Thank you for contacting PRIRECOS. Your inquiry has been registered, and a transmittal copy has been sent to partnership@prirecos.com. Our partnership desk will respond within 48 business hours.")}
               </p>
             </div>
             <div className="pt-4">

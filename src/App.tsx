@@ -86,7 +86,7 @@ export default function App() {
                 {/* Background Image Layer with Heavy Bright/Gold Overlay */}
                 <div className="absolute inset-0 z-0">
                   <img
-                    src="/src/assets/images/hero_natural_resources_1783601568414.jpg"
+                    src="/assets/images/hero_natural_resources_1783601568414.jpg"
                     alt="PriRecos Natural Resource Site"
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover opacity-25 filter brightness-105 contrast-105"
@@ -310,10 +310,10 @@ export default function App() {
           {currentPage === "about" && (
             <motion.div
               key="about-page"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.25 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20 space-y-16"
               id="about-view"
             >
@@ -407,10 +407,10 @@ export default function App() {
           {currentPage === "sectors" && (
             <motion.div
               key="sectors-page"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.25 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20 space-y-16"
               id="sectors-view"
             >
@@ -492,10 +492,10 @@ export default function App() {
           {currentPage === "investment" && (
             <motion.div
               key="investment-page"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.25 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20"
               id="investment-view"
             >
@@ -507,10 +507,10 @@ export default function App() {
           {currentPage === "contact" && (
             <motion.div
               key="contact-page"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.25 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20"
               id="contact-view"
             >
