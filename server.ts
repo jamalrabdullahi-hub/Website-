@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -83,8 +84,129 @@ app.get("/api/inquiries", (req, res) => {
   res.json({ inquiries });
 });
 
+// Helper function to send email notification to partnership@prirecos.com
+async function sendInquiryEmail(inquiry: Inquiry) {
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const smtpSecure = process.env.SMTP_SECURE === "true";
+  const emailFrom = process.env.EMAIL_FROM || "partnership@prirecos.com";
+  const emailTo = process.env.EMAIL_TO || "partnership@prirecos.com";
+
+  const emailSubject = `[PRIRECOS INTAKE] ${inquiry.type.toUpperCase()}: ${inquiry.companyName} (${inquiry.sector})`;
+
+  const emailHtml = `
+    <div style="font-family: 'Inter', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e5e0; background-color: #ffffff;">
+      <!-- Header -->
+      <div style="background-color: #1c1917; padding: 24px; text-align: center; border-bottom: 3px solid #f59e0b;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 20px; letter-spacing: 1px; font-weight: bold; text-transform: uppercase;">PRIRECOS Intake Portal</h1>
+        <p style="color: #fbbf24; margin: 5px 0 0 0; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">Primary Resources Corporation of Somalia</p>
+      </div>
+
+      <!-- Content -->
+      <div style="padding: 24px; color: #44403c; line-height: 1.6;">
+        <h2 style="font-size: 16px; font-weight: bold; margin-top: 0; color: #1c1917; border-bottom: 1px solid #e7e5e4; padding-bottom: 8px;">
+          New Form Submission: <span style="color: #d97706;">${inquiry.id}</span>
+        </h2>
+
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px;">
+          <tr>
+            <td style="padding: 8px 0; font-weight: bold; color: #78716c; width: 35%;">Classification:</td>
+            <td style="padding: 8px 0; color: #1c1917; font-weight: bold; text-transform: uppercase;">${inquiry.type}</td>
+          </tr>
+          <tr style="border-top: 1px solid #f5f5f4;">
+            <td style="padding: 8px 0; font-weight: bold; color: #78716c;">Organization:</td>
+            <td style="padding: 8px 0; color: #1c1917; font-weight: bold;">${inquiry.companyName}</td>
+          </tr>
+          <tr style="border-top: 1px solid #f5f5f4;">
+            <td style="padding: 8px 0; font-weight: bold; color: #78716c;">Contact Name:</td>
+            <td style="padding: 8px 0; color: #1c1917;">${inquiry.contactName}</td>
+          </tr>
+          <tr style="border-top: 1px solid #f5f5f4;">
+            <td style="padding: 8px 0; font-weight: bold; color: #78716c;">Contact Email:</td>
+            <td style="padding: 8px 0; color: #2563eb; font-weight: bold;"><a href="mailto:${inquiry.email}" style="color: #2563eb; text-decoration: none;">${inquiry.email}</a></td>
+          </tr>
+          <tr style="border-top: 1px solid #f5f5f4;">
+            <td style="padding: 8px 0; font-weight: bold; color: #78716c;">Target Sector:</td>
+            <td style="padding: 8px 0; color: #1c1917;">${inquiry.sector}</td>
+          </tr>
+          <tr style="border-top: 1px solid #f5f5f4;">
+            <td style="padding: 8px 0; font-weight: bold; color: #78716c;">Capacity / Allocation:</td>
+            <td style="padding: 8px 0; color: #1c1917; font-weight: bold; color: #b45309;">${inquiry.capital}</td>
+          </tr>
+          <tr style="border-top: 1px solid #f5f5f4;">
+            <td style="padding: 8px 0; font-weight: bold; color: #78716c;">Submitted At:</td>
+            <td style="padding: 8px 0; color: #78716c; font-family: monospace;">${inquiry.submittedAt}</td>
+          </tr>
+        </table>
+
+        <div style="margin-top: 24px; padding: 16px; background-color: #fafaf9; border-left: 3px solid #d97706;">
+          <h3 style="margin: 0 0 8px 0; font-size: 13px; font-weight: bold; color: #1c1917; text-transform: uppercase; letter-spacing: 0.5px;">Message Content</h3>
+          <p style="margin: 0; font-size: 13px; color: #44403c; white-space: pre-wrap;">${inquiry.message}</p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="background-color: #fafaf9; padding: 16px; border-top: 1px solid #e7e5e4; text-align: center; font-size: 11px; color: #78716c;">
+        <p style="margin: 0;">This email was automatically generated and routed by the PRIRECOS Central Intake Portal.</p>
+        <p style="margin: 5px 0 0 0;">Do not reply directly to this automated email. Use the contact details provided above.</p>
+      </div>
+    </div>
+  `;
+
+  if (smtpHost && smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+
+      const info = await transporter.sendMail({
+        from: `"${inquiry.companyName} via PriRecos" <${emailFrom}>`,
+        to: emailTo,
+        subject: emailSubject,
+        html: emailHtml,
+        replyTo: inquiry.email
+      });
+
+      console.log(`[EMAIL ROUTER] Real email sent successfully: ${info.messageId}`);
+      return { success: true, messageId: info.messageId, mode: "real" };
+    } catch (error) {
+      console.error("[EMAIL ROUTER] Error sending real email via SMTP:", error);
+      return { success: false, error: (error as Error).message, mode: "real" };
+    }
+  } else {
+    console.log("=========================================================");
+    console.log("   [EMAIL ROUTER] SIMULATED EMAIL TRANSMITTAL SERVICE   ");
+    console.log("=========================================================");
+    console.log(`To:      ${emailTo}`);
+    console.log(`From:    "${inquiry.companyName} via PriRecos" <${emailFrom}>`);
+    console.log(`Reply-To: ${inquiry.email}`);
+    console.log(`Subject: ${emailSubject}`);
+    console.log(`Payload Size: ${emailHtml.length} bytes`);
+    console.log("------------------ MESSAGE CONTENT ----------------------");
+    console.log(`CLASSIFICATION:  ${inquiry.type}`);
+    console.log(`ORGANIZATION:    ${inquiry.companyName}`);
+    console.log(`CONTACT NAME:    ${inquiry.contactName}`);
+    console.log(`TARGET SECTOR:   ${inquiry.sector}`);
+    console.log(`CAPACITY:        ${inquiry.capital}`);
+    console.log(`MESSAGE BRIEF:\n${inquiry.message}`);
+    console.log("=========================================================");
+    console.log("[EMAIL ROUTER] Simulating dispatch because SMTP_HOST/SMTP_USER/SMTP_PASS are not defined in env settings.");
+    console.log("[EMAIL ROUTER] To enable live emails, define SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and EMAIL_TO in your env variables.");
+    console.log("=========================================================");
+    return { success: true, mode: "simulated" };
+  }
+}
+
 // Submit a new inquiry
-app.post("/api/inquiries", (req, res) => {
+app.post("/api/inquiries", async (req, res) => {
   const { type, companyName, contactName, email, sector, capital, message } = req.body;
 
   if (!companyName || !contactName || !email || !message) {
@@ -106,6 +228,14 @@ app.post("/api/inquiries", (req, res) => {
   };
 
   inquiries.unshift(newInquiry);
+
+  // Trigger automated background email routing
+  try {
+    await sendInquiryEmail(newInquiry);
+  } catch (emailError) {
+    console.error("[EMAIL ROUTER] Critical failure executing sendInquiryEmail task:", emailError);
+  }
+
   res.status(201).json({ success: true, inquiry: newInquiry });
 });
 
