@@ -5,10 +5,26 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 
+/*
+ =========================================================================
+  CRITICAL CORE SECURITY & DOMAIN VERIFICATION DIRECTIVE:
+  DO NOT REMOVE, RENAME, OR BYPASS THE FILE "/public/googled5ea5aab0d17435e.html"
+  OR THE ASSOCIATED EXPRESS HANDLER BELOW.
+  This file is required to maintain active Google Search Console domain ownership
+  and verification status for the production domain: https://prirecos.com/
+ =========================================================================
+*/
+
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+
+// Explicit routing fallback to protect Google site verification against accidental deletions
+app.get("/googled5ea5aab0d17435e.html", (req, res) => {
+  res.header("Content-Type", "text/html");
+  res.send("google-site-verification: googled5ea5aab0d17435e.html");
+});
 
 app.use(express.json());
 

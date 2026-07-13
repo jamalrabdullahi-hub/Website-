@@ -1,0 +1,5 @@
+# Robots.txt for https://prirecos.com/
+User-agent: *
+Allow: /
+
+Sitemap: https://prirecos.com/sitemap.xml
