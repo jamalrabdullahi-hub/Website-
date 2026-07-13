@@ -234,34 +234,39 @@ async function sendInquiryEmail(inquiry: Inquiry) {
 
 // Submit a new inquiry
 app.post("/api/inquiries", async (req, res) => {
-  const { type, companyName, contactName, email, sector, capital, message } = req.body;
+  try {
+    const { type, companyName, contactName, email, sector, capital, message } = req.body;
 
-  if (!companyName || !contactName || !email || !message) {
-    return res.status(400).json({ error: "Missing required fields" });
+    if (!companyName || !contactName || !email || !message) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const newInquiry: Inquiry = {
+      id: `INQ-${Math.floor(1000 + Math.random() * 9000)}`,
+      type: type || "general",
+      companyName,
+      contactName,
+      email,
+      sector: sector || "General Inquiry",
+      capital: capital || "N/A",
+      message,
+      status: "Under Review",
+      submittedAt: new Date().toISOString(),
+      responseCount: 0,
+    };
+
+    inquiries.unshift(newInquiry);
+
+    // Trigger automated background email routing in a non-blocking way (fire-and-forget)
+    sendInquiryEmail(newInquiry).catch((emailError) => {
+      console.error("[EMAIL ROUTER] Critical failure executing sendInquiryEmail task:", emailError);
+    });
+
+    res.status(201).json({ success: true, inquiry: newInquiry });
+  } catch (error: any) {
+    console.error("[API] Error in POST /api/inquiries:", error);
+    res.status(500).json({ success: false, error: error.message || "Internal Server Error" });
   }
-
-  const newInquiry: Inquiry = {
-    id: `INQ-${Math.floor(1000 + Math.random() * 9000)}`,
-    type: type || "general",
-    companyName,
-    contactName,
-    email,
-    sector: sector || "General Inquiry",
-    capital: capital || "N/A",
-    message,
-    status: "Under Review",
-    submittedAt: new Date().toISOString(),
-    responseCount: 0,
-  };
-
-  inquiries.unshift(newInquiry);
-
-  // Trigger automated background email routing in a non-blocking way (fire-and-forget)
-  sendInquiryEmail(newInquiry).catch((emailError) => {
-    console.error("[EMAIL ROUTER] Critical failure executing sendInquiryEmail task:", emailError);
-  });
-
-  res.status(201).json({ success: true, inquiry: newInquiry });
 });
 
 // AI Advisor Matcher endpoint

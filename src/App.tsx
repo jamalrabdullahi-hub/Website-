@@ -36,11 +36,44 @@ import Logo from "./components/Logo";
 import { Language, languages, translations } from "./translations";
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<string>("home");
+  // Path-based clean URL routing synchronizer
+  const getInitialPage = (): string => {
+    const path = window.location.pathname.replace(/^\/|\/$/g, "").toLowerCase();
+    if (path === "aboutus" || path === "about-us" || path === "about") return "about";
+    if (path === "sectors" || path === "blocks") return "sectors";
+    if (path === "partner-portal" || path === "investment" || path === "portal" || path === "invest") return "investment";
+    if (path === "contact") return "contact";
+    return "home";
+  };
+
+  const [currentPage, setCurrentPageState] = React.useState<string>(getInitialPage());
   const [currentLanguage, setCurrentLanguage] = useState<Language>("en");
   const [funnelEmail, setFunnelEmail] = useState("");
   const [funnelSuccess, setFunnelSuccess] = useState(false);
   const [funnelSubmitting, setFunnelSubmitting] = useState(false);
+
+  const setCurrentPage = (page: string) => {
+    setCurrentPageState(page);
+    let path = "/";
+    if (page === "about") path = "/aboutus";
+    else if (page === "sectors") path = "/sectors";
+    else if (page === "investment") path = "/partner-portal";
+    else if (page === "contact") path = "/contact";
+    
+    // Smoothly push history state so URL stays clean and mapped to active view
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, "", path);
+    }
+  };
+
+  // Support native browser backward/forward navigation
+  React.useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPageState(getInitialPage());
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const t = translations[currentLanguage];
   const { t: translate } = useTranslate(currentLanguage);
