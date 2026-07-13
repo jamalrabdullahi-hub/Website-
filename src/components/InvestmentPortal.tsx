@@ -85,10 +85,15 @@ export default function InvestmentPortal({ language }: InvestmentPortalProps) {
           message: formData.message
         })
       });
+      if (!res.ok) {
+        throw new Error(`Server responded with status ${res.status}`);
+      }
       const data = await res.json();
       if (data.success && data.inquiry) {
         setFormSuccess(true);
         setNewlySubmittedInquiry(data.inquiry);
+      } else {
+        throw new Error(data.error || "Form submission was not successful");
       }
     } catch (err) {
       console.error("Error submitting inquiry:", err);
@@ -257,7 +262,7 @@ export default function InvestmentPortal({ language }: InvestmentPortalProps) {
 
               <button
                 onClick={() => {
-                  setFormData({ ...formData, capital: "Technical Operations" });
+                  setFormData({ ...formData, capital: "Exploratory Exploration" });
                   setActiveFunnel("operator");
                 }}
                 className="w-full mt-8 bg-stone-900 hover:bg-stone-800 text-amber-500 font-sans font-bold text-xs tracking-wider uppercase py-3.5 rounded-none transition-all flex items-center justify-center gap-2 cursor-pointer group-hover:bg-amber-500 group-hover:text-stone-950"
@@ -384,6 +389,7 @@ export default function InvestmentPortal({ language }: InvestmentPortalProps) {
                       <option value="$1M - $5M">$1M - $5M USD</option>
                       <option value="$5M - $10M">$5M - $10M USD</option>
                       <option value="$10M+">$10M+ USD ({t("Industrial-Scale")})</option>
+                      <option value="Other Amount">{t("Other Amount")}</option>
                     </select>
                   ) : (
                     <select

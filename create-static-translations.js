@@ -243,6 +243,7 @@ const stringsList = [
   "Enter Investor Pipeline",
   "Operator Partnerships",
   "Enter Operator and partner Pipeline",
+  "Other Amount",
   "Back to selection",
   "Investor Registration",
   "Technical Operator Registration",
