@@ -473,7 +473,9 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // Production mode
-    const distPath = path.join(process.cwd(), "dist");
+    // Since server.ts compiles to dist/server.cjs, __dirname is the dist directory.
+    // If running in another fashion, fallback to process.cwd() / dist.
+    const distPath = __dirname.endsWith("dist") ? __dirname : path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));

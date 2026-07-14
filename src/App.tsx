@@ -466,15 +466,13 @@ export default function App() {
                   return (
                     <div 
                       key={sec.id}
-                      className={`grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white p-6 sm:p-8 rounded-none border border-stone-200 shadow-sm ${
-                        isEven ? "" : "lg:flex-row-reverse"
-                      }`}
+                      className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white p-6 sm:p-8 rounded-none border border-stone-200 shadow-sm"
                       id={`sector-dossier-${sec.id}`}
                     >
                       
                       {/* Image block (5 Cols) */}
                       <div className={`lg:col-span-5 relative h-64 sm:h-80 rounded-none overflow-hidden border border-stone-200 bg-stone-100 shadow-inner ${
-                        isEven ? "" : "lg:order-last"
+                        isEven ? "lg:order-1" : "lg:order-2"
                       }`}>
                         <img 
                           src={sec.image} 
@@ -486,7 +484,9 @@ export default function App() {
                       </div>
 
                       {/* Content block (7 Cols) */}
-                      <div className="lg:col-span-7 space-y-4">
+                      <div className={`lg:col-span-7 space-y-4 ${
+                        isEven ? "lg:order-2" : "lg:order-1"
+                      }`}>
                         
                         <div>
                           <span className="text-[10px] font-sans text-amber-600 uppercase tracking-widest font-bold">{translate(sec.name)}</span>
