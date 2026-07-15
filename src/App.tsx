@@ -119,7 +119,7 @@ export default function App() {
                 {/* Background Image Layer with Heavy Bright/Gold Overlay */}
                 <div className="absolute inset-0 z-0">
                   <img
-                    src="/assets/images/hero_natural_resources.jpg"
+                    src="/assets/images/hero_natural_resources.jpg?v=2"
                     alt="PriRecos Natural Resource Site"
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover opacity-25 filter brightness-105 contrast-105"
@@ -475,7 +475,7 @@ export default function App() {
                         isEven ? "lg:order-1" : "lg:order-2"
                       }`}>
                         <img 
-                          src={sec.image} 
+                          src={`${sec.image}?v=2`} 
                           alt={translate(sec.name)} 
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover filter brightness-105 saturate-90"
