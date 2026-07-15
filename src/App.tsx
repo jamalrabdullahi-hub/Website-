@@ -5,6 +5,7 @@ import Footer from "./components/Footer";
 import InvestmentPortal from "./components/InvestmentPortal";
 import ContactForm from "./components/ContactForm";
 import { useTranslate } from "./hooks/useTranslate";
+import { IMAGES } from "./image-data";
 
 import { resourceSectors, partnershipPhases, whySomaliaReasons } from "./data";
 import { 
@@ -52,6 +53,18 @@ export default function App() {
   const [funnelSuccess, setFunnelSuccess] = useState(false);
   const [funnelSubmitting, setFunnelSubmitting] = useState(false);
 
+  const pushRouteEvent = (page: string, path: string) => {
+    if (typeof window !== "undefined") {
+      (window as any).dataLayer = (window as any).dataLayer || [];
+      (window as any).dataLayer.push({
+        event: "routeChange",
+        page: page,
+        path: path,
+        url: window.location.origin + path
+      });
+    }
+  };
+
   const setCurrentPage = (page: string) => {
     setCurrentPageState(page);
     let path = "/";
@@ -64,12 +77,34 @@ export default function App() {
     if (window.location.pathname !== path) {
       window.history.pushState(null, "", path);
     }
+
+    // Push routeChange event to Google Tag Manager dataLayer
+    pushRouteEvent(page, path);
   };
 
-  // Support native browser backward/forward navigation
+  // Support native browser backward/forward navigation and track initial page load
   React.useEffect(() => {
+    // Track initial page view load
+    const initialPage = getInitialPage();
+    let initialPath = "/";
+    if (initialPage === "about") initialPath = "/aboutus";
+    else if (initialPage === "sectors") initialPath = "/sectors";
+    else if (initialPage === "investment") initialPath = "/partner-portal";
+    else if (initialPage === "contact") initialPath = "/contact";
+    pushRouteEvent(initialPage, initialPath);
+
     const handlePopState = () => {
-      setCurrentPageState(getInitialPage());
+      const page = getInitialPage();
+      setCurrentPageState(page);
+
+      let path = "/";
+      if (page === "about") path = "/aboutus";
+      else if (page === "sectors") path = "/sectors";
+      else if (page === "investment") path = "/partner-portal";
+      else if (page === "contact") path = "/contact";
+
+      // Push routeChange event for back/forward navigation
+      pushRouteEvent(page, path);
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -119,7 +154,7 @@ export default function App() {
                 {/* Background Image Layer with Heavy Bright/Gold Overlay */}
                 <div className="absolute inset-0 z-0">
                   <img
-                    src="/assets/images/hero_natural_resources.jpg?v=2"
+                    src={IMAGES.hero_natural_resources}
                     alt="PriRecos Natural Resource Site"
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover opacity-25 filter brightness-105 contrast-105"
@@ -475,7 +510,7 @@ export default function App() {
                         isEven ? "lg:order-1" : "lg:order-2"
                       }`}>
                         <img 
-                          src={`${sec.image}?v=2`} 
+                          src={sec.image} 
                           alt={translate(sec.name)} 
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover filter brightness-105 saturate-90"

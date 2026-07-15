@@ -1,4 +1,5 @@
 import { ResourceSector, SomaliaRegion, PartnershipPhase } from "./types";
+import { IMAGES } from "./image-data";
 
 export const resourceSectors: ResourceSector[] = [
   {
@@ -9,7 +10,7 @@ export const resourceSectors: ResourceSector[] = [
     detailedDescription: "The geological framework of Somalia consists of Proterozoic basement complexes in the north, overlain by Mesozoic to Cenozoic sedimentary basins. This structure is highly conducive to diverse mineralization, including precious metals, base metals, and world-class industrial minerals that are essential for global manufacturing.",
     resources: ["High-Purity Gypsum", "Copper Ores", "Gold Quartz", "Iron Ore", "Lead-Zinc", "Quartz & Feldspar", "Gemstones (Emerald, Sapphire)"],
     keyRegions: ["North West State", "Puntland", "Galmudug"],
-    image: "/assets/images/mining_minerals.jpg",
+    image: IMAGES.mining_minerals,
     metrics: [
       { label: "Gypsum Purity", value: "95% - 99%" },
       { label: "Estimated Deposits", value: "Billions of Tons" },
@@ -30,7 +31,7 @@ export const resourceSectors: ResourceSector[] = [
     detailedDescription: "The southern regions of Somalia are traversed by the Jubba and Shabelle rivers, forming highly fertile alluvial basins. Historically a major global banana exporter, the region possesses massive untapped potential for commercial farming, modern irrigation schemes, agro-processing, and oilseed cultivation to serve Middle Eastern and European markets.",
     resources: ["Premium Sesame Seeds", "Bananas (Cavendish)", "Citrus & Lemons", "Sesame Oil", "Sugar Cane", "Maize & Sorghum", "Livestock Feed"],
     keyRegions: ["South West State", "Hirshabelle", "Jubaland"],
-    image: "/assets/images/agriculture_land.jpg",
+    image: IMAGES.agriculture_land,
     metrics: [
       { label: "Arable Land", value: "8.1M Hectares" },
       { label: "River Length", value: "Over 1,100 km" },
@@ -51,7 +52,7 @@ export const resourceSectors: ResourceSector[] = [
     detailedDescription: "Somalia enjoys a 3,333 km coastline—the longest in mainland Africa. The combination of the strong seasonal monsoon winds and deep ocean upwellings drives high nutrient concentrations, supporting exceptionally rich populations of yellowfin tuna, skipjack, kingfish, lobster, and deep-sea snappers, representing an elite, highly lucrative blue economy frontier.",
     resources: ["Yellowfin Tuna", "Skipjack Tuna", "Spiny Lobster", "Mackerel & Sardines", "Red Snapper", "Grouper", "Marine Algae"],
     keyRegions: ["Jubaland", "Puntland", "Galmudug", "Banadir"],
-    image: "/assets/images/fisheries_marine.jpg",
+    image: IMAGES.fisheries_marine,
     metrics: [
       { label: "Coastline Length", value: "3,333 Kilometers" },
       { label: "Annual Sustainable Yield", value: "200k+ Metric Tons" },
@@ -72,7 +73,7 @@ export const resourceSectors: ResourceSector[] = [
     detailedDescription: "The sedimentary basins of Somalia (Mugdisho, Coriole, and Mudug) contain oil and gas structures directly analogous to those in Yemen and East Africa's oil provinces. Simultaneously, Somalia has some of the highest wind speed profiles in Africa and consistent high solar irradiance, offering outstanding hybrid microgrid and utility-scale green energy transition projects.",
     resources: ["Offshore Oil & Gas Blocks", "Onshore Hydrocarbon Basins", "Utility-Scale Solar PV", "High-Velocity Wind Power", "Geothermal Reservoirs"],
     keyRegions: ["Puntland", "Galmudug", "Jubaland", "North West State"],
-    image: "/assets/images/energy_hydrocarbons.jpg",
+    image: IMAGES.energy_hydrocarbons,
     metrics: [
       { label: "Offshore Oil Potential", value: "Estimated Billions of Barrels" },
       { label: "Average Wind Speed", value: "8.5 - 11.0 m/s (Coastal)" },
