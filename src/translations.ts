@@ -68,7 +68,7 @@ export const translations: Record<Language, TranslationSet> = {
     hero_tag: "Somali Natural Resources Pioneer",
     hero_title_part1: "Unlocking Somalia's",
     hero_title_part2: "Natural Resource Potential",
-    hero_desc: "PriRecos partners with global operators and institutional financiers to develop Somalia's primary resources through responsible investment, regional joint ventures, and long-term value creation.",
+    hero_desc: "PriRecos Group is Somalia's commercial bridge between government institutions, qualified operators, and investors — converting resource opportunities in mining, agriculture, fisheries, forestry, and energy into commercially viable, operating projects.",
     hero_btn_explore: "View sectors",
     hero_btn_portal: "Access Partner Portal",
     mandate_title: "Central State Mandate",
@@ -99,8 +99,8 @@ export const translations: Record<Language, TranslationSet> = {
     contact_form_heading: "Central Intake Form",
     contact_btn: "Submit Intake File",
     contact_success: "✓ Institutional briefing registration lodged. Our executive office will contact your corporate contact shortly.",
-    footer_disclaimer: "Legal Framework Notice: All contracts and agreements brokered by PRIRECOS operate in strict coordination with the Somali Federal Ministry of Petroleum & Mineral Resources, the Ministry of Fisheries & Blue Economy, the Ministry of Agriculture & Irrigation, and the Ministry of Commerce & Industry, ensuring compliance with both federal statutes and regional state legislation.",
-    footer_compliancy: "Primary Resources Development Enterprise. All rights reserved."
+    footer_disclaimer: "PriRecos Group operates as a private-sector commercial intermediary and does not replace or represent any government institution. Engagements referencing Somali government ministries — including the Ministry of Commerce and Industry, Ministry of Fisheries and Blue Economy, Ministry of Petroleum and Mineral Resources, Ministry of Livestock, Forestry and Range, and Ministry of Agriculture and Irrigation — are subject to the applicable federal and regional approval processes.",
+    footer_compliancy: "Resource Development & Market-Entry Intermediary Firm. All rights reserved."
   },
   so: {
     nav_home: "Hooy",

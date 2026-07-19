@@ -36,17 +36,17 @@ export default function Footer({ setCurrentPage, language }: FooterProps) {
             </div>
             
             <p className="text-sm text-stone-600 leading-relaxed font-sans">
-              {translate("PriRecos is the premier national natural resource development enterprise, coordinating with global energy, mineral, agricultural, and maritime operators to de-risk and unlock Somalia's extensive primary resource geology.")}
+              {translate("PriRecos Group is a Somali resource development and market-entry company connecting government institutions, qualified operators, and investors to convert Somalia's primary resource potential into commercially viable, operating projects.")}
             </p>
 
             <div className="pt-2 flex flex-col space-y-1.5 text-xs text-stone-500">
               <div className="flex items-center space-x-2">
                 <Award className="w-3.5 h-3.5 text-amber-600" />
-                <span>{translate("Foreign Investment Law Compliant")}</span>
+                <span>{translate("Registered in Somalia — Est. July 2026")}</span>
               </div>
               <div className="flex items-center space-x-2">
                 <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
-                <span>{translate("Official Partner & JV Coordinator")}</span>
+                <span>{translate("Direct Government Ministry Relationships")}</span>
               </div>
             </div>
           </div>
@@ -112,8 +112,20 @@ export default function Footer({ setCurrentPage, language }: FooterProps) {
             </h4>
             <ul className="space-y-3.5 text-xs text-stone-600">
               <li className="flex items-center space-x-2">
-                <Mail className="w-4 h-4 text-amber-500" />
-                <span className="hover:text-amber-600 transition-colors">partnership@prirecos.com</span>
+                <Mail className="w-4 h-4 text-amber-500 shrink-0" />
+                <a href="mailto:partnership@prirecos.com" className="hover:text-amber-600 transition-colors">partnership@prirecos.com</a>
+              </li>
+              <li className="flex items-center space-x-2">
+                <Phone className="w-4 h-4 text-amber-500 shrink-0" />
+                <a href="https://wa.me/252772428472" target="_blank" rel="noopener noreferrer" className="hover:text-amber-600 transition-colors">{translate("Somalia")}: +252 772 428 472</a>
+              </li>
+              <li className="flex items-center space-x-2">
+                <Phone className="w-4 h-4 text-amber-500 shrink-0" />
+                <a href="tel:+17044992950" className="hover:text-amber-600 transition-colors">{translate("USA")}: +1 704 499 2950</a>
+              </li>
+              <li className="flex items-center space-x-2">
+                <MapPin className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>{translate("Mogadishu, Somalia")}</span>
               </li>
             </ul>
           </div>

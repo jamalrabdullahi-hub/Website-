@@ -397,6 +397,26 @@ export default function App() {
                 </p>
               </div>
 
+              {/* Company Profile / Legitimacy Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 border border-stone-200 bg-white p-6" id="company-profile-strip">
+                <div className="space-y-1">
+                  <span className="block text-[10px] font-sans font-bold text-stone-500 uppercase tracking-wider">{translate("Established")}</span>
+                  <span className="block text-sm font-sans font-bold text-stone-900">{translate("July 2026")}</span>
+                </div>
+                <div className="space-y-1">
+                  <span className="block text-[10px] font-sans font-bold text-stone-500 uppercase tracking-wider">{translate("Headquarters")}</span>
+                  <span className="block text-sm font-sans font-bold text-stone-900">{translate("Mogadishu, Somalia")}</span>
+                </div>
+                <div className="space-y-1">
+                  <span className="block text-[10px] font-sans font-bold text-stone-500 uppercase tracking-wider">{translate("Founder & CEO")}</span>
+                  <span className="block text-sm font-sans font-bold text-stone-900">Jamal Raghe Abdullahi</span>
+                </div>
+                <div className="space-y-1">
+                  <span className="block text-[10px] font-sans font-bold text-stone-500 uppercase tracking-wider">{translate("Coverage")}</span>
+                  <span className="block text-sm font-sans font-bold text-stone-900">{translate("All Somalia Regions")}</span>
+                </div>
+              </div>
+
               {/* Column Layout: Vision & Pillars */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start" id="about-pillars-grid">
                 
@@ -416,7 +436,7 @@ export default function App() {
                   <div className="bg-amber-50 border border-amber-100 rounded-none p-5 flex items-start gap-3 mt-4">
                     <Info className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
                     <p className="text-xs text-stone-700 font-sans leading-relaxed">
-                      <strong>{translate("Legal Framework Notice:")}</strong> {translate("All contracts and agreements brokered by PRIRECOS operate in strict coordination with the Somali Federal Ministry of Petroleum & Mineral Resources, the Ministry of Fisheries & Blue Economy, the Ministry of Agriculture & Irrigation, and the Ministry of Commerce & Industry, ensuring compliance with both federal statutes and regional state legislation.")}
+                      <strong>{translate("Our Role:")}</strong> {translate("PriRecos Group is a registered private-sector intermediary, not a government body. We work alongside Somali government institutions — including the Ministry of Commerce and Industry, Ministry of Fisheries and Blue Economy, Ministry of Petroleum and Mineral Resources, Ministry of Livestock, Forestry and Range, and Ministry of Agriculture and Irrigation — to help coordinate licensing and approvals, which remain the responsibility of the relevant ministry.")}
                     </p>
                   </div>
                 </div>
@@ -426,11 +446,11 @@ export default function App() {
                   
                   <div className="bg-white border border-stone-200 p-5 rounded-none space-y-2.5 shadow-sm">
                     <div className="w-8 h-8 rounded-none bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shadow-inner">
-                      <Logo size={18} />
+                      <Info className="w-4.5 h-4.5" />
                     </div>
-                    <h4 className="text-stone-900 font-sans font-bold text-sm tracking-tight">{translate("Local Market Knowledge")}</h4>
+                    <h4 className="text-stone-900 font-sans font-bold text-sm tracking-tight">{translate("Opportunity Identification & Advisory")}</h4>
                     <p className="text-xs text-stone-600 leading-relaxed font-sans">
-                      {translate("Deep operational history in geological mapping, land easement structures, and community mediation.")}
+                      {translate("Feasibility studies, market-entry research, and due diligence to support informed decisions ahead of any capital commitment.")}
                     </p>
                   </div>
 
@@ -438,9 +458,9 @@ export default function App() {
                     <div className="w-8 h-8 rounded-none bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shadow-inner">
                       <Landmark className="w-4.5 h-4.5" />
                     </div>
-                    <h4 className="text-stone-900 font-sans font-bold text-sm tracking-tight">{translate("Government Channels")}</h4>
+                    <h4 className="text-stone-900 font-sans font-bold text-sm tracking-tight">{translate("Government & Stakeholder Coordination")}</h4>
                     <p className="text-xs text-stone-600 leading-relaxed font-sans">
-                      {translate("Relationships with federal ministries and regional member-state cabinets to secure licensing.")}
+                      {translate("Coordinating government processes and aligning stakeholders across government, investors, operators, and local communities.")}
                     </p>
                   </div>
 
@@ -448,9 +468,9 @@ export default function App() {
                     <div className="w-8 h-8 rounded-none bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shadow-inner">
                       <Drill className="w-4.5 h-4.5" />
                     </div>
-                    <h4 className="text-stone-900 font-sans font-bold text-sm tracking-tight">{translate("Project Origination")}</h4>
+                    <h4 className="text-stone-900 font-sans font-bold text-sm tracking-tight">{translate("Partner & Operator Sourcing")}</h4>
                     <p className="text-xs text-stone-600 leading-relaxed font-sans">
-                      {translate("Identification of blocks, oceanic stocks, and fertile floodplains backed by structural survey briefs.")}
+                      {translate("Identification and vetting of qualified international and domestic operators and investors, plus technical personnel placement.")}
                     </p>
                   </div>
 
@@ -458,9 +478,9 @@ export default function App() {
                     <div className="w-8 h-8 rounded-none bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shadow-inner">
                       <Handshake className="w-4.5 h-4.5" />
                     </div>
-                    <h4 className="text-stone-900 font-sans font-bold text-sm tracking-tight">{translate("Joint Venture Networks")}</h4>
+                    <h4 className="text-stone-900 font-sans font-bold text-sm tracking-tight">{translate("Project Development Support")}</h4>
                     <p className="text-xs text-stone-600 leading-relaxed font-sans">
-                      {translate("Sophisticated corporate structuring aligning foreign capital, expert technical operators, and domestic permits.")}
+                      {translate("Partnership formation, commercial structuring, and market-entry support — from concept through to operational reality.")}
                     </p>
                   </div>
 

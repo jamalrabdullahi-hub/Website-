@@ -13,7 +13,7 @@ export const resourceSectors: ResourceSector[] = [
     image: IMAGES.mining_minerals,
     metrics: [
       { label: "Gypsum Purity", value: "95% - 99%" },
-      { label: "Estimated Deposits", value: "Billions of Tons" },
+      { label: "Deposit Scale", value: "Large, Underexplored" },
       { label: "JV Licensing Mode", value: "Concession / PSA" }
     ],
     opportunities: [
@@ -70,12 +70,12 @@ export const resourceSectors: ResourceSector[] = [
     name: "Energy & Hydrocarbons",
     title: "Unlocking Onshore & Offshore Hydrocarbon Reservoirs",
     description: "Somalia stands on the cusp of an energy revolution, possessing premier onshore/offshore oil & gas basins alongside world-class solar and wind energy potential.",
-    detailedDescription: "The sedimentary basins of Somalia (Mugdisho, Coriole, and Mudug) contain oil and gas structures directly analogous to those in Yemen and East Africa's oil provinces. Simultaneously, Somalia has some of the highest wind speed profiles in Africa and consistent high solar irradiance, offering outstanding hybrid microgrid and utility-scale green energy transition projects.",
+    detailedDescription: "Somalia's sedimentary basins (including Mogadishu, Coriole, and Mudug) are considered geologically prospective for oil and gas, though largely unexplored at commercial scale. Somalia also has strong solar irradiance and coastal wind resources, offering potential for hybrid microgrid and utility-scale renewable energy projects alongside future hydrocarbon development.",
     resources: ["Offshore Oil & Gas Blocks", "Onshore Hydrocarbon Basins", "Utility-Scale Solar PV", "High-Velocity Wind Power", "Geothermal Reservoirs"],
     keyRegions: ["Puntland", "Galmudug", "Jubaland", "North West State"],
     image: IMAGES.energy_hydrocarbons,
     metrics: [
-      { label: "Offshore Oil Potential", value: "Estimated Billions of Barrels" },
+      { label: "Offshore Potential", value: "Underexplored Sedimentary Basins" },
       { label: "Average Wind Speed", value: "8.5 - 11.0 m/s (Coastal)" },
       { label: "Solar Irradiance", value: "5.8 - 6.5 kWh/m²/day" }
     ],
@@ -207,18 +207,18 @@ export const partnershipPhases: PartnershipPhase[] = [
 export const whySomaliaReasons = [
   {
     title: "Strategic Geopolitical Positioning",
-    description: "Positioned directly on the Gulf of Aden and Indian Ocean sea lanes. Somalia offers fast, direct sea routes to major commodity markets in the Middle East, India, and East Asia."
+    description: "Positioned directly on the Gulf of Aden and Indian Ocean sea lanes, Somalia offers direct sea routes to commodity markets across the Middle East, South Asia, and East Africa."
   },
   {
-    title: "Highly Favorable Regulatory Environment",
-    description: "The Foreign Investment Law offers full capital repatriation, 10-year tax holidays for primary infrastructure, and standard joint-venture structures protecting international operators."
+    title: "A Largely Untapped Primary Sector",
+    description: "Somalia's mining, agriculture, fisheries, forestry, and energy sectors remain substantially underdeveloped relative to their potential — creating first-mover opportunities for operators willing to engage early and responsibly."
   },
   {
-    title: "Untapped First-Mover Advantage",
-    description: "Somalia is one of the last frontiers for high-purity minerals and vast oceanic fisheries. Early movers secure prime concessions, high-grade deposits, and exclusive regional permissions."
+    title: "Direct Government Relationships",
+    description: "PriRecos maintains direct working relationships with Somali government institutions, including the Ministry of Commerce and Industry and the Ministry of Agriculture and Irrigation, to help coordinate licensing and approvals."
   },
   {
-    title: "Active Institutional Backing",
-    description: "Multi-lateral institutions including the World Bank and IFC are actively funding infrastructure, port modernizations, and energy transmission lines across key commercial nodes."
+    title: "A Dedicated Commercial Bridge",
+    description: "Rather than navigating government processes, technical sourcing, and investor coordination independently, partners work through a single, accountable local intermediary focused on execution."
   }
 ];
