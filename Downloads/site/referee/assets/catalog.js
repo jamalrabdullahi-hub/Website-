@@ -96,6 +96,7 @@ RF.chName = chName;
 function price(p, v) {
   if (v.price != null && v.quoted) return { total: v.price, etaDays: v.etaDays || 20, local: false, quoted: true };
   if (v.price != null) return { total: v.price, etaDays: 0, local: true };
+  if (!(v.cost > 0)) return { total: null, etaDays: 20, local: false, unknown: true };   // no reliable cost yet -> staff must quote
   var b = breakdown(v.cost, p.kg);
   return { total: b.total, etaDays: b.etaDays, local: false };
 }

@@ -4,6 +4,8 @@
    Routes → normalised offer shape (see assets/sources.js):
      GET /item?platform=1688|taobao&id=<numeric id>     one product, full detail
      GET /search?q=<text>&platforms=1688,jd             keyword search (1688 + JD)
+     GET /link?url=<any http(s) product page>          generic page reader: title / image / price from the page's own data
+                                                         (Open Graph tags + schema.org JSON-LD). Used for any link the actors can't do.
    Not covered by the Apify actors below (returns 501, the site then falls back to a staff-priced quote request):
      /item for jd · pdd · alibaba,   /search for taobao · pdd · alibaba
 
@@ -34,7 +36,7 @@ export default {
     const cors = { "access-control-allow-origin": allowed.includes(origin) ? origin : allowed[0], "content-type": "application/json", vary: "origin" };
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...cors, "access-control-allow-methods": "GET" } });
     if (origin && !allowed.includes(origin)) return json({ error: "origin not allowed" }, 403, cors);
-    if (!env.APIFY_TOKEN) return json({ error: "APIFY_TOKEN not configured" }, 500, cors);
+    const needApify = () => (env.APIFY_TOKEN ? null : json({ error: "APIFY_TOKEN not configured" }, 500, cors));   // /link does not use Apify
 
     try {
       const cacheKey = new Request(url.toString(), { method: "GET" });
@@ -43,17 +45,26 @@ export default {
 
       let body, status = 200;
       if (url.pathname === "/item") {
+        const noTok = needApify(); if (noTok) return noTok;
         const platform = url.searchParams.get("platform"), id = url.searchParams.get("id") || "";
         if (!/^\d{5,20}$/.test(id)) return json({ error: "bad id" }, 400, cors);
         if (!ITEM_OK.includes(platform)) return json({ error: "unsupported", platform }, 501, cors);
         body = await getItem(platform, id, env);
         if (!body) return json({ error: "not found" }, 404, cors);
       } else if (url.pathname === "/search") {
+        const noTok = needApify(); if (noTok) return noTok;
         const q = (url.searchParams.get("q") || "").trim().slice(0, 100);
         if (q.length < 2) return json({ error: "query too short" }, 400, cors);
         const plats = (url.searchParams.get("platforms") || "1688").split(",").filter(p => SEARCH_OK.includes(p));
         const parts = await Promise.allSettled(plats.map(p => searchPlatform(p, q, env)));
         body = parts.flatMap(r => (r.status === "fulfilled" ? r.value : []));
+      } else if (url.pathname === "/link") {
+        const target = url.searchParams.get("url") || "";
+        if (!isPublicUrl(target)) return json({ error: "link not allowed" }, 400, cors);
+        const html = await readPage(target);
+        if (!html) return json({ error: "page could not be read" }, 502, cors);
+        body = mapLink(parseHtml(html.text, html.finalUrl), html.finalUrl);
+        if (!body) return json({ error: "no product data on this page" }, 404, cors);
       } else return json({ error: "not found" }, 404, cors);
 
       const res = json(body, status, { ...cors, "cache-control": `public, max-age=${Number(env.CACHE_SECONDS) || 21600}` });
@@ -115,6 +126,66 @@ export function mapJd(r) {
     modelNo: (r.detail && r.detail.model) || "",
     seller: { id: String((r.shop && r.shop.id) || ""), name: (r.shop && r.shop.name) || "JD", city: "", years: 0, rating: 0, verified: !!r.selfOperated, factory: false }
   });
+}
+
+/* ---------------------------------------------------------------- generic link reader
+   SSRF guard: only public http(s) hosts on the default ports; no IP literals, localhost or internal suffixes — checked again after redirects.
+   The bot identifies itself honestly; sites that block it simply fall back to a staff-priced quote request. */
+export function isPublicUrl(u) {
+  let x; try { x = new URL(u); } catch { return false; }
+  if (x.protocol !== "http:" && x.protocol !== "https:") return false;
+  if (x.port && x.port !== "80" && x.port !== "443") return false;
+  const h = x.hostname.toLowerCase();
+  if (!h.includes(".") || h === "localhost" || /\.(local|internal|localdomain|lan|home|corp)$/.test(h)) return false;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(":") || /^\[/.test(h)) return false;     // IPv4 / IPv6 literals
+  return true;
+}
+async function readPage(target) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(target, { redirect: "follow", signal: ctl.signal, headers: {
+      "user-agent": "Mozilla/5.0 (compatible; GarsooreBot/1.0; +https://garsoore.com)", "accept": "text/html,application/xhtml+xml", "accept-language": "en,zh;q=0.8,so;q=0.6" } });
+    if (!r.ok || !isPublicUrl(r.url || target) || !/html/i.test(r.headers.get("content-type") || "")) return null;
+    const reader = r.body.getReader(), dec = new TextDecoder("utf-8", { fatal: false }); let text = "", n = 0;
+    while (n < 600000) { const { done, value } = await reader.read(); if (done) break; n += value.length; text += dec.decode(value, { stream: true }); }
+    try { reader.cancel(); } catch {}
+    return { text, finalUrl: r.url || target };
+  } catch { return null; } finally { clearTimeout(t); }
+}
+const ent = v => String(v == null ? "" : v).replace(/&(#x?[0-9a-f]+|amp|lt|gt|quot|apos|nbsp);/gi, (m, g) => {
+  g = g.toLowerCase(); if (g[0] === "#") { const c = g[1] === "x" ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10); return isFinite(c) ? String.fromCodePoint(c) : m; }
+  return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " }[g] || m; }).trim();
+function metaContent(html, key) {
+  const k = key.replace(/[.:]/g, "\\$&");
+  const a = html.match(new RegExp(`<meta[^>]+(?:property|name|itemprop)=["']${k}["'][^>]*?content=["']([^"']*)["']`, "i"));
+  const b = html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*?(?:property|name|itemprop)=["']${k}["']`, "i"));
+  return ent((a && a[1]) || (b && b[1]) || "");
+}
+function ldProducts(html) {
+  const out = [], re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi; let m;
+  const walk = n => { if (!n || typeof n !== "object") return; if (Array.isArray(n)) return n.forEach(walk);
+    const t = [].concat(n["@type"] || []); if (t.includes("Product")) out.push(n); if (n["@graph"]) walk(n["@graph"]); };
+  while ((m = re.exec(html))) { try { walk(JSON.parse(m[1])); } catch {} }
+  return out;
+}
+export function parseHtml(html, pageUrl) {
+  const p = ldProducts(html)[0] || {}, offer = [].concat(p.offers || [])[0] || {};
+  const pick = v => (Array.isArray(v) ? pick(v[0]) : v && typeof v === "object" ? v.url || v.contentUrl || v.name : v);
+  const title = ent(metaContent(html, "og:title") || metaContent(html, "twitter:title") || p.name || (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || "").slice(0, 200);
+  let image = pick(p.image) || metaContent(html, "og:image") || metaContent(html, "twitter:image");
+  try { image = image ? new URL(image, pageUrl).href : ""; } catch { image = ""; }
+  const price = offer.price || offer.lowPrice || metaContent(html, "product:price:amount") || metaContent(html, "og:price:amount");
+  const cur = String(offer.priceCurrency || metaContent(html, "product:price:currency") || metaContent(html, "og:price:currency") || "").toUpperCase();
+  return { title, image, brand: ent(pick(p.brand) || metaContent(html, "product:brand")), modelNo: ent(p.mpn || p.sku || ""), price: num(price), currency: cur,
+           description: ent(metaContent(html, "og:description") || p.description || "").slice(0, 300) };
+}
+export function mapLink(d, url) {
+  if (!d.title) return null;
+  const host = new URL(url).hostname.replace(/^www\./, ""), cny = d.currency === "CNY" || d.currency === "RMB", cost = cny ? d.price : 0;
+  return base("web", url, url, d.title, "", { brand: d.brand, modelNo: d.modelNo, image: d.image, icon: "🔗", description: d.description,
+    skus: [{ id: "web-A", label: "Standard", attrs: {}, cost }], tiers: [{ minQty: 1, cost }],
+    priceOriginal: d.price || 0, currencyOriginal: d.currency || "",          // non-CNY prices are shown to staff, never used as our cost
+    seller: { id: "", name: host, city: "", years: 0, rating: 0, verified: false, factory: false } });
 }
 
 function json(body, status, headers) { return new Response(JSON.stringify(body), { status, headers }); }

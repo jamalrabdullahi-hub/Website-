@@ -155,3 +155,10 @@ JD-by-link, Pinduoduo, Alibaba.com. None of the actors return weight, so freight
 2. `cd server && npx wrangler secret put APIFY_TOKEN && npx wrangler deploy` (attach a custom domain such as china.garsoore.com — the Cache API needs one).
 3. Put that URL in `assets/config.js` (`chinaEndpoint`). Leave it empty to stay on demo data.
 4. Optional: `python tools/apify-refresh.py --limit 25 --yes` refreshes core-catalogue costs (needs `source_url` filled in). It writes `cost_verified=check`; a person confirms the match.
+
+## Any link → product page
+Paste any product link (or a WeChat/Taobao share text) into the home search box or the Shop China box:
+- `RF.sources.urlOf(text)` extracts the link; a normal search phrase is left alone. `identify()` routes known platforms (JD, 1688, Taobao/Tmall, Pinduoduo, Alibaba) and treats everything else as platform `web`.
+- Known product in the core range → normal buyable product page. Anything else → a one-off product page (title, image, source link) with **"Qiimo la sugayo" / ≈ estimate** and a **Codso qiimo rasmi ah** button; staff price it at `business/quotes.html`.
+- Demo mode: title comes from the link's own wording, price stays unknown (nothing is invented).
+- Live mode: `/item` (Apify) first, then the Worker's `/link` page reader (Open Graph + schema.org JSON-LD; SSRF-guarded, honest bot user-agent), then a quote request. Non-CNY page prices are never used as our cost.

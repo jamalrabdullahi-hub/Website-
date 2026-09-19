@@ -24,7 +24,7 @@ function home(app) {
       '<div class="g-local"><span class="g-pill">✓ Iibiye kasta waa la hubiyay</span>' +
         '<h1>Wax walba,<br>hal meel.</h1>' +
         '<p>Alaab, adeegyo iyo xayeysiis gudaha Soomaaliya — lacagtaadu way xajisan tahay ilaa aad hesho.</p>' +
-        '<form class="g-search" id="sForm"><input id="sQ" placeholder="Raadi taleefan, laptop, solar, qaboojiye…" value="' + e(q) + '"><button class="btn">Raadi</button></form>' +
+        '<form class="g-search" id="sForm"><input id="sQ" placeholder="Raadi, ama ku dheji link alaab (JD, 1688, Taobao…)" value="' + e(q) + '"><button class="btn">Raadi</button></form>' +
         '<div class="g-quick">' + ["Redmi", "Laptop", "Solar", "Qaboojiye", "Bajaj"].map(function (w) { return '<a class="chip" href="?q=' + encodeURIComponent(w) + '#feed">' + w + '</a>'; }).join("") + '</div>' +
       '</div>' +
       '<div class="g-china"><span class="g-tagw">GARSOORE CHINA</span><h2>Ka hel Shiinaha.<br>Ku iibso Garsoore.</h2>' +
@@ -52,7 +52,8 @@ function home(app) {
   }
   draw();
   $("seg").onclick = function (ev) { var sp = ev.target.closest("span"); if (!sp) return; [].forEach.call(this.children, function (x) { x.classList.toggle("on", x === sp); }); filt = sp.dataset.v; shown = PAGE_N; draw(); };
-  $("sForm").onsubmit = function (ev) { ev.preventDefault(); location.href = "?q=" + encodeURIComponent($("sQ").value) + "#feed"; };
+  $("sForm").onsubmit = function (ev) { ev.preventDefault(); var v = $("sQ").value, u = RF.sources && RF.sources.urlOf(v);
+    location.href = u ? "china.html?u=" + encodeURIComponent(u) : "?q=" + encodeURIComponent(v) + "#feed"; };
   $("pForm").onsubmit = function (ev) { ev.preventDefault(); location.href = "china.html?u=" + encodeURIComponent($("pU").value); };
 }
 
@@ -63,10 +64,11 @@ function productView(p, host) {
   function render() {
     var v = p.variants[vi], pr = C.price(p, v), china = !pr.local, src = p.sources[0], isReq = p.oneoff && !v.quoted;
     host.innerHTML =
-      '<div class="g-phero"><div class="g-pic">' + p.icon + '</div><div>' +
-        '<span class="g-pill ' + (china ? "gold" : "") + '">' + (china ? "Garsoore China · " + chName(src.channel) + (v.quoted ? " · qiimo rasmi" : p.oneoff ? " · dalab hal mar" : "") : "✓ " + e(src.seller) + " · " + e(src.city)) + '</span>' +
+      '<div class="g-phero"><div class="g-pic">' + (p.image ? '<img src="' + e(p.image) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(\'' + p.icon + '\'))">' : p.icon) + '</div><div>' +
+        '<span class="g-pill ' + (china ? "gold" : "") + '">' + (china ? (src.channel === "web" ? "Garsoore · link ka yimid " + e(RF.sources.hostOf(p.pageUrl || "")) : "Garsoore China · " + chName(src.channel)) + (v.quoted ? " · qiimo rasmi" : p.oneoff ? " · dalab hal mar" : "") : "✓ " + e(src.seller) + " · " + e(src.city)) + '</span>' +
         '<div class="g-sku">' + p.sku + (p.modelNo ? " · " + e(p.modelNo) : "") + '</div>' +
         '<h1>' + e((p.brand ? p.brand + " " : "") + p.model) + '</h1><p class="g-blurb">' + e(p.blurb) + '</p>' +
+        (p.pageUrl ? '<div class="g-eta">Il: <a href="' + e(p.pageUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--pri);font-weight:700">' + e(RF.sources.hostOf(p.pageUrl)) + ' ↗</a></div>' : "") +
         (p.variants.length > 1 ? '<div class="g-lbl">Nooca</div><div>' + p.variants.map(function (x, i) {
           return '<button class="g-o' + (i === vi ? " on" : "") + '" data-i="' + i + '">' + (x.hex ? '<i style="background:' + x.hex + '"></i>' : "") + e(x.label) + (x.color && x.color !== "—" ? " · " + e(x.color) : "") + '</button>';
         }).join("") + '</div>' : "") +
@@ -75,8 +77,9 @@ function productView(p, host) {
       '<div class="g-trust"><div><b>Hal qiimo</b>Kharash qarsoon ma jiro</div><div><b>Lacag la xajiyo</b>Garsoore ayaa haya ilaa aad hesho</div><div><b>Celin 7 maalmood</b>Haddii aysan ahayn sidii la sheegay</div></div>' +
       '<div class="g-buybar"><div class="g-bi">' + p.icon + '</div><div class="g-bt"><b>' + e(p.model) + (v.label && v.label !== "Standard" ? " · " + e(v.label) : "") + '</b>' +
         '<div class="g-eta">' + (china ? "🚚 Diyaar " + eta(pr.etaDays) + " · Pickup Muqdisho" : "Diyaar maanta · " + e(src.city)) + ' · 🔒 Lacag la xajiyo</div></div>' +
-        '<div class="g-price">' + (isReq ? "≈ " : "") + money(pr.total) + '</div><button class="btn g-buy" id="buyBtn">' + (isReq ? "Codso qiimo rasmi ah" : "Hadda iibso") + '</button></div>' +
-      (isReq ? '<div class="g-found" style="margin-top:12px">Alaabtan ma ahan kuwa katalogga. Qiimahan waa qiyaas — koox Garsoore ah ayaa hubinaysa oo kuu soo diraysa qiimo rasmi ah (saacado gudahood), kadibna waad iibsan kartaa.</div>' : "");
+        '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' + (pr.total == null ? "Qiimo la sugayo" : (isReq ? "≈ " : "") + money(pr.total)) + '</div><button class="btn g-buy" id="buyBtn">' + (isReq ? "Codso qiimo rasmi ah" : "Hadda iibso") + '</button></div>' +
+      (isReq ? '<div class="g-found" style="margin-top:12px">' + (pr.total == null ? 'Alaabtan ma ahan kuwa katalogga, qiimana lama helin. ' : 'Alaabtan ma ahan kuwa katalogga. Qiimahan waa qiyaas — ') +
+        'koox Garsoore ah ayaa hubinaysa oo kuu soo diraysa qiimo rasmi ah (saacado gudahood), kadibna waad iibsan kartaa.</div>' : "");
     [].forEach.call(host.querySelectorAll(".g-o"), function (b) { b.onclick = function () { vi = +b.dataset.i; render(); }; });
     $("buyBtn").onclick = function () {
       if (!isReq) return checkout(p, v);
@@ -124,19 +127,20 @@ function checkout(p, v) {
 /* ---------------------------------------------------------------- Shop China */
 function china(app) {
   var u = qs("u"), q = qs("q"), S = RF.sources, A = S.ADAPTERS;
-  var chips = Object.keys(A).map(function (k) { return '<span>' + A[k].name + ' <small>' + A[k].zh + '</small></span>'; }).join("");
+  var chips = Object.keys(A).filter(function (k) { return k !== "web"; }).map(function (k) { return '<span>' + A[k].name + ' <small>' + A[k].zh + '</small></span>'; }).join("");
   app.innerHTML = '<div class="wrap"><section class="g-chero"><span class="g-tagw">GARSOORE CHINA</span><h1>Ka hel Shiinaha. Ku iibso Garsoore.</h1>' +
     '<p>Kuma baahnid akoon Shiinees, luqad, lacag bixin Shiinees ama rar. Ku dheji link — waxaad helaysaa hal qiimo iyo hal badhan.</p>' +
-    '<form class="g-paste big" id="pForm"><input id="pU" placeholder="Ku dheji link JD, 1688, Taobao, Tmall, Pinduoduo ama Alibaba…" value="' + e(u) + '"><button class="btn gold">Qiimee</button></form>' +
+    '<form class="g-paste big" id="pForm"><input id="pU" placeholder="Ku dheji link alaab kasta — JD, 1688, Taobao, Pinduoduo, Alibaba, ama bog kale…" value="' + e(u) + '"><button class="btn gold">Qiimee</button></form>' +
     '<div class="g-src">' + chips + '</div>' +
     '<div class="g-src"><a href="?u=https://item.jd.com/100071383535.html">Tijaabi: laptop JD</a><a href="?u=https://detail.1688.com/offer/712288934512.html">Tijaabi: AC 1688</a>' +
       '<a href="?u=https://item.taobao.com/item.htm?id=693311240517">Tijaabi: Taobao</a><a href="?u=https://mobile.yangkeduo.com/goods.html?goods_id=512233441">Tijaabi: Pinduoduo</a></div>' +
     '<ol class="g-how"><li><b>Ku dheji</b>link ama raadi</li><li><b>Hel qiimo</b>hal wadar, kharash qarsoon ma jiro</li><li><b>Iibso</b>EVC · ZAAD · Sahal</li><li><b>Ka qaado</b>Muqdisho ~20 maalmood</li></ol></section>' +
     '<div id="res"></div>' +
-    '<div class="g-sec"><h2>Ka raadi dhammaan suuqyada Shiinaha</h2><form class="g-search sm" id="sForm"><input id="sQ" placeholder="kettle, charger, CCTV…" value="' + e(q) + '"><button class="btn">Raadi</button></form></div>' +
+    '<div class="g-sec"><h2>Ka raadi dhammaan suuqyada Shiinaha</h2><form class="g-search sm" id="sForm"><input id="sQ" placeholder="kettle, charger, CCTV… ama link" value="' + e(q) + '"><button class="btn">Raadi</button></form></div>' +
     '<div class="g-grid" id="grid"></div></div>';
   $("pForm").onsubmit = function (ev) { ev.preventDefault(); location.href = "?u=" + encodeURIComponent($("pU").value); };
-  $("sForm").onsubmit = function (ev) { ev.preventDefault(); location.href = "?q=" + encodeURIComponent($("sQ").value) + "#grid"; };
+  $("sForm").onsubmit = function (ev) { ev.preventDefault(); var v = $("sQ").value, lu = S.urlOf(v);
+    location.href = lu ? "?u=" + encodeURIComponent(lu) : "?q=" + encodeURIComponent(v) + "#grid"; };
   var cat = C.search(q, { china: true });
   var total = cat.length; cat = (q ? cat : C.mixed(cat)).slice(0, 40);
   S.search(total >= 8 ? "\u0000" : q, {}, function (offers) {
@@ -158,7 +162,7 @@ function china(app) {
       }
       var o = r.offer, sel = o.seller;
       $("res").innerHTML = '<div class="g-found">✓ ' + (r.mode === "catalog" ? "Waa la aqoonsaday — alaab ku jirta katalogga Garsoore" : "Waa la aqoonsaday — dalab hal mar ah") +
-        ' · ' + S.ADAPTERS[o.platform].name + ' · iibiye ' + (sel.verified ? "la hubiyay" : "aan weli la hubin") + '</div><div id="pv"></div>';
+        ' · ' + e(S.label(o)) + ' · iibiye ' + (sel.verified ? "la hubiyay" : "aan weli la hubin") + '</div><div id="pv"></div>';
       productView(r.product, $("pv"));
     });
   }
@@ -198,9 +202,9 @@ function bizChina(app) {
   function on(k) { return plat === k ? ' style="background:rgba(255,255,255,.35)"' : ""; }
   app.innerHTML = '<div class="wrap"><section class="g-chero"><span class="g-tagw">GARSOORE CHINA · GANACSI</span><h1>Iibsi jumlad ah oo Shiinaha ka yimaada.</h1>' +
     '<p>Raadi 1688, Alibaba, JD, Taobao iyo Pinduoduo hal mar. Qiimaha waa <b>la keenay Muqdisho</b> (DAP): alaab, rar Shiinaha, isku-darid, rar bad/cir, canshuur. Garsoore ayaa la xiriira iibiyaha, lacagta haya, oo tayada hubiya.</p>' +
-    '<form class="g-paste big" id="bForm"><input id="bQ" placeholder="Raadi (solar light, chairs, CCTV) ama ku dheji link…" value="' + e(u || q) + '"><button class="btn gold">Raadi</button></form>' +
+    '<form class="g-paste big" id="bForm"><input id="bQ" placeholder="Raadi (solar light, chairs, CCTV) ama ku dheji link alaab kasta…" value="' + e(u || q) + '"><button class="btn gold">Raadi</button></form>' +
     '<div class="g-src"><a href="?' + (q ? "q=" + encodeURIComponent(q) : "") + '"' + on("") + '>Dhammaan</a>' +
-      Object.keys(A).map(function (k) { return '<a href="?p=' + k + (q ? "&q=" + encodeURIComponent(q) : "") + '"' + on(k) + '>' + A[k].name + ' <small>' + A[k].zh + '</small></a>'; }).join("") + '</div></section>' +
+      Object.keys(A).filter(function (k) { return k !== "web"; }).map(function (k) { return '<a href="?p=' + k + (q ? "&q=" + encodeURIComponent(q) : "") + '"' + on(k) + '>' + A[k].name + ' <small>' + A[k].zh + '</small></a>'; }).join("") + '</div></section>' +
     '<div class="g-sec"><h2>Dalabyo</h2><span class="g-eta">Qiimaha halkii unug = la keenay Muqdisho · beddel tirada si aad u aragto qiimaha jumladda</span></div>' +
     '<div id="offers"></div>' +
     '<div class="g-sec"><h2>Iibiyeyaasha Shiinaha</h2><span class="g-eta">Warshado iyo ganacsato ay Garsoore hubisay</span></div>' +
@@ -209,19 +213,20 @@ function bizChina(app) {
         '<div class="g-vtags">' + (v.verified ? '<span class="g-pill">✓ La hubiyay</span>' : '<span class="g-pill gold">Hubin socota</span>') + (v.factory ? '<span class="g-pill gold">Warshad</span>' : "") +
         v.platforms.map(function (p) { return '<span class="chip">' + (A[p] ? A[p].name : "Toos") + '</span>'; }).join("") + '</div></div>';
     }).join("") + '</div></div>';
-  $("bForm").onsubmit = function (ev) { ev.preventDefault(); var v = $("bQ").value.trim(); location.href = S.identify(v) ? "?u=" + encodeURIComponent(v) : "?q=" + encodeURIComponent(v) + (plat ? "&p=" + plat : ""); };
+  $("bForm").onsubmit = function (ev) { ev.preventDefault(); var v = $("bQ").value.trim(); location.href = S.urlOf(v) ? "?u=" + encodeURIComponent(S.urlOf(v)) : "?q=" + encodeURIComponent(v) + (plat ? "&p=" + plat : ""); };
   function priceTxt(L) { return "halkii · $" + L.total.toLocaleString() + " wadar · " + (L.mode === "sea" ? "bad" : "cir") + " ~" + L.etaDays + " maalmood"; }
   function rows(offers) {
     if (!offers.length) { $("offers").innerHTML = '<div class="g-empty">Wax lama helin.</div>'; return; }
     $("offers").innerHTML = '<div class="g-otable">' + offers.map(function (o, i) {
-      var L = S.landed(o, Math.max(o.moq, 50));
+      var known = o.tiers[0].cost > 0, L = S.landed(o, Math.max(o.moq, 50));
       return '<div class="g-orow2"><div class="g-th">' + o.icon + '</div>' +
         '<div class="g-oinfo"><b>' + e(o.title) + '</b><div class="g-eta">' + e(o.titleZh) + ' · <a href="' + e(o.url) + '" target="_blank" rel="noopener">' + A[o.platform].name + ' ↗</a></div>' +
           '<div class="g-eta">' + (o.seller.verified ? "✓ " : "") + e(o.seller.name) + ' · ' + e(o.seller.city) + (o.seller.factory ? " · warshad" : "") + ' · MOQ ' + o.moq + ' · kayd ' + o.stock.toLocaleString() + '</div>' +
           '<div class="g-eta">Heerarka: ' + o.tiers.map(function (t) { return t.minQty + "+ → ¥" + t.cost; }).join(" · ") + '</div></div>' +
         '<div class="g-oqty"><label class="g-eta">Tirada</label><input type="number" min="' + o.moq + '" value="' + L.qty + '" data-q="' + i + '"></div>' +
-        '<div class="g-oprice"><div class="g-price sm" data-pu="' + i + '">$' + L.perUnit + '</div><div class="g-eta" data-pt="' + i + '">' + priceTxt(L) + '</div></div>' +
-        '<button class="btn" data-rfq="' + i + '">Codso</button></div>';
+        '<div class="g-oprice">' + (known ? '<div class="g-price sm" data-pu="' + i + '">$' + L.perUnit + '</div><div class="g-eta" data-pt="' + i + '">' + priceTxt(L) + '</div>'
+          : '<div class="g-eta">Qiimo la sugayo</div>') + '</div>' +
+        '<button class="btn" data-rfq="' + i + '"' + (known ? "" : ' data-unk="1"') + '>' + (known ? "Codso" : "Codso qiimo") + '</button></div>';
     }).join("") + '</div>';
     [].forEach.call(document.querySelectorAll("[data-q]"), function (inp) {
       inp.oninput = function () { var o = offers[+inp.dataset.q], L = S.landed(o, +inp.value || o.moq);
@@ -230,6 +235,7 @@ function bizChina(app) {
     });
     [].forEach.call(document.querySelectorAll("[data-rfq]"), function (b) {
       b.onclick = function () { var i = +b.dataset.rfq, qty = +document.querySelector('[data-q="' + i + '"]').value;
+        if (b.dataset.unk) { var qq = RF.quotes.requestLink({ platform: offers[i].platform, ref: offers[i].ref }, offers[i].url); toast("Codsigii waa la diray · " + qq.id); b.textContent = "✓ La diray"; b.disabled = true; return; }
         var r = S.procure(offers[i], qty); if (r.error) return toast(r.error);
         toast("RFQ waa la diray · Garsoore China: $" + r.landed.perUnit + "/unug. Eeg Hawlaha shirkadda.");
         b.textContent = "✓ La diray"; b.disabled = true; };
@@ -237,7 +243,7 @@ function bizChina(app) {
   }
   if (u) {
     var id = S.identify(u);
-    if (!id) { $("offers").innerHTML = '<div class="g-err">Link-gan lama aqoonsan. Isticmaal JD, 1688, Taobao/Tmall, Pinduoduo ama Alibaba.com.</div>'; return; }
+    if (!id) { $("offers").innerHTML = '<div class="g-err">Link-gan lama aqoonsan.</div>'; return; }
     S.fetchOffer(id.platform, id.ref, function (err, o) {
       if (o) return rows([o]);
       $("offers").innerHTML = '<div class="g-err">Ma helin macluumaadka link-gan hadda. <button class="btn" id="qBtn2">Codso qiimo rasmi ah</button></div>';

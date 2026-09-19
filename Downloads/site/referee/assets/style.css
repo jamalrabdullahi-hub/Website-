@@ -493,3 +493,4 @@ footer.site b{color:var(--fg);font-weight:650}
 .g-src small{opacity:.7}
 @media(max-width:900px){.g-orow2{grid-template-columns:44px 1fr}.g-oqty,.g-oprice{grid-column:2}.g-oprice{text-align:left}}
 .g-more{grid-column:1/-1;text-align:center;padding:14px 0}
+.g-pic img{max-width:100%;max-height:300px;object-fit:contain;border-radius:18px}

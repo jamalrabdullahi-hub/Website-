@@ -60,23 +60,60 @@ var A = {
   "1688":  { name: "1688.com", zh: "阿里巴巴1688", retail: false, re: /1688\.com\/offer\/(\d{5,})/i, url: function (id) { return "https://detail.1688.com/offer/" + id + ".html"; } },
   taobao:  { name: "Taobao / Tmall", zh: "淘宝/天猫", retail: true, re: /(?:taobao|tmall)\.com\/.*?[?&]id=(\d{5,})/i, url: function (id) { return "https://item.taobao.com/item.htm?id=" + id; } },
   pdd:     { name: "Pinduoduo", zh: "拼多多", retail: true, re: /(?:yangkeduo|pinduoduo)\.com\/.*?goods_id=(\d{5,})/i, url: function (id) { return "https://mobile.yangkeduo.com/goods.html?goods_id=" + id; } },
-  alibaba: { name: "Alibaba.com", zh: "阿里巴巴国际站", retail: false, re: /alibaba\.com\/product-detail\/[^?#]*?_(\d{6,})\.html/i, url: function (id) { return "https://www.alibaba.com/product-detail/_" + id + ".html"; } }
+  alibaba: { name: "Alibaba.com", zh: "阿里巴巴国际站", retail: false, re: /alibaba\.com\/product-detail\/[^?#]*?_(\d{6,})\.html/i, url: function (id) { return "https://www.alibaba.com/product-detail/_" + id + ".html"; } },
+  web:     { name: "Web", zh: "", retail: true, re: /(?!)/, url: function (id) { return id; } }   // any other product link
 };
 var config = { endpoint: (window.GARSOORE_CONFIG && window.GARSOORE_CONFIG.chinaEndpoint) || "", fx: 7.2 };
 
-function identify(url) {
-  url = String(url || "").trim();
-  for (var k in A) { var m = url.match(A[k].re); if (m) return { platform: k, ref: m[1] }; }
-  return null;
+/* Pull the first web link out of whatever was pasted: a bare URL, "item.jd.com/123.html" without https, or a WeChat / Taobao
+   share text such as "【淘宝】https://e.tb.cn/h.abc 「Some item」". Returns "" when the text is not a link (i.e. a normal search). */
+var URL_RE = /https?:\/\/[^\s\u3000-\u303f\u4e00-\u9fff\uff00-\uffef<>"'【】「」（）]+/i;
+function urlOf(text) {
+  text = String(text || "").trim();
+  var m = text.match(URL_RE);
+  if (m) return m[0].replace(/[).,;!?]+$/, "");
+  if (/^[\w-]+(\.[\w-]+)*\.[a-z]{2,}(\/\S*)?$/i.test(text) && text.indexOf(" ") < 0) return "https://" + text;   // scheme-less link
+  return "";
 }
+function hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, ""); } catch (x) { return ""; } }
+function shortId(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36).slice(-5).toUpperCase().padStart(5, "0"); }
+function identify(text) {
+  var url = urlOf(text); if (!url) return null;
+  for (var k in A) { var m = url.match(A[k].re); if (m) return { platform: k, ref: m[1], url: url }; }
+  return { platform: "web", ref: url, url: url };            // any other product page
+}
+function label(o) { return o.platform === "web" ? (hostOf(o.url || o.ref) || "Web") : A[o.platform].name; }
 
-/* sync fetch for demo; async live fetch via proxy */
+/* Demo stand-in for an unknown web page: title comes from the link itself, price is unknown (→ staff quote). No invented prices. */
+function demoWeb(url) {
+  var u; try { u = new URL(url); } catch (x) { return null; }
+  var seg = u.pathname.split("/").filter(Boolean).map(function (s) { try { return decodeURIComponent(s); } catch (x) { return s; } })
+    .sort(function (a, b) { return (b.match(/[A-Za-z\u4e00-\u9fff]/g) || []).length - (a.match(/[A-Za-z\u4e00-\u9fff]/g) || []).length; })[0] || "";
+  var slug = seg.replace(/\.[a-z0-9]{2,5}$/i, "").replace(/[-_+.]+/g, " ").replace(/\d{6,}/g, "").trim();
+  var host = u.hostname.replace(/^www\./, "");
+  return { platform: "web", ref: url, url: url, title: slug.length > 3 ? slug.replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); }) : host, titleZh: "", brand: "", modelNo: "",
+    icon: "🔗", kg: 1, kgGuess: true, cat: "ELC", currency: "CNY", moq: 1, stock: 0, live: false, demoWeb: true,
+    skus: [{ id: shortId(url) + "-A", label: "Standard", attrs: {}, cost: 0 }], tiers: [{ minQty: 1, cost: 0 }],
+    seller: { id: "", name: host, city: "", years: 0, rating: 0, verified: false, factory: false } };
+}
+/* live: ask the proxy to read ANY product page (title / image / price from its page data) */
+function fetchLink(url, cb) {
+  fetch(config.endpoint + "/link?url=" + encodeURIComponent(url))
+    .then(function (r) { if (!r.ok) throw new Error("proxy " + r.status); return r.json(); })
+    .then(function (o) { o.live = true; cb(null, o); })
+    .catch(function (err) { cb(err, null); });
+}
+/* sync in demo mode; async live via proxy. Live mode NEVER substitutes demo data for a real product:
+   a known platform tries its Apify route first, then the generic page reader, then gives up (→ staff quote). */
 function fetchOffer(platform, ref, cb) {
-  if (!config.endpoint) return cb(null, demoOffer(platform, ref));
+  if (!config.endpoint) return cb(null, platform === "web" ? demoWeb(ref) : demoOffer(platform, ref));
+  if (platform === "web") return fetchLink(ref, cb);
   fetch(config.endpoint + "/item?platform=" + encodeURIComponent(platform) + "&id=" + encodeURIComponent(ref))
     .then(function (r) { if (!r.ok) throw new Error("proxy " + r.status); return r.json(); })
     .then(function (o) { o.live = true; cb(null, o); })
-    .catch(function (err) { cb(err, null); });   // live mode: NEVER substitute demo data for a real product
+    .catch(function (err) {
+      fetchLink(A[platform].url(ref), function (e2, o2) { if (o2) { o2.platform = platform; o2.ref = ref; o2.viaLink = true; } cb(o2 ? null : err, o2 || null); });
+    });
 }
 
 /* normalise an offer into a Garsoore product; attach to an existing catalogue SKU only on exact identity */
@@ -90,10 +127,11 @@ function toProduct(o) {
       existing.sources.push({ channel: o.platform, ref: o.ref, seller: o.seller.name });
     return { mode: "catalog", product: existing, offer: o };
   }
-  var name = A[o.platform].name;
-  var p = { sku: "GRS-TMP-" + o.ref.slice(-5), cat: o.cat || "ELC", brand: o.brand || "", model: (o.brand && o.title.indexOf(o.brand) === 0) ? o.title.slice(o.brand.length).trim() : o.title, modelNo: o.modelNo || "", icon: o.icon || "📦", kg: o.kg || 1,
-    blurb: "Dalab hal mar ah — Garsoore ayaa ka iibsan doona " + name + " oo kuu keeni doona.",
-    specs: [["Il", name], ["Iibiye", (o.seller.verified ? "✓ " : "") + o.seller.city], ["Kayd", o.stock > 100 ? "Badan" : String(o.stock)], ["Celin", "7 maalmood"]],
+  var name = label(o), web = o.platform === "web";
+  var p = { sku: "GRS-TMP-" + (web ? shortId(o.ref) : o.ref.slice(-5)), image: /^https?:\/\//.test(o.image || "") ? o.image : "", pageUrl: /^https?:\/\//.test(o.url || "") ? o.url : "", cat: o.cat || "ELC", brand: o.brand || "", model: (o.brand && o.title.indexOf(o.brand) === 0) ? o.title.slice(o.brand.length).trim() : o.title, modelNo: o.modelNo || "", icon: o.icon || "📦", kg: o.kg || 1,
+    blurb: web ? "Alaab laga helay " + name + ". Garsoore ayaa hubinaysa oo kuu keeni doona — koox ayaa kuu soo diraysa qiimo rasmi ah."
+               : "Dalab hal mar ah — Garsoore ayaa ka iibsan doona " + name + " oo kuu keeni doona.",
+    specs: [["Il", name], ["Iibiye", (o.seller.verified ? "✓ " : "") + (o.seller.city || o.seller.name || "—")], ["Kayd", o.stock > 100 ? "Badan" : o.stock ? String(o.stock) : "La hubinayo"], ["Celin", "7 maalmood"]],
     variants: o.skus.map(function (s) { return { vsku: s.id, label: s.label, cost: s.cost }; }),
     sources: [{ channel: o.platform, ref: o.ref, seller: o.seller.name }], oneoff: true };
   return { mode: "oneoff", product: p, offer: o };
@@ -166,7 +204,7 @@ function procure(o, qty, buyer) {
   return { rfq: rfq, landed: L };
 }
 
-RF.sources = { ADAPTERS: A, VENDORS: VENDORS, config: config, identify: identify, fetchOffer: fetchOffer, toProduct: toProduct,
+RF.sources = { urlOf: urlOf, hostOf: hostOf, label: label, ADAPTERS: A, VENDORS: VENDORS, config: config, identify: identify, fetchOffer: fetchOffer, toProduct: toProduct,
   search: search, landed: landed, tierCost: tierCost, procure: procure };
 
 /* consumer entry point keeps the same API: RF.china.resolve(url) → { mode, product } | { error } */
@@ -174,12 +212,13 @@ RF.china = {
   parse: identify,
   resolve: function (url) {
     var id = identify(url);
-    if (!id) return { error: "Ku dheji link ka yimid JD, 1688, Taobao/Tmall, Pinduoduo ama Alibaba.com." };
+    if (!id) return { error: "Ku dheji link alaab (JD, 1688, Taobao, Pinduoduo, Alibaba ama bog kale)." };
     var out; fetchOffer(id.platform, id.ref, function (err, o) { out = o ? toProduct(o) : null; }); // sync in demo mode
     return out || { pending: true, id: id };
   },
   resolveAsync: function (url, cb) {
     var id = identify(url); if (!id) return cb({ error: this.resolve(url).error });
+    if (id.platform === "web" && !/^https?:\/\/[^/]+\.[^/]+/.test(id.url)) return cb({ error: "Link-gan ma sax aha." });
     fetchOffer(id.platform, id.ref, function (err, o) {
       if (!o) return cb({ error: "Ma helin macluumaadka alaabtan hadda — waxaad codsan kartaa qiimo rasmi ah.", canQuote: true, id: id, url: url });
       cb(toProduct(o)); });
