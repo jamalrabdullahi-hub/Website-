@@ -162,6 +162,14 @@ function chrome() {
   var H = location.hostname, real = /\.[a-z]{2,}$/i.test(H) && !/(^|\.)(workers|pages)\.dev$/.test(H), root = H.replace(/^business\./, "");
   var CP = biz ? (real ? location.protocol + "//" + root + "/" : "../") : "", BP = biz ? "" : (real ? location.protocol + "//business." + root + "/" : "business/");
   document.body.classList.toggle("biz", biz);
+  document.documentElement.setAttribute("data-surface", biz ? "business" : "consumer");   // hard visual boundary (tokens in style.css)
+  /* ONE-CLICK SWITCH: the same page on the other site when an equivalent exists (search / link carried over), else its home. */
+  var file = (location.pathname.split("/").pop() || "index.html").replace(/^$/, "index.html"), qsn = new URLSearchParams(location.search), carry = new URLSearchParams();
+  if (file === "china.html") { ["q", "u"].forEach(function (k) { if (qsn.get(k)) carry.set(k, qsn.get(k)); }); }
+  var EQ = biz ? { "china.html": "china.html", "activity.html": "orders.html", "index.html": "index.html" } : { "china.html": "china.html", "orders.html": "activity.html", "activity.html": "activity.html", "index.html": "index.html" };
+  var other = (biz ? CP : BP) + (EQ[file] || "index.html") + (EQ[file] === "china.html" && String(carry) ? "?" + carry : "");
+  var thisHome = "index.html";
+  document.body.insertAdjacentHTML("afterbegin", '<div class="surfbar" aria-hidden="true"></div>');
   /* cream/beige (light) is the default; dark is opt-in only:  ?theme=dark  (remembered)  /  ?theme=light  (back) */
   try {
     var th = new URLSearchParams(location.search).get("theme"); if (th) localStorage.setItem("garsoore.theme", th === "dark" ? "dark" : "light");
@@ -180,17 +188,18 @@ function chrome() {
             nl("china.html", "Ka iibso Shiinaha", sp === "china", "cnlink") + nl("orders.html", "Dalabyadayda", sp === "orders")) +
       '</nav>' +
       '<span class="spacer"></span>' +
-      '<span class="lang" title="Luqadda"><span class="on">SO</span><span>EN</span></span>' +
       '<button class="btn ghost" id="whoBtn"></button>' +
-      (biz ? '<a class="btn ghost" href="' + CP + 'index.html">Garsoore ↗</a>' : '<a class="btn ghost bizbtn" href="' + BP + 'index.html">Ganacsi ↗</a>') +
+      '<div class="surfsw" role="navigation" aria-label="Garsoore ⇄ Ganacsi">' +
+        '<a data-switch="consumer" class="' + (biz ? "" : "on") + '" href="' + (biz ? other : thisHome) + '"' + (biz ? "" : ' aria-current="page"') + '>Garsoore</a>' +
+        '<a data-switch="business" class="' + (biz ? "on" : "") + '" href="' + (biz ? thisHome : other) + '"' + (biz ? ' aria-current="page"' : "") + '>Ganacsi</a>' +
+      '</div>' +
       '<button class="btn" id="postBtn">' + (biz ? "Dhig" : "Iibi") + '</button>' +
     '</div></header>');
   document.body.insertAdjacentHTML("beforeend",
     '<footer class="site"><div class="wrap fgrid">' +
       '<div><b>Garsoore</b> — garsooraha u dhexeeya iibsadaha iyo iibiyaha. Prototype · xogtu waxay ku jirtaa browser-kaaga. ' +
         '<a href="#" id="resetBtn" style="text-decoration:underline">Dib u deji xogta</a>' + (window.GARSOORE_CONFIG && GARSOORE_CONFIG.build ? ' <span style="opacity:.6">· build ' + GARSOORE_CONFIG.build + '</span>' : '') + '</div>' +
-      (biz ? '<div><a href="' + CP + 'index.html">garsoore.com</a> · <a href="' + CP + 'china.html">Ka iibso Shiinaha</a> · <a href="' + CP + 'marketplace.html">Xayeysiis</a></div>'
-           : '<div><a href="' + BP + 'index.html">business.garsoore.com</a> · <a href="' + BP + 'contracts.html">Qandaraasyo</a> · <a href="' + BP + 'logistics.html">Rar</a> · <a href="' + BP + 'exchange.html">Suuqa badeecada</a></div>') +
+      '<div>' + (biz ? '<a href="' + other + '">← Garsoore ' + (real ? "(" + root + ")" : "") + '</a>' : '<a href="' + other + '">Ganacsi ' + (real ? "(business." + root + ")" : "") + ' →</a>') + '</div>' +
     '</div></footer>' +
     '<div class="scrim" id="scrim"></div>' +
     '<div class="drawer" id="drawer"><button class="close" id="drawerClose">&times;</button>' +
@@ -614,8 +623,10 @@ function myActor(d, me) {
 function activityPage() {
   var me = RF.identity.get();
   var app = document.getElementById("app");
-  var mine = me ? S.listings().filter(function (l) { return l.org === me; }) : [];
-  var deals = me ? S.deals(me) : [];
+  var isBiz = window.SURFACE === "business", BIZ_BOARDS = ["tenders", "b2b", "logi", "exchange"];
+  var side = function (x) { return isBiz === (BIZ_BOARDS.indexOf(x.board) >= 0); };          // hard boundary: consumer never sees business work
+  var mine = me ? S.listings().filter(function (l) { return l.org === me; }).filter(side) : [];
+  var deals = me ? S.deals(me).filter(side) : [];
 
   app.innerHTML =
     '<section class="hero sm"><div class="wrap"><p class="mono type eyebrow">My activity</p>' +
@@ -626,12 +637,12 @@ function activityPage() {
       (me ? "" : '<p class="sub" style="font-size:15px">Set a name to see the listings you post and the deals you enter. It is stored only in this browser.</p>') +
     '</div></section>' +
     '<div class="wrap" style="padding:30px 28px 90px">' +
-      (window.RF.b2b && me ? '<div id="wallet"></div>' : "") +
+      (isBiz && window.RF.b2b && me ? '<div id="wallet"></div>' : "") +
       '<div class="resbar"><span class="n">Listings you posted</span><span class="mono" style="color:var(--faint)">' + mine.length + '</span></div>' +
       '<div id="mine"></div>' +
       '<div class="resbar" style="margin-top:40px"><span class="n">Deals &amp; orders you\'re in</span><span class="mono" style="color:var(--faint)">' + deals.length + '</span></div>' +
       '<div id="deals"></div>' +
-      (window.RF.b2b && me ? '<div class="resbar" style="margin-top:40px"><span class="n">Your RFQs</span></div><div id="myrfqs"></div>' : "") +
+      (isBiz && window.RF.b2b && me ? '<div class="resbar" style="margin-top:40px"><span class="n">Your RFQs</span></div><div id="myrfqs"></div>' : "") +
     '</div>';
 
   document.getElementById("idSave").onclick = function () {
@@ -666,7 +677,7 @@ function activityPage() {
   else dealsEl.innerHTML = deals.map(function (d) { return dealCard(d, me); }).join("");
   wireDeals(dealsEl, me);
 
-  if (window.RF.b2b && me) {
+  if (isBiz && window.RF.b2b && me) {
     var w = RF.b2b.wallet.get(me);
     document.getElementById("wallet").innerHTML =
       '<div class="walletcard"><div class="wc-bal"><div><span class="mono k">Available</span><b>' + RF.b2b.money(w.balance) + '</b></div>' +

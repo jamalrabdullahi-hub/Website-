@@ -6,11 +6,27 @@
   --line:#D9C7A0; --line-2:#E8DBBE; --surface:#EBDDBF; --chip:#EFE2C6;
   --card:#FFFBF1; --inverse-fg:#3A2E26; --btn:#DCC79B;
   --pri:#DCC79B; --pri-2:#D0B985; --pri-soft:#F0E4C8; --pri-ink:#3A2E26; --pri-line:#B39558; --link:#7E5F27;
-  --gold:#B8912F; --gold-soft:#F1E3B9; --silver:#CBCDD1; --silver-soft:#ECEEF1;
+  --gold:#B8912F; --gold-soft:#F1E3B9; --gold-ink:#2A2016; --silver:#CBCDD1; --silver-soft:#ECEEF1;
   --up:#3E7D52; --down:#B0413A;
   --r:12px;
   --fd:"Playfair Display",Georgia,serif; --fb:Manrope,ui-sans-serif,"Segoe UI",sans-serif;
 }
+/* ================= HARD BOUNDARY: two sites, two identities =================
+   garsoore (consumer): warm cream, gold accent.   ganacsi (business): cool stone-silver, blue accent.
+   Every business page carries the blue top bar, blue active switch and a cooler page tone, so you always know which side you are on. */
+:root[data-surface="business"]{
+  --bg:#EDEBE3; --card:#FBFAF6; --surface:#E0DDD1; --chip:#E6E3D8; --line:#CBC8B9; --line-2:#DEDBCF; --muted:#6C6A60; --faint:#A7A598;
+  --pri:#D6D3C4; --pri-2:#C9C5B2; --pri-soft:#E2E7EE; --pri-line:#8E98A5; --btn:#D6D3C4;
+  --gold:#2F5D8A; --gold-soft:#DBE5F0; --gold-ink:#FFFFFF; --link:#244C73;
+}
+:root[data-surface="business"][data-theme="dark"]{ --gold:#6C9BC9; --gold-soft:#22303F; --gold-ink:#10151B; --link:#9DC1E6; }
+.surfbar{height:6px;background:var(--gold)}
+.surfsw{display:inline-flex;gap:2px;padding:3px;border:1.5px solid var(--pri-line);border-radius:999px;background:var(--card);flex:none}
+.surfsw a{padding:6px 15px;border-radius:999px;font-size:13px;font-weight:800;color:var(--muted);white-space:nowrap;letter-spacing:.01em}
+.surfsw a:not(.on):hover{background:var(--surface);color:var(--fg)}
+.surfsw a.on{background:var(--gold);color:var(--gold-ink)}
+.surfsw a:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+
 /* Light (cream / beige) is ALWAYS the default — the site does not follow the device's dark mode.
    Dark stays available on demand: <html data-theme="dark"> (or ?theme=dark, see app.js). */
 :root[data-theme="dark"]{
@@ -369,10 +385,10 @@ footer.site b{color:var(--fg);font-weight:650}
 
 /* ================================================================ Garsoore shop (consumer) */
 .btn{border-radius:10px;white-space:nowrap}
-.btn.gold{background:var(--gold);border-color:var(--gold);color:#2A2016}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:var(--gold-ink)}
 .btn.ghost{color:var(--fg)}
 .lang{font-size:12px;font-weight:700;background:var(--surface);border-radius:999px;padding:3px;display:inline-flex}
-.lang span{padding:3px 9px;border-radius:999px;cursor:pointer}.lang .on{background:var(--gold);color:#2A2016}
+.lang span{padding:3px 9px;border-radius:999px;cursor:pointer}.lang .on{background:var(--gold);color:var(--gold-ink)}
 .nav a{white-space:nowrap}
 .nav a.cnlink{color:var(--link);font-weight:700}
 .bizmark{font:800 11px var(--fb);letter-spacing:.08em;text-transform:uppercase;background:var(--gold-soft);color:var(--link);border-radius:999px;padding:3px 8px}
@@ -411,7 +427,7 @@ footer.site b{color:var(--fg);font-weight:650}
 .g-pc:hover{transform:translateY(-3px);box-shadow:0 14px 28px -18px rgba(58,46,38,.45)}
 .g-pimg{aspect-ratio:1;background:linear-gradient(155deg,var(--silver-soft),var(--surface));display:grid;place-items:center;font-size:54px;position:relative}
 .g-bd{position:absolute;top:10px;left:10px;font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:999px;letter-spacing:.04em}
-.g-bd.cn{background:var(--gold);color:#2A2016}.g-bd.lo{background:var(--card);color:var(--link);border:1px solid var(--line)}
+.g-bd.cn{background:var(--gold);color:var(--gold-ink)}.g-bd.lo{background:var(--card);color:var(--link);border:1px solid var(--line)}
 .g-pb{padding:12px 14px 14px}.g-pn{font-size:14px;font-weight:600;min-height:42px;line-height:1.45}
 .g-pr{font-size:21px;font-weight:800;margin-top:4px;letter-spacing:-.01em}
 .g-eta{font-size:12.5px;color:var(--muted)}.g-v{color:var(--link);font-weight:800}
@@ -501,4 +517,34 @@ footer.site b{color:var(--fg);font-weight:650}
 /* cream/beige primary — buttons get a defined edge; ghost / gold variants above override this */
 .btn{border-color:var(--pri-line)}
 .btn:hover{background:var(--pri-2);opacity:1}
-.g-china .g-paste .btn.gold{color:#2A2016}
+.g-china .g-paste .btn.gold{color:var(--gold-ink)}
+
+/* header: the switch is never squeezed out — the nav takes the slack and scrolls if needed */
+.bar{gap:16px}
+.nav{flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.spacer{display:none}
+/* header on phones: brand + switch + post on row 1, scrollable nav on row 2 — the switch never disappears */
+@media(max-width:900px){
+  .bar{flex-wrap:wrap;height:auto;padding-top:10px;padding-bottom:8px;gap:8px 10px}
+  .brand{order:1}
+  .surfsw{order:2;margin-left:auto}
+  #postBtn{order:3}
+  .nav{display:flex;order:9;flex:0 0 100%;margin-left:0;padding-bottom:2px}
+  .surfsw a{padding:6px 12px}
+}
+@media(max-width:480px){
+  .wrap{padding-left:16px;padding-right:16px}
+  .brand{font-size:19px;gap:7px}
+  .brand svg{width:22px;height:22px}
+  .bizmark{display:none}                       /* the blue bar + switch already say "Ganacsi" */
+  .surfsw a{padding:5px 10px;font-size:12px}
+  .btn#postBtn{padding:7px 12px}
+  .bar{gap:8px}
+}
+@media(max-width:600px){
+  .searchrow{max-width:100%}
+  .searchrow input{min-width:0;width:100%}
+  .searchrow select{max-width:36%;min-width:0}
+  .searchrow button{padding:0 16px}
+}
