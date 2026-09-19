@@ -8,12 +8,23 @@ function qs(k) { return new URLSearchParams(location.search).get(k) || ""; }
 function money(n) { return n == null ? "—" : "$" + Number(n).toLocaleString("en-US"); }
 function eta(d) { return d ? "~" + d + " maalmood" : "Maanta"; }
 
+function stars(n) { n = Math.round(n); return '<span class="g-stars">' + "★★★★★".slice(0, n) + '<i>' + "★★★★★".slice(n) + '</i></span>'; }
+function rating(sku) { var r = RF.orders.reviewsFor(sku); if (!r.length) return null; return { avg: r.reduce(function (s, x) { return s + x.stars; }, 0) / r.length, n: r.length, list: r }; }
 function cardHTML(p) {
-  var c = C.card(p);
+  var c = C.card(p), rt = rating(p.sku), sv = RF.saved.has(p.sku);
   return '<a class="g-pc" href="product.html?sku=' + c.sku + '"><div class="g-pimg"><span class="g-bd ' + (c.china ? "cn" : "lo") + '">' +
-    (c.china ? "SHIINAHA" : "GUDAHA") + '</span>' + c.icon + '</div><div class="g-pb"><div class="g-pn">' + e(c.title) + '</div>' +
-    '<div class="g-pr">' + money(c.total) + '</div><div class="g-eta"><span class="g-v">✓</span> ' + eta(c.etaDays) + ' · ' + e(c.where) + '</div></div></a>';
+    (c.china ? "SHIINAHA" : "GUDAHA") + '</span><button class="g-heart' + (sv ? " on" : "") + '" data-save="' + c.sku + '" aria-label="Kaydi" title="Kaydi">' + (sv ? "♥" : "♡") + '</button>' + c.icon + '</div><div class="g-pb"><div class="g-pn">' + e(c.title) + '</div>' +
+    '<div class="g-pr">' + money(c.total) + '</div>' + (rt ? '<div class="g-eta">' + stars(rt.avg) + ' ' + rt.n + '</div>' : "") +
+    '<div class="g-eta"><span class="g-v">✓</span> ' + eta(c.etaDays) + ' · ' + e(c.where) + '</div></div></a>';
 }
+/* one delegated handler for every ♡ on the page (cards live inside links) */
+document.addEventListener("click", function (ev) {
+  var b = ev.target.closest && ev.target.closest("[data-save]"); if (!b) return;
+  ev.preventDefault(); ev.stopPropagation();
+  var on = RF.saved.toggle(b.dataset.save);
+  [].forEach.call(document.querySelectorAll('[data-save="' + b.dataset.save + '"]'), function (x) { x.classList.toggle("on", on); x.textContent = x.dataset.label ? (on ? "♥ La kaydiyay" : "♡ Kaydi") : on ? "♥" : "♡"; });
+  if (toast) toast(on ? "Waa la kaydiyay — eeg Dambiisha" : "Waa laga saaray kaydka");
+}, true);
 
 /* ---------------------------------------------------------------- home */
 function home(app) {
@@ -37,20 +48,33 @@ function home(app) {
       '<a class="g-tile cn" href="china.html"><div>🇨🇳</div>Shiinaha</a></div>' +
     '<div class="g-sec" id="feed"><h2>' + (q ? "Natiijooyinka “" + e(q) + "”" : cat ? C.CATS.filter(function (c) { return c.id === cat; })[0].so : "Hadda la jecel yahay") + '</h2>' +
       '<div class="g-seg" id="seg"><span class="on" data-v="">Dhammaan</span><span data-v="lo">Gudaha</span><span data-v="cn">Shiinaha</span></div></div>' +
+    '<div class="g-filters"><label>Kala saar <select id="fSort"><option value="">Ku habboon</option><option value="lo">Qiimaha ↑</option><option value="hi">Qiimaha ↓</option><option value="fast">Ugu dhakhsaha badan</option></select></label>' +
+      '<label>Ugu badnaan $ <input id="fMax" type="number" min="0" step="10" placeholder="—"></label>' +
+      '<label class="g-chk"><input type="checkbox" id="fToday"> Diyaar maanta</label><span class="g-eta" id="fCount"></span></div>' +
     '<div class="g-grid" id="grid"></div>' +
+    (RF.recent.list().length ? '<div class="g-sec"><h2>Aad dhowaan eegtay</h2></div><div class="g-grid g-row" id="recent"></div>' : "") +
     '<section class="g-bizband"><div><h3>Garsoore <span>Ganacsi</span></h3><p>Jumlad, qandaraas, adeegyo ganacsi iyo iibsi Shiinaha oo badan.</p></div>' +
       '<form class="g-req" onsubmit="location.href=\'business/index.html\';return false"><input placeholder="Waxaan u baahanahay 50 laptop…"><button class="btn gold">Codso qiimo</button></form></section>' +
     '</div>';
   var PAGE_N = 30, shown = PAGE_N, filt = "";
   function draw() {
     var list = C.search(q, { cat: cat || null, china: filt === "cn" ? true : filt === "lo" ? false : undefined });
-    if (!q) list = C.mixed(list);
+    var sort = $("fSort").value, max = +$("fMax").value, today = $("fToday").checked;
+    if (max > 0 || today || sort) {
+      var withP = list.map(function (p) { return { p: p, c: C.card(p) }; }).filter(function (x) { return (!(max > 0) || (x.c.total != null && x.c.total <= max)) && (!today || !x.c.china); });
+      if (sort) withP.sort(function (a, b) { return sort === "lo" ? a.c.total - b.c.total : sort === "hi" ? b.c.total - a.c.total : (a.c.etaDays || 0) - (b.c.etaDays || 0); });
+      list = withP.map(function (x) { return x.p; });
+    }
+    if (!q && !sort) list = C.mixed(list);
+    $("fCount").textContent = list.length.toLocaleString() + " alaab";
     $("grid").innerHTML = list.length ? list.slice(0, shown).map(cardHTML).join("") +
       (list.length > shown ? '<div class="g-more"><button class="btn ghost" id="moreBtn">Muuji dheeraad (' + (list.length - shown) + ')</button></div>' : "") :
       '<div class="g-empty">Wax lama helin. <a href="china.html?q=' + encodeURIComponent(q) + '">Ka raadi Shiinaha →</a></div>';
     if ($("moreBtn")) $("moreBtn").onclick = function () { shown += PAGE_N; draw(); };
   }
   draw();
+  ["fSort", "fMax", "fToday"].forEach(function (id) { $(id).onchange = $(id).oninput = function () { shown = PAGE_N; draw(); }; });
+  if ($("recent")) $("recent").innerHTML = RF.recent.list().map(C.get).filter(Boolean).slice(0, 6).map(cardHTML).join("");
   $("seg").onclick = function (ev) { var sp = ev.target.closest("span"); if (!sp) return; [].forEach.call(this.children, function (x) { x.classList.toggle("on", x === sp); }); filt = sp.dataset.v; shown = PAGE_N; draw(); };
   $("sForm").onsubmit = function (ev) { ev.preventDefault(); var v = $("sQ").value, u = RF.sources && RF.sources.urlOf(v);
     location.href = u ? "china.html?u=" + encodeURIComponent(u) : "?q=" + encodeURIComponent(v) + "#feed"; };
@@ -59,8 +83,8 @@ function home(app) {
 
 /* ---------------------------------------------------------------- product (immersive + sticky buy bar) */
 var CUR = null;
-function productView(p, host) {
-  var vi = 0;
+function productView(p, host, quoteId) {
+  var vi = 0, qty = 1;
   function render() {
     var v = p.variants[vi], pr = C.price(p, v), china = !pr.local, src = p.sources[0], isReq = p.oneoff && !v.quoted;
     host.innerHTML =
@@ -77,12 +101,24 @@ function productView(p, host) {
       '<div class="g-trust"><div><b>Hal qiimo</b>Kharash qarsoon ma jiro</div><div><b>Lacag la xajiyo</b>Garsoore ayaa haya ilaa aad hesho</div><div><b>Celin 7 maalmood</b>Haddii aysan ahayn sidii la sheegay</div></div>' +
       '<div class="g-buybar"><div class="g-bi">' + p.icon + '</div><div class="g-bt"><b>' + e(p.model) + (v.label && v.label !== "Standard" ? " · " + e(v.label) : "") + '</b>' +
         '<div class="g-eta">' + (china ? "🚚 Diyaar " + eta(pr.etaDays) + " · Pickup Muqdisho" : "Diyaar maanta · " + e(src.city)) + ' · 🔒 Lacag la xajiyo</div></div>' +
-        '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' + (pr.total == null ? "Qiimo la sugayo" : (isReq ? "≈ " : "") + money(pr.total)) + '</div><button class="btn g-buy" id="buyBtn">' + (isReq ? "Codso qiimo rasmi ah" : "Hadda iibso") + '</button></div>' +
+        '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' + (pr.total == null ? "Qiimo la sugayo" : (isReq ? "≈ " : "") + money(pr.total * (isReq ? 1 : qty))) + '</div>' +
+        (isReq ? "" : '<div class="g-qty"><button data-dq="-1" aria-label="ka dhim">−</button><span>' + qty + '</span><button data-dq="1" aria-label="ku dar">+</button></div>' +
+          '<button class="btn ghost g-add" id="addBtn">🛒 Dambiisha</button>') +
+        '<button class="btn g-buy" id="buyBtn">' + (isReq ? "Codso qiimo rasmi ah" : "Hadda iibso") + '</button></div>' +
+      (p.oneoff ? "" : '<div class="g-pact"><button class="chip" data-save="' + p.sku + '" data-label="1">' + (RF.saved.has(p.sku) ? "♥ La kaydiyay" : "♡ Kaydi") + '</button>' +
+        '<button class="chip" id="shareBtn">↗ La wadaag</button></div>') +
       (isReq ? '<div class="g-found" style="margin-top:12px">' + (pr.total == null ? 'Alaabtan ma ahan kuwa katalogga, qiimana lama helin. ' : 'Alaabtan ma ahan kuwa katalogga. Qiimahan waa qiyaas — ') +
         'koox Garsoore ah ayaa hubinaysa oo kuu soo diraysa qiimo rasmi ah (saacado gudahood), kadibna waad iibsan kartaa.</div>' : "");
     [].forEach.call(host.querySelectorAll(".g-o"), function (b) { b.onclick = function () { vi = +b.dataset.i; render(); }; });
+    [].forEach.call(host.querySelectorAll("[data-dq]"), function (b) { b.onclick = function () { qty = Math.max(1, Math.min(99, qty + +b.dataset.dq)); render(); }; });
+    if ($("addBtn")) $("addBtn").onclick = function () { RF.cart.add(p.sku, vi, qty, quoteId); toast("✓ " + qty + " × waa lagu daray dambiisha"); };
+    if ($("shareBtn")) $("shareBtn").onclick = function () {
+      var url = location.href, t = (p.brand ? p.brand + " " : "") + p.model + " — " + money(pr.total) + " · Garsoore";
+      if (navigator.share) navigator.share({ title: t, url: url }).catch(function () {});
+      else window.open("https://wa.me/?text=" + encodeURIComponent(t + " " + url), "_blank", "noopener");
+    };
     $("buyBtn").onclick = function () {
-      if (!isReq) return checkout(p, v);
+      if (!isReq) return checkout([{ product: p, variant: v, price: pr, line: { qty: qty } }]);
       var q = RF.quotes.request(p);
       $("buyBtn").outerHTML = '<a class="btn g-buy" href="orders.html?quote=' + q.id + '">✓ La diray — eeg Dalabyadayda</a>';
       toast("Codsigii qiimaha waa la diray · " + q.id);
@@ -95,33 +131,94 @@ function product(app) {
   var p = qq ? RF.quotes.asProduct(qq) : C.get(qs("sku"));
   if (!p) { app.innerHTML = '<div class="wrap g-empty">Alaabtan lama helin. <a href="index.html">Dib u noqo →</a></div>'; return; }
   app.innerHTML = '<div class="wrap"><div class="g-crumb"><a href="index.html">Suuqa</a> / ' + (C.CATS.filter(function (c) { return c.id === p.cat; })[0] || { so: "Shiinaha" }).so + '</div><div id="pv"></div>' +
+    '<div class="g-sec"><h2>Faallooyinka iibsadayaasha</h2><span class="g-eta">Kaliya dadka alaabta dhab ahaan qaatay</span></div><div id="revs"></div>' +
     '<div class="g-sec"><h2>Waxyaabo la mid ah</h2></div><div class="g-grid" id="rel"></div></div>';
-  productView(p, $("pv"));
+  productView(p, $("pv"), qq ? qq.id : null);
+  if (!p.oneoff) RF.recent.push(p.sku);
+  var rt = rating(p.sku);
+  $("revs").innerHTML = rt ? '<div class="g-revsum">' + stars(rt.avg) + ' <b>' + rt.avg.toFixed(1) + '</b> · ' + rt.n + ' faallo la hubiyay</div>' +
+      rt.list.map(function (r) { return '<div class="g-rev">' + stars(r.stars) + ' <b>' + e(r.by) + '</b> <span class="g-eta">✓ iibsade la hubiyay · ' + new Date(r.at).toLocaleDateString("so-SO") + '</span>' + (r.text ? '<p>' + e(r.text) + '</p>' : "") + '</div>'; }).join("")
+    : '<div class="g-empty sm">Faallo weli ma jirto. Faallooyinka Garsoore waxaa qora oo keliya dadka alaabta ka qaatay — lama iibsan karo, lama been abuuri karo.</div>';
   $("rel").innerHTML = C.products.filter(function (x) { return x.sku !== p.sku && x.cat === p.cat; }).slice(0, 5).map(cardHTML).join("");
 }
 
 /* ---------------------------------------------------------------- one-page checkout */
-function checkout(p, v) {
-  var pr = C.price(p, v), st = { delivery: false, pay: "EVC Plus" };
+/* items: [{ product, variant, price, line:{qty} , i? }]  fromCart → empty the cart afterwards */
+var PAYS = { "EVC Plus": "61/77", "ZAAD": "63", "Sahal": "90", "Premier Wallet": "61/62/68" };
+function checkout(items, fromCart) {
+  var st = { delivery: false, pay: "EVC Plus", phone: "", promo: "", disc: 0, address: "" };
+  try { var mem = JSON.parse(localStorage.getItem("garsoore.checkout")) || {}; st.pay = mem.pay || st.pay; st.phone = mem.phone || ""; st.address = mem.address || ""; } catch (x) {}
   var box = $("modalBox");
+  function nm(p) { return (p.brand ? p.brand + " " : "") + p.model; }
+  function vl(v) { return [v.label, v.color].filter(function (x) { return x && x !== "—" && x !== "Standard"; }).join(" · "); }
   function render() {
-    var total = pr.total + (st.delivery ? 5 : 0);
-    box.innerHTML = '<div class="g-co"><h2>Lacag bixinta</h2><div class="g-sku">Hal tallaabo — waa intaas</div>' +
-      '<div class="g-line"><div class="g-th">' + p.icon + '</div><div style="flex:1"><b>' + e((p.brand ? p.brand + " " : "") + p.model) + '</b><div class="g-eta">' +
-        e([v.label, v.color].filter(function (x) { return x && x !== "—" && x !== "Standard"; }).join(" · ") || "×1") + ' · ' + (pr.local ? "Diyaar maanta" : "Diyaar " + eta(pr.etaDays)) + '</div></div><b>' + money(pr.total) + '</b></div>' +
+    var sub = items.reduce(function (s, it) { return s + it.price.total * it.line.qty; }, 0), disc = Math.round(sub * st.disc);
+    var fee = st.delivery ? 5 * items.length : 0, total = sub - disc + fee, slow = Math.max.apply(null, items.map(function (it) { return it.price.local ? 0 : it.price.etaDays; }));
+    box.innerHTML = '<div class="g-co"><h2>Lacag bixinta</h2><div class="g-sku">' + items.length + ' shay · hal tallaabo</div>' +
+      items.map(function (it) { var p = it.product, v = it.variant;
+        return '<div class="g-line"><div class="g-th">' + p.icon + '</div><div style="flex:1"><b>' + e(nm(p)) + '</b><div class="g-eta">' +
+          e(vl(v) || "Standard") + ' · ×' + it.line.qty + ' · ' + (it.price.local ? "Diyaar maanta" : "Diyaar " + eta(it.price.etaDays)) + '</div></div><b>' + money(it.price.total * it.line.qty) + '</b></div>'; }).join("") +
       '<div class="g-lbl">Halkee ka qaadanaysaa?</div>' +
       '<div class="g-rad' + (!st.delivery ? " on" : "") + '" data-d="0"><i></i>Xarunta Garsoore · Km4, Muqdisho<span>Bilaash</span></div>' +
-      '<div class="g-rad' + (st.delivery ? " on" : "") + '" data-d="1"><i></i>Gaarsiin guriga (Muqdisho)<span>+$5</span></div>' +
-      '<div class="g-lbl">Ku bixi</div><div class="g-pay">' + ["EVC Plus", "ZAAD", "Sahal", "Premier Wallet"].map(function (m) { return '<div class="' + (st.pay === m ? "on" : "") + '">' + m + '</div>'; }).join("") + '</div>' +
+      '<div class="g-rad' + (st.delivery ? " on" : "") + '" data-d="1"><i></i>Gaarsiin guriga (Muqdisho)<span>+$5' + (items.length > 1 ? " × " + items.length : "") + '</span></div>' +
+      (st.delivery ? '<input class="g-in" id="coAddr" placeholder="Degmada iyo calaamad (tusaale: Hodan, agagaarka Tarabuunka)" value="' + e(st.address) + '">' : "") +
+      '<div class="g-lbl">Ku bixi</div><div class="g-pay">' + Object.keys(PAYS).map(function (m) { return '<div class="' + (st.pay === m ? "on" : "") + '">' + m + '</div>'; }).join("") + '</div>' +
+      '<input class="g-in" id="coPhone" inputmode="tel" placeholder="Lambarka ' + st.pay + ' (' + PAYS[st.pay] + '…)" value="' + e(st.phone) + '">' +
+      '<div class="g-promo"><input class="g-in" id="coPromo" placeholder="Koodh dhimis (ikhtiyaari)" value="' + e(st.promo) + '"><button class="btn ghost" id="coApply">Isticmaal</button></div>' +
+      '<div class="g-sum"><div><span>Alaabta</span><b>' + money(sub) + '</b></div>' + (disc ? '<div class="ok"><span>Dhimis (' + Math.round(st.disc * 100) + '%)</span><b>−' + money(disc) + '</b></div>' : "") +
+        '<div><span>Gaarsiin</span><b>' + (fee ? money(fee) : "Bilaash") + '</b></div></div>' +
       '<div class="g-tot"><span>Wadarta</span><b>' + money(total) + '</b></div>' +
-      '<button class="btn g-buy full" id="confirm">Xaqiiji dalabka</button>' +
-      '<div class="g-escrow">🔒 <b>Garsoore ayaa hayn doona lacagtaada</b> ilaa aad alaabta gacanta ku hesho.</div></div>';
-    [].forEach.call(box.querySelectorAll(".g-rad"), function (r) { r.onclick = function () { st.delivery = r.dataset.d === "1"; render(); }; });
-    [].forEach.call(box.querySelectorAll(".g-pay div"), function (d) { d.onclick = function () { st.pay = d.textContent; render(); }; });
-    $("confirm").onclick = function () { var o = RF.orders.place(p, v, st); location.href = "orders.html?new=" + o.id; };
+      '<div class="g-eta" style="margin:-4px 0 10px">' + (slow ? "Wax walba waxay diyaar noqonayaan ~" + slow + " maalmood" : "Wax walba waa diyaar maanta") + '</div>' +
+      '<div class="g-err sm" id="coErr" hidden></div>' +
+      '<button class="btn g-buy full" id="confirm">Bixi ' + money(total) + '</button>' +
+      '<div class="g-escrow">🔒 <b>Garsoore ayaa hayn doona lacagtaada</b> ilaa aad alaabta gacanta ku hesho. Waad joojin kartaa ka hor inta aan la iibsan.</div></div>';
+    function keep() { st.phone = $("coPhone").value; st.promo = $("coPromo").value; if ($("coAddr")) st.address = $("coAddr").value; }
+    [].forEach.call(box.querySelectorAll(".g-rad"), function (r) { r.onclick = function () { keep(); st.delivery = r.dataset.d === "1"; render(); }; });
+    [].forEach.call(box.querySelectorAll(".g-pay div"), function (d) { d.onclick = function () { keep(); st.pay = d.textContent; render(); }; });
+    $("coApply").onclick = function () { keep(); st.disc = RF.promo.check(st.promo); render(); if (!st.disc) err("Koodhkan ma shaqaynayo."); };
+    function err(m) { $("coErr").textContent = m; $("coErr").hidden = false; }
+    $("confirm").onclick = function () {
+      keep();
+      if (!RF.phoneOk(st.phone)) return err("Ku qor lambar " + st.pay + " sax ah (tusaale 61 5xx xxxx).");
+      if (st.delivery && st.address.trim().length < 4) return err("Ku qor halka alaabta la keenayo.");
+      try { localStorage.setItem("garsoore.checkout", JSON.stringify({ pay: st.pay, phone: st.phone, address: st.address })); } catch (x) {}
+      $("confirm").disabled = true; $("confirm").textContent = "📲 Xaqiiji lacag bixinta taleefankaaga…";
+      /* demo: simulates the USSD push to the wallet. Real integration = Hormuud/Telesom merchant API from a backend. */
+      setTimeout(function () {
+        var basket = items.length > 1 ? "B-" + Date.now().toString(36).toUpperCase() : null, ids = items.map(function (it) {
+          return RF.orders.place(it.product, it.variant, { delivery: st.delivery, pay: st.pay, phone: st.phone, qty: it.line.qty, discount: st.disc, basket: basket, address: st.address }).id; });
+        if (fromCart) RF.cart.clear();
+        location.href = "orders.html?new=" + ids.join(",");
+      }, 900);
+    };
   }
   render();
   $("modal").classList.add("on");
+}
+
+/* ---------------------------------------------------------------- cart + saved */
+function cart(app) {
+  function draw() {
+    var items = RF.cart.resolve(), saved = RF.saved.list().map(C.get).filter(Boolean);
+    var sub = items.reduce(function (s, it) { return s + it.price.total * it.line.qty; }, 0);
+    app.innerHTML = '<div class="wrap"><div class="g-sec" style="margin-top:34px"><h1>Dambiisha</h1><span class="g-eta">' + RF.cart.count() + ' shay</span></div>' +
+      (items.length ? '<div class="g-cart"><div>' + items.map(function (it) { var p = it.product, v = it.variant;
+          return '<div class="g-order g-cl"><div class="g-ohead"><a class="g-th" href="product.html?' + (it.line.quote ? "quote=" + it.line.quote : "sku=" + p.sku) + '">' + p.icon + '</a><div style="flex:1"><b>' + e((p.brand ? p.brand + " " : "") + p.model) + '</b>' +
+            '<div class="g-eta">' + e([v.label, v.color].filter(function (x) { return x && x !== "—"; }).join(" · ")) + ' · ' + (it.price.local ? "Diyaar maanta" : "Diyaar " + eta(it.price.etaDays)) + ' · ' + money(it.price.total) + ' midkii</div></div>' +
+            '<div class="g-qty"><button data-q="' + it.i + '" data-d="-1">−</button><span>' + it.line.qty + '</span><button data-q="' + it.i + '" data-d="1">+</button></div>' +
+            '<div class="g-price sm">' + money(it.price.total * it.line.qty) + '</div><button class="g-x" data-rm="' + it.i + '" aria-label="Ka saar">×</button></div></div>'; }).join("") + '</div>' +
+          '<aside class="g-order g-cside"><div class="g-sum"><div><span>Alaabta</span><b>' + money(sub) + '</b></div><div><span>Gaarsiin</span><b>Bilaash (pickup)</b></div></div>' +
+            '<div class="g-tot"><span>Wadarta</span><b>' + money(sub) + '</b></div><button class="btn g-buy full" id="coBtn">U gudub lacag bixinta</button>' +
+            '<div class="g-escrow">🔒 Lacagta waa la xajiyaa ilaa aad hesho.</div></aside></div>'
+        : '<div class="g-empty">Dambiishu waa madhan tahay. <a href="index.html">Bilow iibsiga →</a></div>') +
+      '<div class="g-sec"><h2>Waxaad kaydsatay</h2><span class="g-eta">' + saved.length + '</span></div>' +
+      (saved.length ? '<div class="g-grid">' + saved.map(cardHTML).join("") + '</div>' : '<div class="g-empty sm">Taabo ♡ alaab kasta si aad u kaydsato.</div>') + '</div>';
+    [].forEach.call(app.querySelectorAll("[data-q]"), function (b) { b.onclick = function () { var l = RF.cart.lines()[+b.dataset.q]; RF.cart.setQty(+b.dataset.q, l.qty + +b.dataset.d); draw(); }; });
+    [].forEach.call(app.querySelectorAll("[data-rm]"), function (b) { b.onclick = function () { RF.cart.setQty(+b.dataset.rm, 0); draw(); }; });
+    if ($("coBtn")) $("coBtn").onclick = function () { checkout(RF.cart.resolve(), true); };
+  }
+  draw();
+  document.addEventListener("click", function (ev) { if (ev.target.closest && ev.target.closest("[data-save]")) setTimeout(draw, 0); }, true);
 }
 
 /* ---------------------------------------------------------------- Shop China */
@@ -170,11 +267,19 @@ function china(app) {
 }
 
 /* ---------------------------------------------------------------- orders */
+var OTAB = "active";
+function when(iso) { var d = new Date(iso); return d.toLocaleDateString("so-SO", { day: "numeric", month: "short" }) + " " + d.toTimeString().slice(0, 5); }
 function orders(app) {
-  var list = RF.orders.list(), fresh = qs("new"), ops = qs("ops") === "1";
+  var all = RF.orders.list(), fresh = qs("new").split(","), ops = qs("ops") === "1";
+  var done = function (o) { return o.state === "COMPLETED" || o.state === "CANCELLED"; };
+  var list = all.filter(function (o) { return OTAB === "all" || (OTAB === "active" ? !done(o) : done(o)); });
+  var spent = all.filter(function (o) { return o.state !== "CANCELLED"; }).reduce(function (s, o) { return s + o.total; }, 0);
   app.innerHTML = '<div class="wrap"><div class="g-sec" style="margin-top:34px"><h1>Dalabyadayda</h1>' +
     '<a class="chip" href="?' + (ops ? "" : "ops=1") + '">' + (ops ? "Qari" : "Muuji") + ' ops view (demo)</a></div>' +
-    (fresh ? '<div class="g-found">✓ Dalabkaaga waa la helay. Lacagta Garsoore ayaa haysa ilaa aad hesho.</div>' : "") +
+    (all.length ? '<div class="g-stats"><div><b>' + all.filter(function (o) { return !done(o); }).length + '</b>socda</div><div><b>' + all.filter(function (o) { return o.state === "READY"; }).length + '</b>diyaar in la qaado</div>' +
+      '<div><b>' + money(all.filter(function (o) { return o.escrow === "held"; }).reduce(function (s, o) { return s + o.total; }, 0)) + '</b>la xajiyay</div><div><b>' + money(spent) + '</b>wadar</div></div>' +
+      '<div class="g-seg" id="otab" style="margin-bottom:14px;display:inline-flex">' + [["active", "Socda"], ["done", "Dhammaaday"], ["all", "Dhammaan"]].map(function (t) { return '<span data-t="' + t[0] + '"' + (OTAB === t[0] ? ' class="on"' : "") + '>' + t[1] + '</span>'; }).join("") + '</div>' : "") +
+    (fresh[0] ? '<div class="g-found">✓ ' + (fresh.length > 1 ? fresh.length + " dalab ayaa" : "Dalabkaaga waa") + ' la helay. Lacagta Garsoore ayaa haysa ilaa aad hesho. Koodhka qaadashada ayaad ku arki doontaa hoos.</div>' : "") +
     (RF.quotes.list().length ? '<div class="g-sec"><h2>Codsiyada qiimaha</h2></div>' + RF.quotes.list().map(function (x) {
       return '<div class="g-order' + (x.id === qs("quote") ? " new" : "") + '"><div class="g-ohead"><div class="g-th">' + x.icon + '</div><div style="flex:1"><b>' + e(x.title) + '</b>' +
         '<div class="g-eta">' + x.id + ' · ' + chName(x.platform) + ' · ' + (x.estimate == null ? "qiimo la sugayo" : "qiyaas ≈ " + money(x.estimate)) + '</div></div>' +
@@ -183,16 +288,41 @@ function orders(app) {
          '<span class="g-pill">Lama helin</span>') + '</div>' + (x.staffNote ? '<div class="g-eta" style="margin-top:8px">Fariin: ' + e(x.staffNote) + '</div>' : "") + '</div>';
     }).join("") : "") + (list.length ? '<div class="g-sec"><h2>Dalabyada</h2></div>' : "") +
     (list.length ? list.map(function (o) {
-      var f = RF.orders.FLOW[o.flow], i = f.indexOf(o.state);
-      return '<div class="g-order' + (o.id === fresh ? " new" : "") + '"><div class="g-ohead"><div class="g-th">' + o.icon + '</div><div style="flex:1"><b>' + e(o.title) + '</b>' +
-        '<div class="g-eta">' + e(o.variant || "") + ' · ' + o.id + ' · ' + e(o.pay) + ' · ' + e(o.pickup) + '</div></div><div class="g-price sm">' + money(o.total) + '</div></div>' +
-        '<div class="g-track">' + f.map(function (s, k) { return '<div class="' + (k < i ? "d" : k === i ? "n" : "") + '"><i></i>' + RF.orders.STATE_SO[s] + '</div>'; }).join("") + '</div>' +
-        '<div class="g-orow"><span class="g-eta">' + (o.escrow === "released" ? "✓ Lacagta waa la sii daayay" : "🔒 Lacagta waa la xajiyay") + (o.etaDays && o.state !== "COMPLETED" ? " · Diyaar " + eta(o.etaDays) : "") + '</span>' +
-        (i < f.length - 1 ? '<button class="btn ghost" data-adv="' + o.id + '">' + (f[i + 1] === "COMPLETED" ? "Waan qaatay ✓" : "Tallaabada xigta (demo)") + '</button>' : "") + '</div>' +
+      var f = RF.orders.FLOW[o.flow], i = f.indexOf(o.state), hist = {}, cx = o.state === "CANCELLED";
+      (o.history || []).forEach(function (h) { hist[h.state] = h.at; });
+      var due = new Date(Date.parse(o.createdAt) + (o.etaDays || 0) * 864e5);
+      return '<div class="g-order' + (fresh.indexOf(o.id) >= 0 ? " new" : "") + (cx ? " cx" : "") + '"><div class="g-ohead"><a class="g-th" href="product.html?sku=' + o.sku + '">' + o.icon + '</a><div style="flex:1"><b>' + e(o.title) + (o.qty > 1 ? " ×" + o.qty : "") + '</b>' +
+        '<div class="g-eta">' + (o.variant ? e(o.variant) + ' · ' : "") + o.id + (o.basket ? ' · dambiil ' + o.basket : "") + ' · ' + e(o.pay) + ' · ' + e(o.pickup) + '</div></div><div class="g-price sm">' + money(o.total) + '</div></div>' +
+        (cx ? '<div class="g-eta" style="margin-top:10px">✕ La joojiyay ' + when(hist.CANCELLED) + ' · ' + money(o.total) + ' waa lagu celiyay ' + e(o.pay) + (o.cancelReason ? ' · “' + e(o.cancelReason) + '”' : "") + '</div>' :
+        '<div class="g-track">' + f.map(function (s, k) { return '<div class="' + (k < i ? "d" : k === i ? "n" : "") + '"><i></i>' + RF.orders.STATE_SO[s] + (hist[s] ? '<small>' + when(hist[s]) + '</small>' : "") + '</div>'; }).join("") + '</div>') +
+        (o.state === "READY" && o.code ? '<div class="g-code"><div><div class="g-lbl" style="margin:0">Koodhka qaadashada</div><b>' + o.code.replace(/(\d{3})(\d{3})/, "$1 $2") + '</b></div><div class="g-eta">Tus koodhkan ' + (o.pickup.indexOf("guriga") >= 0 ? "wadaha" : "xarunta Km4") + '. Lacagta iibiyaha lama siinayo ilaa aad koodhka bixiso.</div></div>' : "") +
+        (!cx ? '<div class="g-orow"><span class="g-eta">' + (o.escrow === "released" ? "✓ Lacagta waa la sii daayay" : "🔒 Lacagta waa la xajiyay") +
+          (o.state !== "COMPLETED" && o.flow === "china" ? " · Waxaa la filayaa ~" + due.toLocaleDateString("so-SO", { day: "numeric", month: "short" }) : "") + '</span><span class="g-oacts">' +
+          (RF.orders.canCancel(o) ? '<button class="btn ghost" data-cx="' + o.id + '">Jooji</button>' : "") +
+          (RF.orders.canDispute(o) ? '<button class="btn ghost" data-dp="' + o.id + '">Cabasho</button>' : "") +
+          (o.state === "COMPLETED" && !o.review ? '<button class="btn ghost" data-rv="' + o.id + '">★ Qiimee</button>' : "") +
+          (o.state === "COMPLETED" ? '<a class="btn ghost" href="product.html?sku=' + o.sku + '">Mar kale iibso</a>' : "") +
+          (i < f.length - 1 ? '<button class="btn" data-adv="' + o.id + '">' + (f[i + 1] === "COMPLETED" ? "Waan qaatay ✓" : "Tallaabada xigta (demo)") + '</button>' : "") + '</span></div>' : "") +
+        (o.dispute ? '<div class="g-err sm" style="margin-top:10px">⚖ Cabasho furan (' + when(o.dispute.at) + '): ' + e(o.dispute.reason) + ' — Garsoore ayaa garsoorka samayn doona 48 saac gudahood.</div>' : "") +
+        (o.review ? '<div class="g-eta" style="margin-top:8px">Qiimayntaada: ' + stars(o.review.stars) + (o.review.text ? ' “' + e(o.review.text) + '”' : "") + '</div>' : "") +
+        '<div id="rv-' + o.id + '"></div>' +
         (ops && o.internal ? '<pre class="g-ops">' + e(JSON.stringify(o.internal, function (k, v) { return typeof v === "number" ? Math.round(v * 100) / 100 : v; }, 2)) + '</pre>' : "") +
       '</div>';
-    }).join("") : '<div class="g-empty">Dalab weli ma jiro. <a href="index.html">Bilow iibsiga →</a></div>') + '</div>';
-  [].forEach.call(app.querySelectorAll("[data-adv]"), function (b) { b.onclick = function () { RF.orders.advance(b.dataset.adv); orders(app); }; });
+    }).join("") : '<div class="g-empty">' + (all.length ? "Halkan wax ma jiraan." : 'Dalab weli ma jiro. <a href="index.html">Bilow iibsiga →</a>') + '</div>') + '</div>';
+  function re() { orders(app); }
+  if ($("otab")) $("otab").onclick = function (ev) { var t = ev.target.closest("span"); if (t) { OTAB = t.dataset.t; re(); } };
+  [].forEach.call(app.querySelectorAll("[data-adv]"), function (b) { b.onclick = function () { RF.orders.advance(b.dataset.adv); re(); }; });
+  [].forEach.call(app.querySelectorAll("[data-cx]"), function (b) { b.onclick = function () {
+    var why = prompt("Maxaad u joojinaysaa? (ikhtiyaari)"); if (why === null) return; RF.orders.cancel(b.dataset.cx, why); toast("La joojiyay — lacagta waa laguu celiyay"); re(); }; });
+  [].forEach.call(app.querySelectorAll("[data-dp]"), function (b) { b.onclick = function () {
+    var why = prompt("Sharax dhibaatada (tusaale: ma ahan sidii la sheegay, wuu jabnaa, qayb ayaa ka maqan):"); if (!why || !why.trim()) return; RF.orders.dispute(b.dataset.dp, why.trim()); toast("Cabashada waa la diray"); re(); }; });
+  [].forEach.call(app.querySelectorAll("[data-rv]"), function (b) { b.onclick = function () {
+    var id = b.dataset.rv, n = 5, box = $("rv-" + id);
+    function paint() { box.innerHTML = '<div class="g-rvform"><div class="g-pick">' + [1, 2, 3, 4, 5].map(function (k) { return '<button data-s="' + k + '" class="' + (k <= n ? "on" : "") + '">★</button>'; }).join("") + '</div>' +
+      '<textarea class="g-in" id="rt-' + id + '" rows="2" placeholder="Maxaad ka jeclayd / aadan ka jeclayn? (ikhtiyaari)"></textarea><button class="btn" id="rs-' + id + '">Dir faallada</button></div>';
+      [].forEach.call(box.querySelectorAll("[data-s]"), function (s) { s.onclick = function () { var t = $("rt-" + id).value; n = +s.dataset.s; paint(); $("rt-" + id).value = t; }; });
+      $("rs-" + id).onclick = function () { RF.orders.review(id, n, $("rt-" + id).value.trim()); toast("Mahadsanid — faalladaadu waa la daabacay"); re(); }; }
+    paint(); }; });
 }
 
 
@@ -279,6 +409,6 @@ function quotesAdmin(app) {
 RF.shopUI = function (page, h) {
   e = h.e; toast = h.toast;
   var app = document.getElementById("app");
-  ({ home: home, product: product, china: china, orders: orders, bizchina: bizChina, quotes: quotesAdmin }[page] || home)(app);
+  ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin }[page] || home)(app);
 };
 })();

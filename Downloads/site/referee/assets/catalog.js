@@ -179,26 +179,94 @@ var STATE_SO = { PLACED: "Dalab", CONFIRMED: "La xaqiijiyay", SOURCING: "Laga ii
 RF.orders = {
   FLOW: FLOW, STATE_SO: STATE_SO,
   list: function () { return load(); },
+  get: function (id) { return load().filter(function (x) { return x.id === id; })[0] || null; },
+  /* opts: { delivery, pay, phone, qty, basket, discount (0..1), address } */
   place: function (p, v, opts) {
-    var pr = price(p, v), a = load(), china = !pr.local;
-    var o = { id: "GRS-" + Date.now().toString(36).toUpperCase(), sku: p.sku, vsku: v.vsku, title: p.brand + " " + p.model, icon: p.icon,
+    var pr = price(p, v), a = load(), china = !pr.local, qty = Math.max(1, opts.qty || 1), now = new Date().toISOString();
+    var sub = pr.total * qty, disc = Math.round(sub * (opts.discount || 0));
+    var o = { id: "GRS-" + Date.now().toString(36).toUpperCase() + (a.length % 10), sku: p.sku, vsku: v.vsku, title: (p.brand ? p.brand + " " : "") + p.model, icon: p.icon,
       variant: [v.label, v.color].filter(function (x) { return x && x !== "—" && x !== "Standard"; }).join(" · "),
-      total: pr.total + (opts.delivery ? 5 : 0), etaDays: pr.etaDays, flow: china ? "china" : "local", state: "PLACED",
-      pickup: opts.delivery ? "Gaarsiin guriga" : "Xarunta Garsoore · Km4, Muqdisho", pay: opts.pay, escrow: "held",
-      createdAt: new Date().toISOString(), oneoff: !!p.oneoff,
+      qty: qty, unit: pr.total, discount: disc, fee: opts.delivery ? 5 : 0,
+      total: sub - disc + (opts.delivery ? 5 : 0), etaDays: pr.etaDays, flow: china ? "china" : "local", state: "PLACED",
+      pickup: opts.delivery ? "Gaarsiin guriga" + (opts.address ? " · " + opts.address : "") : "Xarunta Garsoore · Km4, Muqdisho", pay: opts.pay, phone: opts.phone || "", escrow: "held",
+      basket: opts.basket || null, code: String(100000 + Math.floor(Math.random() * 900000)),
+      history: [{ state: "PLACED", at: now }], createdAt: now, oneoff: !!p.oneoff,
       internal: china ? { source: p.sources[0], cost: v.cost != null ? breakdown(v.cost, p.kg) : { quotedTotal: v.price }, legs: [] } : { seller: p.sources[0].seller } };
     a.unshift(o); save(a); return o;
   },
   advance: function (id) {
     var a = load(), o = a.filter(function (x) { return x.id === id; })[0]; if (!o) return null;
     var f = FLOW[o.flow], i = f.indexOf(o.state); if (i < 0 || i >= f.length - 1) return o;
-    o.state = f[i + 1];
+    o.state = f[i + 1]; (o.history = o.history || []).push({ state: o.state, at: new Date().toISOString() });
     var leg = { SOURCING: "Supplier PO → " + (o.internal.source ? o.internal.source.channel.toUpperCase() : ""), IN_TRANSIT: "Guangzhou consolidation → MGQ air", ARRIVED: "Customs cleared · Mogadishu" }[o.state];
     if (leg && o.internal.legs) o.internal.legs.push({ at: new Date().toISOString(), leg: leg });
-    if (o.state === "COMPLETED") o.escrow = "released";
+    if (o.state === "COMPLETED") { o.escrow = "released"; o.completedAt = new Date().toISOString(); }
     save(a); return o;
-  }
+  },
+  /* buyer can cancel until the goods are bought from the supplier (local: until READY) — escrow refunded in full */
+  canCancel: function (o) { return o.state === "PLACED" || (o.flow === "local" && o.state === "CONFIRMED"); },
+  cancel: function (id, why) {
+    var a = load(), o = a.filter(function (x) { return x.id === id; })[0]; if (!o || !this.canCancel(o)) return null;
+    o.state = "CANCELLED"; o.escrow = "refunded"; o.cancelReason = why || ""; (o.history = o.history || []).push({ state: "CANCELLED", at: new Date().toISOString() }); save(a); return o;
+  },
+  /* 7-day return window after pickup: raise a dispute, Garsoore referees it */
+  canDispute: function (o) { return o.state === "COMPLETED" && !o.dispute && Date.now() - Date.parse(o.completedAt || o.createdAt) < 7 * 864e5; },
+  dispute: function (id, reason) {
+    var a = load(), o = a.filter(function (x) { return x.id === id; })[0]; if (!o) return null;
+    o.dispute = { reason: reason, at: new Date().toISOString(), status: "open" }; save(a); return o;
+  },
+  review: function (id, stars, text) {
+    var a = load(), o = a.filter(function (x) { return x.id === id; })[0]; if (!o || o.state !== "COMPLETED") return null;
+    o.review = { stars: Math.max(1, Math.min(5, stars)), text: text || "", at: new Date().toISOString(), by: RF.identity && RF.identity.get() || "Macmiil" }; save(a); return o;
+  },
+  /* verified reviews for a SKU: only from orders that were actually collected */
+  reviewsFor: function (sku) { return load().filter(function (o) { return o.sku === sku && o.review; }).map(function (o) { return o.review; }); }
 };
+
+/* ---------------------------------------------------------------- cart, saved items, recently viewed (per browser) */
+function store(key, dflt) {
+  return { get: function () { try { return JSON.parse(localStorage.getItem(key)) || dflt(); } catch (x) { return dflt(); } },
+           set: function (v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (x) {} } };
+}
+var cartS = store("garsoore.cart", function () { return []; });
+RF.cart = {
+  /* line: { sku, vi, qty, quote? }  — quote-derived products are resolved through RF.quotes */
+  lines: function () { return cartS.get(); },
+  count: function () { return cartS.get().reduce(function (n, l) { return n + l.qty; }, 0); },
+  add: function (sku, vi, qty, quoteId) {
+    var a = cartS.get(), l = a.filter(function (x) { return x.sku === sku && x.vi === vi; })[0];
+    if (l) l.qty = Math.min(99, l.qty + (qty || 1)); else a.push({ sku: sku, vi: vi || 0, qty: qty || 1, quote: quoteId || null });
+    cartS.set(a); RF.cart.onchange(); return a;
+  },
+  setQty: function (i, q) { var a = cartS.get(); if (!a[i]) return; if (q < 1) a.splice(i, 1); else a[i].qty = Math.min(99, q); cartS.set(a); RF.cart.onchange(); },
+  clear: function () { cartS.set([]); RF.cart.onchange(); },
+  /* resolve lines to {product, variant, price} (drops lines whose product disappeared) */
+  resolve: function () {
+    return cartS.get().map(function (l, i) {
+      var p = null;
+      if (l.quote) { var q = RF.quotes.list().filter(function (x) { return x.id === l.quote && x.status === "quoted"; })[0]; p = q && RF.quotes.asProduct(q); }
+      else p = RF.catalog.get(l.sku);
+      if (!p) return null; var v = p.variants[l.vi] || p.variants[0];
+      return { i: i, line: l, product: p, variant: v, price: price(p, v) };
+    }).filter(Boolean);
+  },
+  onchange: function () {}
+};
+var savedS = store("garsoore.saved", function () { return []; });
+RF.saved = {
+  list: function () { return savedS.get(); },
+  has: function (sku) { return savedS.get().indexOf(sku) >= 0; },
+  toggle: function (sku) { var a = savedS.get(), i = a.indexOf(sku); if (i >= 0) a.splice(i, 1); else a.unshift(sku); savedS.set(a); return i < 0; }
+};
+var recentS = store("garsoore.recent", function () { return []; });
+RF.recent = {
+  list: function () { return recentS.get(); },
+  push: function (sku) { var a = recentS.get().filter(function (x) { return x !== sku; }); a.unshift(sku); recentS.set(a.slice(0, 12)); }
+};
+/* promo codes (demo) — percentage off goods, never off delivery */
+RF.promo = { CODES: { SOODHAWOW: 0.05, GARSOORE10: 0.10 }, check: function (c) { return RF.promo.CODES[String(c || "").toUpperCase().replace(/\s+/g, "")] || 0; } };
+/* Somali mobile-money numbers: +252 / 0 prefix optional, 61/62/63/65/68/69/71/77/90 operators, 7 digits after */
+RF.phoneOk = function (s) { return /^(?:\+?252|0)?\s?(61|62|63|65|68|69|71|77|90)\d{7}$/.test(String(s || "").replace(/[\s-]/g, "")); };
 
 /* ---------------------------------------------------------------- staff-priced quote requests
    A pasted link for something outside the core range becomes a request. Staff price it (business/quotes.html);

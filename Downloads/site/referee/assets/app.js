@@ -189,6 +189,7 @@ function chrome() {
       '</nav>' +
       '<span class="spacer"></span>' +
       '<button class="btn ghost" id="whoBtn"></button>' +
+      (biz || !RF.cart ? "" : '<a class="btn ghost cartbtn' + (sp === "cart" ? " on" : "") + '" href="cart.html" aria-label="Dambiisha">🛒<span id="cartN"></span></a>') +
       '<div class="surfsw" role="navigation" aria-label="Garsoore ⇄ Ganacsi">' +
         '<a data-switch="consumer" class="' + (biz ? "" : "on") + '" href="' + (biz ? other : thisHome) + '"' + (biz ? "" : ' aria-current="page"') + '>Garsoore</a>' +
         '<a data-switch="business" class="' + (biz ? "on" : "") + '" href="' + (biz ? thisHome : other) + '"' + (biz ? ' aria-current="page"' : "") + '>Ganacsi</a>' +
@@ -207,6 +208,11 @@ function chrome() {
     '<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>');
 
   refreshWho();
+  if (RF.cart && document.getElementById("cartN")) {
+    RF.cart.onchange = function () { var n = RF.cart.count(), el = document.getElementById("cartN"); el.textContent = n || ""; el.className = n ? "n" : ""; };
+    RF.cart.onchange();
+    window.addEventListener("storage", function (ev) { if (ev.key === "garsoore.cart") RF.cart.onchange(); });   // other tabs
+  }
   document.getElementById("whoBtn").onclick = function () {
     var n = prompt("Your name or organisation (used to sign your listings and track your deals):", RF.identity.get());
     if (n != null) { RF.identity.set(n.trim()); refreshWho(); if (window.BOARD === "activity") activityPage(); }
