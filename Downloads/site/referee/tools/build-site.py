@@ -8,10 +8,14 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--china", default="", help="proxy endpoint to bake into the built config.js")
 a = ap.parse_args()
 
+# server-side prices for the API (deploy/catalog.gen.js, bundled into the Worker) — same price() as the browser
+subprocess.check_call(["node", os.path.join("tools", "export-catalog.js")])
+
 OUT = os.path.join("deploy", "public")
-if os.path.isdir(OUT):
-    shutil.rmtree(OUT)
-os.makedirs(OUT)
+os.makedirs(OUT, exist_ok=True)
+for name in os.listdir(OUT):          # empty it in place (a running `wrangler dev` keeps the folder itself open on Windows)
+    pth = os.path.join(OUT, name)
+    shutil.rmtree(pth) if os.path.isdir(pth) else os.remove(pth)
 
 for f in glob.glob("*.html"):
     shutil.copy(f, OUT)

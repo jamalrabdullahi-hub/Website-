@@ -233,9 +233,10 @@ RF.cart = {
   /* line: { sku, vi, qty, quote? }  — quote-derived products are resolved through RF.quotes */
   lines: function () { return cartS.get(); },
   count: function () { return cartS.get().reduce(function (n, l) { return n + l.qty; }, 0); },
-  add: function (sku, vi, qty, quoteId) {
+  /* snap: for staff-quoted products (not in the catalogue) keep a copy so the cart can show them; the server re-prices anyway */
+  add: function (sku, vi, qty, quoteId, snap) {
     var a = cartS.get(), l = a.filter(function (x) { return x.sku === sku && x.vi === vi; })[0];
-    if (l) l.qty = Math.min(99, l.qty + (qty || 1)); else a.push({ sku: sku, vi: vi || 0, qty: qty || 1, quote: quoteId || null });
+    if (l) l.qty = Math.min(99, l.qty + (qty || 1)); else a.push({ sku: sku, vi: vi || 0, qty: qty || 1, quote: quoteId || null, snap: snap || null });
     cartS.set(a); RF.cart.onchange(); return a;
   },
   setQty: function (i, q) { var a = cartS.get(); if (!a[i]) return; if (q < 1) a.splice(i, 1); else a[i].qty = Math.min(99, q); cartS.set(a); RF.cart.onchange(); },
@@ -244,7 +245,7 @@ RF.cart = {
   resolve: function () {
     return cartS.get().map(function (l, i) {
       var p = null;
-      if (l.quote) { var q = RF.quotes.list().filter(function (x) { return x.id === l.quote && x.status === "quoted"; })[0]; p = q && RF.quotes.asProduct(q); }
+      if (l.quote) { var q = RF.quotes.list().filter(function (x) { return x.id === l.quote && x.status === "quoted"; })[0]; p = l.snap || (q && RF.quotes.asProduct(q)); }
       else p = RF.catalog.get(l.sku);
       if (!p) return null; var v = p.variants[l.vi] || p.variants[0];
       return { i: i, line: l, product: p, variant: v, price: price(p, v) };
@@ -264,7 +265,7 @@ RF.recent = {
   push: function (sku) { var a = recentS.get().filter(function (x) { return x !== sku; }); a.unshift(sku); recentS.set(a.slice(0, 12)); }
 };
 /* promo codes (demo) — percentage off goods, never off delivery */
-RF.promo = { CODES: { SOODHAWOW: 0.05, GARSOORE10: 0.10 }, check: function (c) { return RF.promo.CODES[String(c || "").toUpperCase().replace(/\s+/g, "")] || 0; } };
+RF.promo = { CODES: { SOODHAWOW: 0.05 }, check: function (c) { return RF.promo.CODES[String(c || "").toUpperCase().replace(/\s+/g, "")] || 0; } };
 /* Somali mobile-money numbers: +252 / 0 prefix optional, 61/62/63/65/68/69/71/77/90 operators, 7 digits after */
 RF.phoneOk = function (s) { return /^(?:\+?252|0)?\s?(61|62|63|65|68|69|71|77|90)\d{7}$/.test(String(s || "").replace(/[\s-]/g, "")); };
 

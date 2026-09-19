@@ -1,5 +1,6 @@
 {
   // Development deployment on Buurwen.com. No secrets belong in this file.
+  // Secrets (set once):  npx wrangler secret put STAFF_PHONES   -> comma-separated staff phone numbers (e.g. 252615551234)
   "name": "garsoore-dev",
   "main": "worker.js",
   "compatibility_date": "2025-09-01",
@@ -9,6 +10,18 @@
     "run_worker_first": true,
     "html_handling": "none",
     "not_found_handling": "404-page"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "garsoore-dev-db", "database_id": "551ce272-5bb0-4b2d-81bb-42d55a75302a" }
+  ],
+  "vars": {
+    // Garsoore merchant numbers shown at payment. Leave "" until the merchant accounts exist (the site then says so).
+    "MERCHANT_EVC": "",
+    "MERCHANT_ZAAD": "",
+    "MERCHANT_SAHAL": "",
+    "MERCHANT_PREMIER": "",
+    // "1" at launch: products without a human-checked cost (cost_verified=yes) can only be bought via a staff quote
+    "REQUIRE_VERIFIED": "0"
   },
   "routes": [
     { "pattern": "buurwen.com", "custom_domain": true },

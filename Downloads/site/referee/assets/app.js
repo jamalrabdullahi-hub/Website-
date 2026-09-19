@@ -180,7 +180,7 @@ function chrome() {
       '<a class="brand" href="' + (biz ? "index.html" : "index.html") + '">' + FLAG + ' Garsoore' + (biz ? ' <span class="bizmark">Ganacsi</span>' : '') + '</a>' +
       '<nav class="nav">' +
         (biz
-          ? nl("index.html", "Suuqa ganacsiga", cur === "b2b") + nl("china.html", "Iibsi Shiinaha", window.SHOP === "bizchina", "cnlink") + nl("quotes.html", "Codsiyada qiimaha", window.SHOP === "quotes") + nl("contracts.html", "Qandaraasyo", cur === "tenders") +
+          ? nl("index.html", "Suuqa ganacsiga", cur === "b2b") + nl("china.html", "Iibsi Shiinaha", window.SHOP === "bizchina", "cnlink") + nl("contracts.html", "Qandaraasyo", cur === "tenders") +
             nl("logistics.html", "Rar", cur === "logi") + nl("exchange.html", "Suuqa badeecada", cur === "exchange") +
             nl("activity.html", "Hawlaha shirkadda", cur === "activity")
           : nl("index.html", "Suuqa", sp === "home") + nl("marketplace.html", "Xayeysiis", cur === "classifieds") +
@@ -213,7 +213,19 @@ function chrome() {
     RF.cart.onchange();
     window.addEventListener("storage", function (ev) { if (ev.key === "garsoore.cart") RF.cart.onchange(); });   // other tabs
   }
+  /* real accounts when the API is there: one login across both sites; staff get the operations console in the business nav */
+  if (RF.api) RF.api.onUser(function (u) {
+    refreshWho();
+    var nav = document.querySelector("header.site .nav"), has = nav && nav.querySelector(".opslink");
+    if (u && u.role === "staff" && nav && !has) nav.insertAdjacentHTML("beforeend", '<a class="opslink' + (window.SHOP === "ops" || window.SHOP === "quotes" ? " on" : "") + '" href="' + (biz ? "" : BP) + 'ops.html">⚙ Hawlgalka</a>');
+    if ((!u || u.role !== "staff") && has) has.remove();
+  });
   document.getElementById("whoBtn").onclick = function () {
+    if (RF.api && RF.api.remote) {
+      if (!RF.api.user) return RF.authUI.open().catch(function () {});
+      if (confirm("Waxaad ku jirtaa sidii " + RF.api.user.name + " (" + RF.api.user.phone + "). Ka bax?")) RF.api.logout().then(function () { location.reload(); });
+      return;
+    }
     var n = prompt("Your name or organisation (used to sign your listings and track your deals):", RF.identity.get());
     if (n != null) { RF.identity.set(n.trim()); refreshWho(); if (window.BOARD === "activity") activityPage(); }
   };
@@ -225,8 +237,8 @@ function chrome() {
   document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") closeAll(); });
 }
 function refreshWho() {
-  var n = RF.identity.get();
-  document.getElementById("whoBtn").textContent = n ? "· " + n : "Gal";
+  var n = RF.api && RF.api.remote ? (RF.api.user ? RF.api.user.name.split(" ")[0] : "") : RF.identity.get();
+  document.getElementById("whoBtn").textContent = n ? "👤 " + n : "Gal";
 }
 function closeModal() { document.getElementById("modal").classList.remove("on"); }
 function closeDrawer() { document.getElementById("drawer").classList.remove("on"); document.getElementById("scrim").classList.remove("on"); }

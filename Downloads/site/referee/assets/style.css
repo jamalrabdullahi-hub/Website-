@@ -602,3 +602,48 @@ footer.site b{color:var(--fg);font-weight:650}
   .g-cl .g-ohead{flex-wrap:wrap}
   .g-filters #fCount{margin-left:0}
 }
+
+/* ---------------------------------------------------------------- launch: honest pricing, account-in-checkout, payment step, referrals, ops console */
+.g-incl{margin-top:12px;padding:11px 14px;border-radius:14px;background:var(--pri-soft);font-size:13.5px;line-height:1.5}
+.g-soc{font-size:13px;font-weight:700;color:var(--link);margin:-4px 0 8px}
+.g-soc:empty{display:none}
+.g-goal{font-size:12.5px;color:var(--muted);margin-top:10px}
+.g-goal div{height:6px;border-radius:3px;background:var(--line-2);overflow:hidden;margin-bottom:5px}
+.g-goal i{display:block;height:100%;background:var(--gold)}
+.g-goal.ok{color:#2E7D4F;font-weight:700}
+.g-acct{margin-top:12px;padding:12px 14px;border:1px dashed var(--pri-line);border-radius:14px;font-size:13.5px}
+.g-acct a{color:var(--link);font-weight:700;margin-left:4px}
+.g-steps{list-style:none;padding:0;margin:12px 0;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;counter-reset:s}
+.g-steps li{counter-increment:s;font-size:11.5px;line-height:1.35;background:var(--surface);border-radius:10px;padding:8px 8px 8px 30px;position:relative;color:var(--muted)}
+.g-steps li::before{content:counter(s);position:absolute;left:8px;top:8px;width:16px;height:16px;border-radius:50%;background:var(--gold);color:var(--gold-ink);font-size:10px;font-weight:800;display:grid;place-items:center}
+.g-steps li b{color:var(--fg)}
+.g-steps.v{grid-template-columns:1fr}.g-steps.v li{font-size:13.5px}
+.g-paybox{margin:14px 0;padding:16px;border-radius:16px;background:var(--pri-soft);border:1px solid var(--pri-line);display:grid;gap:4px;text-align:center}
+.g-amt{font-family:var(--fd);font-size:40px;line-height:1.1}
+.g-mno{font-size:20px;letter-spacing:1px;color:var(--link)}
+.g-paynote{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:14px 16px;border-radius:16px;background:var(--gold-soft);border:1px solid var(--gold);margin-bottom:14px;font-size:14px}
+.g-paynote .btn{margin-left:auto}
+.g-refer{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:14px 16px;border-radius:16px;background:var(--card);border:1px solid var(--line);margin-bottom:14px}
+.g-refer>div{flex:1;min-width:220px}
+.g-refer code{font-size:18px;font-weight:800;letter-spacing:2px;padding:6px 12px;border-radius:10px;background:var(--surface)}
+.g-auth .g-lbl{display:block;margin-top:12px}
+.g-order.late{border-color:var(--down);box-shadow:inset 3px 0 0 var(--down)}
+.ops-tabs{display:inline-flex;flex-wrap:wrap}
+.ops-tabs em{font-style:normal;margin-left:6px;background:var(--down);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}
+.ops-tabs em:empty{display:none}
+.ops-kpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.ops-kpi div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.ops-kpi span{display:block;font-size:12px;color:var(--muted);font-weight:700}
+.ops-kpi b{display:block;font-size:24px;margin:2px 0}
+.ops-kpi em{font-style:normal;font-size:12px;color:var(--muted)}
+.ops-kpi .good b{color:var(--up)}.ops-kpi .bad b{color:var(--down)}
+.ops-funnel{display:grid;gap:6px;max-width:720px}
+.ops-funnel div{display:grid;grid-template-columns:120px 1fr 50px 44px;align-items:center;gap:10px;font-size:13px}
+.ops-funnel i{height:14px;border-radius:7px;background:var(--gold);display:block}
+.ops-funnel em{font-style:normal;color:var(--muted);font-size:12px}
+.ops-code{font-size:34px;text-align:center;letter-spacing:8px;font-variant-numeric:tabular-nums}
+@media (max-width:760px){
+  .g-steps{grid-template-columns:1fr 1fr}
+  .ops-funnel div{grid-template-columns:90px 1fr 40px 36px}
+  .g-paynote .btn{margin-left:0}
+}

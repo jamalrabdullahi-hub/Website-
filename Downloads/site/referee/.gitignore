@@ -5,3 +5,6 @@ data/catalog.backup.csv
 deploy/public/
 deploy/node_modules/
 .wrangler/
+
+deploy/catalog.gen.js
+deploy/.dev.vars
