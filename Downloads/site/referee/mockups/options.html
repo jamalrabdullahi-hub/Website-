@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="so">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Garsoore options</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&family=Manrope:wght@400;500;700;800&family=Cormorant+Garamond:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+/* ---- palettes ---- */
+body[data-p="1"]{ /* Sand & Sea — beige, ocean blue, gold */
+  --bg:#F6F0E4;--bg2:#EDE3CF;--card:#FFFCF6;--line:#E0D2B6;--ink:#2E2A24;--muted:#7A7062;
+  --pri:#1F5A8C;--pri2:#2C70AB;--prisoft:#E3EDF6;--acc:#C79A2E;--accsoft:#F5EAC8;--sil:#C9CDD3;
+  --fd:"DM Serif Display",serif;--fb:"DM Sans",sans-serif}
+body[data-p="2"]{ /* Desert Gold — cream, terracotta, gold, silver */
+  --bg:#F8F3EA;--bg2:#EFE5D3;--card:#FFFDF9;--line:#E6D8BF;--ink:#3A2E26;--muted:#85766A;
+  --pri:#B5552E;--pri2:#C9683F;--prisoft:#F7E5DB;--acc:#B8912F;--accsoft:#F3E7C5;--sil:#CBCDD1;
+  --fd:"Playfair Display",serif;--fb:"Manrope",sans-serif}
+body[data-p="3"]{ /* Olive Silver — linen, olive/teal, gold, silver */
+  --bg:#F4F1EA;--bg2:#E8E3D6;--card:#FFFEFB;--line:#DCD5C4;--ink:#2B302C;--muted:#737A72;
+  --pri:#3E6B5E;--pri2:#4E8273;--prisoft:#E2ECE8;--acc:#B99B45;--accsoft:#F1EACF;--sil:#C4C9CC;
+  --fd:"Cormorant Garamond",serif;--fb:"Plus Jakarta Sans",sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--fb);transition:background .2s}
+h1,h2,h3,.disp{font-family:var(--fd);font-weight:700;letter-spacing:-.01em;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+/* switcher */
+.sw{position:sticky;top:0;z-index:20;background:var(--card);border-bottom:1px solid var(--line);box-shadow:0 4px 18px -12px rgba(0,0,0,.3)}
+.sw .wrap{display:flex;gap:22px;flex-wrap:wrap;padding:10px 20px;align-items:center}
+.grp{display:flex;align-items:center;gap:6px;font-size:13px}
+.grp b{margin-right:4px;color:var(--muted);font-weight:500}
+.grp button{border:1.5px solid var(--line);background:var(--bg);border-radius:999px;padding:6px 12px;font:inherit;font-weight:600;cursor:pointer;color:var(--ink)}
+.grp button.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.pal{display:inline-flex;gap:2px;vertical-align:middle;margin-right:6px}.pal i{width:10px;height:10px;border-radius:50%}
+/* chrome */
+header{background:var(--card);border-bottom:1px solid var(--line)}
+header .wrap{display:flex;align-items:center;gap:16px;height:68px}
+.brand{display:flex;gap:10px;align-items:center;font:700 24px var(--fd);color:var(--ink)}
+.flag{width:28px;height:28px;border-radius:7px;display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden;border:2px solid var(--pri)}
+.flag i{background:var(--card)}.flag i:nth-child(8n+1),.flag i:nth-child(8n+3),.flag i:nth-child(8n+6),.flag i:nth-child(8n+8){background:var(--pri)}
+.sp{flex:1}
+.lk{font-size:14px;font-weight:500;color:var(--muted)}
+.biz{border:1.5px solid var(--acc);color:var(--ink);border-radius:999px;padding:7px 14px;font-weight:700;font-size:14px}
+.lang{font-size:12px;font-weight:700;background:var(--bg2);border-radius:999px;padding:3px}.lang span{padding:4px 9px;border-radius:999px;display:inline-block}.lang .on{background:var(--acc);color:#fff}
+.chip{display:inline-block;border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:6px 13px;font-size:13px;font-weight:500}
+.btn{border:0;background:var(--pri);color:#fff;border-radius:12px;padding:12px 20px;font:inherit;font-weight:700;cursor:pointer}
+.btn:hover{background:var(--pri2)}
+.btn.gold{background:var(--acc)}
+.muted{color:var(--muted)}
+.lbl{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 8px}
+.section-t{display:flex;align-items:baseline;gap:12px;margin:34px 0 14px}
+.section-t .n{font:700 13px var(--fb);background:var(--acc);color:#fff;border-radius:999px;padding:3px 10px}
+.section-t h2{font-size:26px}
+/* product card shared */
+.pc{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;transition:.15s}
+.pc:hover{transform:translateY(-3px);box-shadow:0 14px 28px -18px rgba(0,0,0,.35)}
+.pimg{aspect-ratio:1;background:linear-gradient(155deg,#ECEEF1,var(--bg2));display:grid;place-items:center;font-size:52px;position:relative}
+.bd{position:absolute;top:10px;left:10px;font-size:11px;font-weight:800;padding:4px 9px;border-radius:999px;letter-spacing:.03em}
+.cn{background:var(--acc);color:#fff}.lo{background:var(--card);color:var(--pri);border:1px solid var(--line)}
+.pb{padding:12px 14px 14px}.pn{font-size:14px;font-weight:500;min-height:42px}
+.pr{font:700 21px var(--fb);margin-top:4px}.eta{font-size:12px;color:var(--muted)}
+.v{color:var(--pri);font-weight:700}
+.grid5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:24px}
+.opt{display:none}.opt.show{display:block}
+/* ---------- SEARCH A: split hero ---------- */
+.sA{display:grid;grid-template-columns:1.2fr 1fr;gap:18px;margin-top:22px}
+.sA .l{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:34px}
+.sA h1{font-size:46px;line-height:1.05;margin-bottom:10px}
+.bigsearch{display:flex;border:2px solid var(--line);border-radius:16px;background:var(--bg);padding:5px;margin:18px 0 14px}
+.bigsearch input{flex:1;border:0;background:transparent;padding:11px 12px;font:inherit;outline:none}
+.sA .r{background:var(--pri);color:#fff;border-radius:24px;padding:34px;position:relative;overflow:hidden}
+.sA .r::after{content:"";position:absolute;right:-70px;bottom:-70px;width:240px;height:240px;border-radius:50%;border:34px solid rgba(255,255,255,.12)}
+.sA .r h2{font-size:32px;line-height:1.1;margin:12px 0 8px}
+.tagw{display:inline-block;background:rgba(255,255,255,.18);border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700;color:var(--accsoft)}
+.paste{display:flex;background:#fff;border-radius:14px;padding:5px;margin-top:16px}.paste input{flex:1;border:0;padding:10px;font:inherit;outline:none}
+/* ---------- SEARCH B: centered ---------- */
+.sB{text-align:center;padding:56px 20px 30px}
+.sB h1{font-size:58px;line-height:1}
+.sB .bigsearch{max-width:680px;margin:24px auto 16px;background:var(--card);box-shadow:0 18px 40px -26px rgba(0,0,0,.4)}
+.tiles{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:12px;margin-top:26px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 6px;font-size:13px;font-weight:600}
+.tile div{width:50px;height:50px;border-radius:14px;background:var(--bg2);display:grid;place-items:center;font-size:24px;margin:0 auto 8px}
+.band{display:flex;align-items:center;gap:18px;background:var(--accsoft);border:1px solid var(--acc);border-radius:20px;padding:18px 24px;margin-top:22px;text-align:left}
+.band h3{font-size:22px}
+/* ---------- SEARCH C: results page w/ filters ---------- */
+.sC{display:grid;grid-template-columns:240px 1fr;gap:20px;margin-top:22px}
+.filt{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;align-self:start}
+.filt label{display:flex;gap:8px;font-size:14px;margin:6px 0;align-items:center}
+.filt input[type=checkbox]{accent-color:var(--pri)}
+.seg{display:flex;background:var(--bg2);border-radius:12px;padding:4px}.seg span{flex:1;text-align:center;padding:7px;border-radius:9px;font-size:13px;font-weight:700}.seg .on{background:var(--card);color:var(--pri)}
+.rbar{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.rbar .bigsearch{flex:1;margin:0;background:var(--card)}
+/* ---------- PRODUCT A: classic ---------- */
+.pA{display:grid;grid-template-columns:1.1fr 1fr;gap:30px}
+.gal{aspect-ratio:1;border-radius:22px;background:linear-gradient(155deg,#ECEEF1,var(--bg2));display:grid;place-items:center;font-size:130px}
+.th{display:flex;gap:8px;margin-top:10px}.th i{flex:1;aspect-ratio:1;border-radius:12px;background:var(--bg2);border:2px solid transparent}.th i:first-child{border-color:var(--pri)}
+.sku{font:12px ui-monospace,monospace;color:var(--muted)}
+.ttl{font-size:34px;line-height:1.1;margin:6px 0 8px}
+.o{display:inline-block;border:1.5px solid var(--line);border-radius:12px;padding:9px 14px;font-size:14px;font-weight:600;margin:0 6px 6px 0;background:var(--card)}
+.o.on{border-color:var(--pri);background:var(--prisoft);color:var(--pri)}
+.dot{display:inline-block;width:32px;height:32px;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 1.5px var(--line);margin-right:6px}.dot.on{box-shadow:0 0 0 2.5px var(--pri)}
+.price{font:800 44px var(--fb);margin-top:16px;letter-spacing:-.02em}
+.full{width:100%;margin-top:12px;padding:16px;font-size:16px;border-radius:14px}
+.trust{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.trust div{background:var(--bg);border-radius:12px;padding:10px;font-size:12px;text-align:center;color:var(--muted)}.trust b{display:block;color:var(--ink)}
+/* ---------- PRODUCT B: immersive ---------- */
+.pB .hero{border-radius:28px;background:linear-gradient(155deg,#ECEEF1,var(--bg2));display:grid;grid-template-columns:1fr 1fr;align-items:center;padding:40px;gap:30px}
+.pB .hero .ic{font-size:180px;text-align:center}
+.pB .buybar{position:sticky;bottom:12px;margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:14px 18px;display:flex;align-items:center;gap:16px;box-shadow:0 18px 40px -22px rgba(0,0,0,.4)}
+.specs{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}.specs div{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}.specs b{display:block;font-size:18px}
+/* ---------- PRODUCT C: store page ---------- */
+.pC .cover{height:150px;border-radius:24px;background:linear-gradient(120deg,var(--pri),var(--pri2));position:relative}
+.pC .shop{display:flex;gap:18px;align-items:end;margin:-44px 0 0 26px;position:relative}
+.pC .logo{width:92px;height:92px;border-radius:22px;background:var(--card);border:4px solid var(--card);box-shadow:0 8px 20px -10px rgba(0,0,0,.35);display:grid;place-items:center;font-size:42px}
+.pC .tabs{display:flex;gap:24px;border-bottom:1px solid var(--line);margin:20px 0 18px;font-weight:600;font-size:14px}.pC .tabs span{padding:10px 0}.pC .tabs .on{color:var(--pri);box-shadow:inset 0 -2px 0 var(--pri)}
+@media(max-width:900px){.sA,.sC,.pA,.pB .hero{grid-template-columns:1fr}.grid5,.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}.tiles{grid-template-columns:repeat(4,1fr)}.specs{grid-template-columns:1fr 1fr}.lk{display:none}.sB h1{font-size:40px}.sA h1{font-size:36px}.filt{display:none}}
+</style>
+</head>
+<body data-p="1">
+
+<div class="sw"><div class="wrap">
+  <div class="grp" data-g="p"><b>1 · Midabada</b>
+    <button class="on" data-v="1"><span class="pal"><i style="background:#F6F0E4;border:1px solid #ccc"></i><i style="background:#1F5A8C"></i><i style="background:#C79A2E"></i></span>Ciid &amp; Bad</button>
+    <button data-v="2"><span class="pal"><i style="background:#F8F3EA;border:1px solid #ccc"></i><i style="background:#B5552E"></i><i style="background:#B8912F"></i></span>Dahab Saxare</button>
+    <button data-v="3"><span class="pal"><i style="background:#F4F1EA;border:1px solid #ccc"></i><i style="background:#3E6B5E"></i><i style="background:#B99B45"></i></span>Saytuun</button>
+  </div>
+  <div class="grp" data-g="s"><b>2 · Raadinta</b><button class="on" data-v="A">A</button><button data-v="B">B</button><button data-v="C">C</button></div>
+  <div class="grp" data-g="d"><b>3 · Alaab/Dukaan</b><button class="on" data-v="A">A</button><button data-v="B">B</button><button data-v="C">C</button></div>
+</div></div>
+
+<header><div class="wrap">
+  <span class="brand"><span class="flag"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Garsoore</span>
+  <span class="lk">Suuqa</span><span class="lk">Xayeysiis</span><span class="lk">Adeegyo</span><span class="lk" style="color:var(--acc);font-weight:700">Ka iibso Shiinaha</span>
+  <span class="sp"></span><span class="lang"><span class="on">SO</span><span>EN</span></span><span class="biz">Ganacsi ↗</span>
+</div></header>
+
+<main class="wrap">
+
+<div class="section-t"><span class="n">2</span><h2>Bogga raadinta</h2><span class="muted" id="sName"></span></div>
+
+<!-- SEARCH A -->
+<div class="opt show" data-s="A">
+  <div class="sA">
+    <div class="l"><span class="chip" style="color:var(--pri)">✓ Iibiye kasta waa la hubiyay</span>
+      <h1 style="margin-top:14px">Wax walba,<br>hal meel.</h1>
+      <p class="muted">Alaab, adeegyo iyo xayeysiis gudaha Soomaaliya — lacagtaadu way xajisan tahay ilaa aad hesho.</p>
+      <div class="bigsearch"><input placeholder="Raadi taleefan, laptop, baabuur…"><button class="btn">Raadi</button></div>
+      <span class="chip">iPhone 15</span> <span class="chip">Solar 300W</span> <span class="chip">Toyota Vitz</span> <span class="chip">Qaboojiye</span></div>
+    <div class="r"><span class="tagw">GARSOORE CHINA</span><h2>Ka hel Shiinaha.<br>Ku iibso Garsoore.</h2>
+      <p style="opacity:.85">Ku dheji link JD ama 1688 — hal qiimo, hal badhan.</p>
+      <div class="paste"><input placeholder="https://item.jd.com/…"><button class="btn gold">Qiimee</button></div></div>
+  </div>
+  <div class="grid5" style="margin-top:18px" data-feed></div>
+</div>
+
+<!-- SEARCH B -->
+<div class="opt" data-s="B">
+  <div class="sB">
+    <h1>Maxaad raadinaysaa?</h1>
+    <p class="muted">Gudaha iyo Shiinaha — hal raadin, hal qiimo.</p>
+    <div class="bigsearch"><input placeholder="Raadi ama ku dheji link JD / 1688…"><button class="btn">Raadi</button></div>
+    <span class="chip">Taleefan</span> <span class="chip">Laptop</span> <span class="chip">Solar</span> <span class="chip">Fundi</span>
+    <div class="tiles">
+      <div class="tile"><div>📱</div>Taleefanno</div><div class="tile"><div>💻</div>Kombiyuutar</div><div class="tile"><div>🧊</div>Qalab guri</div><div class="tile"><div>🛋️</div>Alaab guri</div>
+      <div class="tile"><div>🚗</div>Baabuur</div><div class="tile"><div>🔧</div>Adeegyo</div><div class="tile"><div>☀️</div>Solar</div><div class="tile" style="border-color:var(--acc)"><div style="background:var(--accsoft)">🇨🇳</div>Shiinaha</div>
+    </div>
+    <div class="band"><div style="font-size:34px">🇨🇳</div><div style="flex:1"><h3>Ka hel Shiinaha. Ku iibso Garsoore.</h3><div class="muted">JD · 1688 · ~20 maalmood · pickup Muqdisho</div></div><button class="btn gold">Ku dheji link</button></div>
+  </div>
+  <div class="grid5" data-feed></div>
+</div>
+
+<!-- SEARCH C -->
+<div class="opt" data-s="C">
+  <div class="sC">
+    <aside class="filt">
+      <div class="seg"><span class="on">Dhammaan</span><span>Gudaha</span><span>Shiinaha</span></div>
+      <div class="lbl">Qaybta</div><label><input type="checkbox" checked>Taleefanno</label><label><input type="checkbox">Kombiyuutar</label><label><input type="checkbox">Qalab guri</label>
+      <div class="lbl">Qiimaha</div><div style="display:flex;gap:6px"><span class="chip" style="flex:1">$50</span><span class="chip" style="flex:1">$800</span></div>
+      <div class="lbl">Magaalada</div><label><input type="checkbox" checked>Muqdisho</label><label><input type="checkbox">Hargeysa</label><label><input type="checkbox">Boosaaso</label>
+      <div class="lbl">Kalsoonida</div><label><input type="checkbox" checked>Iibiye la hubiyay</label><label><input type="checkbox">Lacag la xajiyo</label>
+    </aside>
+    <div>
+      <div class="rbar"><div class="bigsearch"><input value="taleefan samsung"><button class="btn">Raadi</button></div></div>
+      <div class="muted" style="margin-bottom:12px"><b style="color:var(--ink)">248</b> natiijo · Kala saar: <b style="color:var(--pri)">Ugu habboon ▾</b></div>
+      <div class="grid4" data-feed></div>
+    </div>
+  </div>
+</div>
+
+<div class="section-t"><span class="n">3</span><h2>Bogga alaabta / dukaanka</h2></div>
+
+<!-- PRODUCT A -->
+<div class="opt show" data-d="A"><div class="box pA">
+  <div><div class="gal">💻</div><div class="th"><i></i><i></i><i></i><i></i></div></div>
+  <div>
+    <div class="sku">GRS-CMP-00318 · <span style="color:var(--acc);font-weight:700">Garsoore China</span></div>
+    <h1 class="ttl">Lenovo Xiaoxin Pro 14</h1>
+    <div class="eta"><span class="v">★ 4.8</span> · 214 dalab · Model 83HB</div>
+    <div class="lbl">Xusuusta</div><span class="o on">16GB · 512GB</span><span class="o">32GB · 1TB</span>
+    <div class="lbl">Midabka</div><span class="dot on" style="background:#9A9DA4"></span><span class="dot" style="background:#3A3A3E"></span><span class="dot" style="background:#DCD5C8"></span>
+    <div class="price">$712</div><div class="eta">🚚 Diyaar ~20 maalmood · Pickup Muqdisho</div>
+    <button class="btn full">Hadda iibso</button>
+    <div class="trust"><div><b>Hal qiimo</b>Qarsoodi ma jiro</div><div><b>La xajiyay</b>Lacagtu ammaan</div><div><b>Celin</b>7 maalmood</div></div>
+  </div>
+</div></div>
+
+<!-- PRODUCT B -->
+<div class="opt pB" data-d="B">
+  <div class="hero"><div class="ic">📱</div>
+    <div><span class="chip" style="background:var(--accsoft);border-color:var(--acc)">Garsoore China · JD</span>
+      <h1 style="font-size:52px;line-height:1;margin:14px 0 10px">Redmi Note 14 Pro</h1>
+      <p class="muted">Kaamiro 200MP, batari 5,500mAh, shaashad AMOLED 6.67″.</p>
+      <div class="lbl">Nooca</div><span class="o on">12GB · 256GB</span><span class="o">8GB · 256GB</span>
+      <div class="lbl">Midabka</div><span class="dot on" style="background:#2E3A4F"></span><span class="dot" style="background:#E9E4DA"></span><span class="dot" style="background:#7C9A8C"></span></div>
+  </div>
+  <div class="specs"><div><span class="muted">Kaamiro</span><b>200MP</b></div><div><span class="muted">Batari</span><b>5,500mAh</b></div><div><span class="muted">Shaashad</span><b>6.67″ OLED</b></div><div><span class="muted">Xusuus</span><b>256GB</b></div></div>
+  <div class="buybar"><div style="font-size:34px">📱</div><div style="flex:1"><b>Redmi Note 14 Pro · 12/256</b><div class="eta">~20 maalmood · Pickup Muqdisho · Lacag la xajiyo</div></div><div class="price" style="margin:0;font-size:30px">$289</div><button class="btn">Hadda iibso</button></div>
+</div>
+
+<!-- PRODUCT C: store -->
+<div class="opt pC" data-d="C">
+  <div class="cover"></div>
+  <div class="shop"><div class="logo">📱</div><div style="padding-bottom:6px"><h1 style="font-size:32px">Hodan Mobile</h1><div class="eta"><span class="v">✓ La hubiyay</span> · Hodan, Muqdisho · ★ 4.9 (1,203) · Jawaab &lt; 1 saac</div></div>
+    <span class="sp"></span><button class="btn" style="margin-bottom:6px">La soo xiriir</button></div>
+  <div class="tabs"><span class="on">Alaabta (86)</span><span>Faallooyinka</span><span>Ku saabsan</span><span>Goobta</span></div>
+  <div class="grid5" data-feed></div>
+</div>
+
+<div style="height:60px"></div>
+</main>
+
+<script>
+var items=[["💻","Lenovo Xiaoxin Pro 14 · 16/512","$712","~20 maalmood · JD",1],["📱","Samsung Galaxy A55 · 256GB","$365","Maanta · Hodan",0],["🌀","Midea inverter AC 1.5HP","$298","~24 maalmood · 1688",1],["☀️","Jinko 550W + inverter 5kW","$1,140","2 maalmood · Km4",0],["📱","Redmi Note 14 Pro · 12/256","$289","~20 maalmood · JD",1],["🎧","Anker Soundcore Q30","$64","Maanta · Bakaaraha",0],["🖨️","HP LaserJet M141w","$179","~18 maalmood · JD",1],["🛋️","Kursi fadhi 3+2 · cusub","$420","3 maalmood · Hodan",0]];
+document.querySelectorAll("[data-feed]").forEach(function(g){var n=g.classList.contains("grid4")?8:5;g.innerHTML=items.slice(0,n).map(function(i){return '<div class="pc"><div class="pimg"><span class="bd '+(i[4]?'cn">SHIINAHA':'lo">GUDAHA')+'</span>'+i[0]+'</div><div class="pb"><div class="pn">'+i[1]+'</div><div class="pr">'+i[2]+'</div><div class="eta"><span class="v">✓</span> '+i[3]+'</div></div></div>'}).join("")});
+document.querySelectorAll(".grp").forEach(function(gr){gr.querySelectorAll("button").forEach(function(b){b.onclick=function(){gr.querySelectorAll("button").forEach(function(x){x.classList.remove("on")});b.classList.add("on");var g=gr.dataset.g,v=b.dataset.v;if(g==="p")document.body.dataset.p=v;else document.querySelectorAll("[data-"+g+"]").forEach(function(o){if(o.dataset[g])o.classList.toggle("show",o.dataset[g]===v)})}})});
+</script>
+</body>
+</html>

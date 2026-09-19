@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="so">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Garsoore mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --beige:#EFE6D4; --beige-2:#F7F2E8; --beige-3:#E2D4B8; --sand:#D6C29C;
+  --purple:#5B2A86; --purple-2:#7A4BA8; --purple-soft:#EEE6F5;
+  --blue:#2F5DA8; --blue-soft:#E4ECF8;
+  --silver:#C4C8CF; --silver-2:#E6E8EC;
+  --black:#17161A; --ink:#2B2830; --muted:#6F6A73;
+  --gold:#C9A227; --gold-soft:#F6EBC6;
+  --card:#FFFDF8; --r:16px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--beige-2);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+.serif{font-family:Fraunces,Georgia,serif}
+
+/* header */
+.top{background:var(--black);color:var(--silver);font-size:12px}
+.top .wrap{display:flex;gap:18px;padding:7px 20px}
+.top b{color:var(--gold);font-weight:500}
+.top .sp{flex:1}
+header{background:var(--beige);border-bottom:1px solid var(--beige-3);position:sticky;top:0;z-index:5}
+header .wrap{display:flex;align-items:center;gap:18px;height:72px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:21px;color:var(--black)}
+.flag{width:30px;height:30px;border-radius:7px;overflow:hidden;display:grid;grid-template-columns:repeat(4,1fr);border:2px solid var(--black)}
+.flag i:nth-child(odd){background:var(--black)} .flag i:nth-child(even){background:var(--beige-2)}
+.flag i:nth-child(5),.flag i:nth-child(7),.flag i:nth-child(13),.flag i:nth-child(15){background:var(--beige-2)}
+.flag i:nth-child(6),.flag i:nth-child(8),.flag i:nth-child(14),.flag i:nth-child(16){background:var(--black)}
+.search{flex:1;display:flex;background:var(--card);border:1.5px solid var(--sand);border-radius:999px;overflow:hidden}
+.search select{border:0;background:var(--beige-2);padding:0 14px;font:inherit;color:var(--muted);border-right:1px solid var(--beige-3)}
+.search input{flex:1;border:0;padding:12px 16px;font:inherit;background:transparent;outline:none}
+.search button{border:0;background:var(--purple);color:#fff;padding:0 22px;font:inherit;font-weight:600;cursor:pointer}
+.hbtn{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink);white-space:nowrap}
+.biz{border:1.5px solid var(--black);border-radius:999px;padding:7px 14px;font-weight:600}
+.lang{background:var(--silver-2);border-radius:999px;padding:3px;display:flex;font-size:12px;font-weight:600}
+.lang span{padding:4px 9px;border-radius:999px}.lang .on{background:var(--black);color:var(--gold)}
+nav.cats{background:var(--beige);border-bottom:1px solid var(--beige-3)}
+nav.cats .wrap{display:flex;gap:26px;height:44px;align-items:center;font-size:14px;font-weight:500;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+nav.cats a.on{color:var(--purple);box-shadow:inset 0 -2px 0 var(--purple);padding:12px 0}
+nav.cats .china{color:var(--purple);display:flex;gap:6px;align-items:center}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--gold)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;margin:26px 0}
+.panel{border-radius:22px;padding:30px;position:relative;overflow:hidden}
+.local{background:var(--card);border:1px solid var(--beige-3)}
+.local h1{font-size:40px;line-height:1.1;margin:0 0 8px;color:var(--black)}
+.local p{color:var(--muted);margin:0 0 20px;max-width:430px}
+.quick{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--beige-3);background:var(--beige-2);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:500}
+.chip.p{background:var(--purple-soft);border-color:#D8C8E8;color:var(--purple)}
+.stats{display:flex;gap:26px;margin-top:26px;padding-top:20px;border-top:1px dashed var(--beige-3)}
+.stats b{display:block;font-size:22px;color:var(--black)} .stats span{font-size:12px;color:var(--muted)}
+.china-p{background:var(--purple);color:#F4EEF9}
+.china-p::after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;border:30px solid rgba(201,162,39,.25)}
+.china-p .tag{display:inline-flex;gap:6px;align-items:center;background:rgba(0,0,0,.25);color:var(--gold);border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600}
+.china-p h2{font-size:30px;line-height:1.15;margin:14px 0 6px;color:#fff}
+.china-p p{margin:0 0 18px;color:#DCCDEB}
+.paste{display:flex;background:#fff;border-radius:14px;padding:5px;gap:6px}
+.paste input{flex:1;border:0;padding:10px 12px;font:inherit;outline:none;color:var(--ink);border-radius:10px}
+.paste button{border:0;background:var(--gold);color:var(--black);font-weight:700;border-radius:10px;padding:0 16px;cursor:pointer}
+.src{display:flex;gap:10px;margin-top:14px;font-size:12px;color:#CDB9E0}
+.src span{background:rgba(255,255,255,.1);padding:4px 10px;border-radius:8px}
+
+/* categories */
+.sec{display:flex;align-items:end;justify-content:space-between;margin:34px 0 14px}
+.sec h3{margin:0;font-size:22px;color:var(--black)} .sec a{font-size:14px;color:var(--blue);font-weight:500}
+.tiles{display:grid;grid-template-columns:repeat(8,1fr);gap:12px}
+.tile{background:var(--card);border:1px solid var(--beige-3);border-radius:var(--r);padding:16px 8px;text-align:center;font-size:13px;font-weight:500}
+.tile .ic{width:48px;height:48px;margin:0 auto 8px;border-radius:14px;background:var(--beige);display:grid;place-items:center;font-size:24px}
+.tile.cn .ic{background:var(--purple-soft)}
+
+/* products */
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+.pc{background:var(--card);border:1px solid var(--beige-3);border-radius:var(--r);overflow:hidden;transition:.15s}
+.pc:hover{transform:translateY(-2px);box-shadow:0 10px 24px -14px rgba(43,40,48,.4)}
+.pimg{aspect-ratio:1;background:linear-gradient(160deg,var(--silver-2),var(--beige));display:grid;place-items:center;font-size:54px;position:relative}
+.badge{position:absolute;top:10px;left:10px;font-size:11px;font-weight:700;padding:4px 9px;border-radius:999px}
+.b-cn{background:var(--purple);color:#fff}.b-lo{background:var(--black);color:var(--gold)}
+.pb{padding:12px 14px 14px}
+.pn{font-size:14px;font-weight:500;height:42px;overflow:hidden;color:var(--black)}
+.pr{font-size:20px;font-weight:700;color:var(--black);margin-top:6px}
+.eta{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.ver{color:var(--blue);font-weight:600}
+
+/* product + checkout */
+.two{display:grid;grid-template-columns:1.3fr 1fr;gap:22px;margin-top:10px}
+.box{background:var(--card);border:1px solid var(--beige-3);border-radius:22px;padding:24px}
+.pp{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.gal{aspect-ratio:1;border-radius:18px;background:linear-gradient(160deg,var(--silver-2),var(--beige));display:grid;place-items:center;font-size:120px}
+.thumbs{display:flex;gap:8px;margin-top:10px}.thumbs i{flex:1;aspect-ratio:1;border-radius:10px;background:var(--beige);border:2px solid transparent}.thumbs i:first-child{border-color:var(--purple)}
+.sku{font:12px ui-monospace,monospace;color:var(--muted)}
+.pt{font-size:24px;font-weight:700;color:var(--black);margin:4px 0 10px;line-height:1.2}
+.lbl{font-size:12px;font-weight:600;color:var(--muted);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04em}
+.opts{display:flex;gap:8px;flex-wrap:wrap}
+.opt{border:1.5px solid var(--beige-3);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;background:#fff}
+.opt.on{border-color:var(--purple);background:var(--purple-soft);color:var(--purple)}
+.sw{width:30px;height:30px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1.5px var(--beige-3)}
+.sw.on{box-shadow:0 0 0 2px var(--purple)}
+.price{font-size:38px;font-weight:700;color:var(--black);margin-top:16px}
+.price small{font-size:14px;color:var(--muted);font-weight:500}
+.buy{width:100%;border:0;border-radius:14px;padding:15px;font:inherit;font-weight:700;font-size:16px;background:var(--purple);color:#fff;margin-top:14px;cursor:pointer;letter-spacing:.02em}
+.buy:hover{background:var(--purple-2)}
+.ghost{width:100%;border:1.5px solid var(--black);background:transparent;border-radius:14px;padding:12px;font:inherit;font-weight:600;margin-top:8px}
+.trust{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px}
+.trust div{background:var(--beige-2);border-radius:10px;padding:8px;font-size:11px;text-align:center;color:var(--muted)}
+.trust b{display:block;color:var(--black);font-size:12px}
+.co h4{margin:0 0 4px;font-size:20px;color:var(--black)}
+.line{display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--beige-3)}
+.line .th{width:52px;height:52px;border-radius:12px;background:var(--beige);display:grid;place-items:center;font-size:26px}
+.rad{display:flex;gap:10px;align-items:center;border:1.5px solid var(--beige-3);border-radius:12px;padding:11px 13px;margin-bottom:8px;background:#fff;font-size:14px}
+.rad.on{border-color:var(--purple);background:var(--purple-soft)}
+.rad .c{width:16px;height:16px;border-radius:50%;border:2px solid var(--silver)}
+.rad.on .c{border:5px solid var(--purple)}
+.rad .r{margin-left:auto;font-size:12px;color:var(--muted)}
+.pay{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.pay div{border:1.5px solid var(--beige-3);border-radius:12px;padding:10px 4px;text-align:center;font-size:12px;font-weight:600;background:#fff}
+.pay .on{border-color:var(--blue);background:var(--blue-soft);color:var(--blue)}
+.tot{display:flex;justify-content:space-between;align-items:end;margin-top:18px;padding-top:14px;border-top:2px solid var(--black)}
+.tot b{font-size:30px;color:var(--black)}
+.escrow{margin-top:12px;background:var(--gold-soft);border:1px solid #E8D48F;color:#6B5410;border-radius:12px;padding:10px 12px;font-size:12.5px}
+.track{display:flex;margin-top:18px}
+.st{flex:1;text-align:center;font-size:11px;color:var(--muted);position:relative}
+.st::before{content:"";position:absolute;top:9px;left:-50%;right:50%;height:3px;background:var(--silver-2)}
+.st:first-child::before{display:none}
+.st i{display:block;width:20px;height:20px;border-radius:50%;background:var(--silver-2);margin:0 auto 6px;position:relative;border:3px solid var(--card)}
+.st.d i{background:var(--purple)}.st.d::before{background:var(--purple)}
+.st.n i{background:var(--gold);box-shadow:0 0 0 3px var(--gold-soft)}.st.n{color:var(--black);font-weight:600}
+.bizband{margin:40px 0;background:var(--black);color:var(--silver);border-radius:22px;padding:28px 30px;display:flex;align-items:center;gap:24px}
+.bizband h3{color:#fff;margin:0 0 4px;font-size:22px}.bizband h3 span{color:var(--gold)}
+.bizband .req{flex:1;display:flex;background:#26242B;border:1px solid #3A3740;border-radius:14px;padding:5px}
+.bizband input{flex:1;background:transparent;border:0;color:#fff;padding:10px 12px;font:inherit;outline:none}
+.bizband button{background:var(--gold);color:var(--black);border:0;border-radius:10px;padding:0 18px;font-weight:700}
+footer{background:var(--black);color:var(--silver);padding:28px 0;font-size:13px;margin-top:20px}
+footer b{color:var(--gold)}
+@media(max-width:900px){.hero,.two,.pp{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(4,1fr)}.grid{grid-template-columns:repeat(2,1fr)}.hbtn.hide{display:none}.bizband{flex-direction:column;align-items:stretch}header .wrap{height:auto;flex-wrap:wrap;padding:12px 20px}.search{order:3;flex-basis:100%}}
+</style>
+</head>
+<body>
+
+<div class="top"><div class="wrap"><span>Muqdisho · Hargeysa · Boosaaso · Kismaayo</span><span class="sp"></span><span><b>●</b> Lacag bixin la ilaaliyo — EVC Plus · ZAAD · Sahal</span></div></div>
+
+<header><div class="wrap">
+  <a class="brand" href="#"><span class="flag"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Garsoore</a>
+  <div class="search"><select><option>Dhammaan</option></select><input placeholder="Raadi taleefan, laptop, baabuur, adeeg…"><button>Raadi</button></div>
+  <div class="lang"><span class="on">SO</span><span>EN</span></div>
+  <a class="hbtn hide" href="#">♡ Kaydsan</a>
+  <a class="hbtn hide" href="#">📦 Dalabyadayda</a>
+  <a class="hbtn biz" href="#">Ganacsi ↗</a>
+</div></header>
+<nav class="cats"><div class="wrap">
+  <a class="on" href="#">Suuqa</a><a href="#">Xayeysiis</a><a href="#">Adeegyo</a><a href="#">Shaqooyin</a>
+  <a class="china" href="#"><span class="dot"></span>Ka iibso Shiinaha</a>
+  <a href="#">Baabuur</a><a href="#">Guryo</a><a href="#">Qalab koronto</a>
+</div></nav>
+
+<main class="wrap">
+
+<section class="hero">
+  <div class="panel local">
+    <div class="chip p" style="display:inline-block;margin-bottom:14px">✓ Iibiye kasta waa la hubiyay</div>
+    <h1 class="serif">Wax walba,<br>hal meel.</h1>
+    <p>Iibso oo iibi gudaha Soomaaliya — alaab, adeegyo iyo xayeysiis. Lacagtaadu way xajisan tahay ilaa aad hesho.</p>
+    <div class="quick"><span class="chip">iPhone 15</span><span class="chip">Solar 300W</span><span class="chip">Toyota Vitz</span><span class="chip">Fundi koronto</span><span class="chip">Qaboojiye</span></div>
+    <div class="stats"><div><b>12,480</b><span>Xayeysiis firfircoon</span></div><div><b>3,210</b><span>Iibiyeyaal la hubiyay</span></div><div><b>8</b><span>Magaalo</span></div></div>
+  </div>
+  <div class="panel china-p">
+    <span class="tag">● GARSOORE CHINA</span>
+    <h2 class="serif">Ka hel Shiinaha.<br>Ku iibso Garsoore.</h2>
+    <p>Ku dheji link JD ama 1688 — hal qiimo, hal badhan. Waxaan kuu qabanaynaa iibsiga, rarka iyo keenista.</p>
+    <div class="paste"><input placeholder="https://item.jd.com/100071383535.html"><button>Qiimee</button></div>
+    <div class="src"><span>JD.com</span><span>1688.com</span><span>~20 maalmood</span><span>Muqdisho pickup</span></div>
+  </div>
+</section>
+
+<div class="sec"><h3>Qaybaha</h3><a href="#">Dhammaan qaybaha →</a></div>
+<div class="tiles">
+  <div class="tile"><div class="ic">📱</div>Taleefanno</div>
+  <div class="tile"><div class="ic">💻</div>Kombiyuutar</div>
+  <div class="tile"><div class="ic">🧊</div>Qalab guri</div>
+  <div class="tile"><div class="ic">🛋️</div>Alaab guri</div>
+  <div class="tile"><div class="ic">🚗</div>Baabuur</div>
+  <div class="tile"><div class="ic">🔧</div>Adeegyo</div>
+  <div class="tile"><div class="ic">☀️</div>Solar</div>
+  <div class="tile cn"><div class="ic">🇨🇳</div>Shiinaha</div>
+</div>
+
+<div class="sec"><h3>Hadda la jecel yahay</h3><a href="#">Eeg dhammaan →</a></div>
+<div class="grid">
+  <div class="pc"><div class="pimg"><span class="badge b-cn">SHIINAHA</span>💻</div><div class="pb"><div class="pn">Lenovo Xiaoxin Pro 14 · 16GB / 512GB</div><div class="pr">$712</div><div class="eta">~20 maalmood · <span class="ver">✓ JD</span></div></div></div>
+  <div class="pc"><div class="pimg"><span class="badge b-lo">GUDAHA</span>📱</div><div class="pb"><div class="pn">Samsung Galaxy A55 · 256GB · Cusub</div><div class="pr">$365</div><div class="eta">Maanta · Hodan <span class="ver">✓</span></div></div></div>
+  <div class="pc"><div class="pimg"><span class="badge b-cn">SHIINAHA</span>🌀</div><div class="pb"><div class="pn">Midea inverter AC 1.5HP · 220V</div><div class="pr">$298</div><div class="eta">~24 maalmood · <span class="ver">✓ 1688</span></div></div></div>
+  <div class="pc"><div class="pimg"><span class="badge b-lo">GUDAHA</span>☀️</div><div class="pb"><div class="pn">Jinko 550W panel + inverter 5kW set</div><div class="pr">$1,140</div><div class="eta">2 maalmood · Km4 <span class="ver">✓</span></div></div></div>
+  <div class="pc"><div class="pimg"><span class="badge b-cn">SHIINAHA</span>📱</div><div class="pb"><div class="pn">Xiaomi Redmi Note 14 Pro · 12/256</div><div class="pr">$289</div><div class="eta">~20 maalmood · <span class="ver">✓ JD</span></div></div></div>
+</div>
+
+<div class="sec"><h3>Bogga alaabta &amp; lacag bixinta</h3><span class="sku">mockup</span></div>
+<div class="two">
+  <div class="box pp">
+    <div><div class="gal">💻</div><div class="thumbs"><i></i><i></i><i></i><i></i></div></div>
+    <div>
+      <div class="sku">GRS-CMP-00318 · <span style="color:var(--purple);font-weight:600">Garsoore China</span></div>
+      <div class="pt">Lenovo Xiaoxin Pro 14 (2025)</div>
+      <div class="eta"><span class="ver">★ 4.8</span> · 214 dalab · Model 83HB</div>
+      <div class="lbl">Xusuusta</div>
+      <div class="opts"><span class="opt on">16GB · 512GB</span><span class="opt">32GB · 1TB</span></div>
+      <div class="lbl">Midabka</div>
+      <div class="opts"><span class="sw on" style="background:#8E9199"></span><span class="sw" style="background:#1C1C1F"></span><span class="sw" style="background:#D9D4CA"></span></div>
+      <div class="price">$712 <small>wadar</small></div>
+      <div class="eta">🚚 Diyaar ~20 maalmood · Pickup Muqdisho</div>
+      <button class="buy">HADDA IIBSO</button>
+      <button class="ghost">♡ Kaydi</button>
+      <div class="trust"><div><b>Hal qiimo</b>Kharash qarsoon ma jiro</div><div><b>La xajiyay</b>Lacagtu way ammaan tahay</div><div><b>Dammaanad</b>Celin 7 maalmood</div></div>
+    </div>
+  </div>
+
+  <div class="box co">
+    <h4>Lacag bixinta</h4><div class="sku">Tallaabo 1 ka mid ah 1 — waa intaas</div>
+    <div class="line"><div class="th">💻</div><div style="flex:1"><b style="color:var(--black)">Lenovo Xiaoxin Pro 14</b><div class="eta">16GB · 512GB · Silver · ×1</div></div><b>$712</b></div>
+    <div class="lbl">Halkee ka qaadanaysaa?</div>
+    <div class="rad on"><span class="c"></span>Xarunta Garsoore · Km4, Muqdisho<span class="r">Bilaash</span></div>
+    <div class="rad"><span class="c"></span>Gaarsiin guriga<span class="r">+$5</span></div>
+    <div class="lbl">Ku bixi</div>
+    <div class="pay"><div class="on">EVC Plus</div><div>ZAAD</div><div>Sahal</div><div>Premier</div></div>
+    <div class="tot"><span>Wadarta</span><b>$712</b></div>
+    <button class="buy">Xaqiiji dalabka</button>
+    <div class="escrow">🔒 <b>Garsoore ayaa hayn doona lacagtaada</b> ilaa aad alaabta gacanta ku hesho.</div>
+    <div class="track">
+      <div class="st d"><i></i>Dalab</div><div class="st d"><i></i>Laga iibsaday</div><div class="st n"><i></i>Soo socda</div><div class="st"><i></i>Yimid</div><div class="st"><i></i>Diyaar</div>
+    </div>
+  </div>
+</div>
+
+<section class="bizband">
+  <div><h3>Garsoore <span>Ganacsi</span></h3><div>Jumlad, qandaraas, adeegyo ganacsi iyo iibsi Shiinaha.</div></div>
+  <div class="req"><input placeholder="Waxaan u baahanahay 50 laptop…"><button>Codso qiimo</button></div>
+</section>
+
+</main>
+<footer><div class="wrap"><b>Garsoore</b> — garsooraha u dhexeeya iibsadaha iyo iibiyaha. · business.garsoore.com</div></footer>
+</body>
+</html>

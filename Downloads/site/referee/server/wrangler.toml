@@ -1,0 +1,12 @@
+name = "garsoore-china-proxy"
+main = "china-proxy.js"
+compatibility_date = "2025-01-01"
+
+# Custom domain is required for the Cache API to work (workers.dev does not cache).
+# routes = [{ pattern = "china.garsoore.com", custom_domain = true }]
+
+[vars]
+ALLOW_ORIGINS = "https://garsoore.com,https://business.garsoore.com"
+CACHE_SECONDS = "21600"
+
+# Secret (never put this in the file):   npx wrangler secret put APIFY_TOKEN

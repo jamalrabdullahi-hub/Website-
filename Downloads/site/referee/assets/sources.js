@@ -1,0 +1,188 @@
+/* Garsoore — China supply adapters (window.RF.sources), no DOM. Load after catalog.js.
+   One adapter per platform: JD, 1688, Taobao/Tmall, Pinduoduo, Alibaba.com, plus direct Chinese vendors.
+   Every adapter returns the SAME normalised offer shape, so catalogue, pricing, orders and B2B never care where it came from:
+     { platform, ref, url, title, titleZh, brand, modelNo, icon, kg, currency:"CNY",
+       skus:[{ id, label, attrs:{ram,storage,color}, cost }], tiers:[{ minQty, cost }], moq, stock,
+       seller:{ id, name, city, years, rating, verified, factory } }
+   LIVE mode: set RF.sources.config.endpoint to a server proxy (see server/china-proxy.js) holding the platform
+   / aggregator API keys. Browsers must never hold those keys. Without an endpoint, adapters return deterministic demo data. */
+(function () {
+var RF = window.RF, C = RF.catalog;
+
+function rng(seed) { var a = 0; for (var i = 0; i < seed.length; i++) a = (a * 31 + seed.charCodeAt(i)) | 0; return function () { a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* ---------------------------------------------------------------- Chinese vendors (direct + store sellers) */
+var VENDORS = [
+  { id: "V-SZ-001", name: "Shenzhen Huaqiang Mobile Trading", zh: "深圳华强通讯", city: "Shenzhen", years: 9, rating: 4.8, verified: true, factory: false, cats: ["PHN", "ELC"], platforms: ["1688", "direct"] },
+  { id: "V-GZ-002", name: "Guangzhou Baiyun Home Appliance", zh: "广州白云家电", city: "Guangzhou", years: 12, rating: 4.7, verified: true, factory: true, cats: ["APL"], platforms: ["1688", "alibaba"] },
+  { id: "V-YW-003", name: "Yiwu Jinlong Household Goods", zh: "义乌金龙日用品", city: "Yiwu", years: 7, rating: 4.6, verified: true, factory: false, cats: ["HOM", "ELC"], platforms: ["1688", "pdd"] },
+  { id: "V-FS-004", name: "Foshan Shunde Furniture Works", zh: "佛山顺德家具厂", city: "Foshan", years: 15, rating: 4.9, verified: true, factory: true, cats: ["FRN"], platforms: ["1688", "alibaba", "direct"] },
+  { id: "V-HZ-005", name: "Hangzhou Solar Tech", zh: "杭州光伏科技", city: "Hangzhou", years: 6, rating: 4.5, verified: true, factory: true, cats: ["SOL"], platforms: ["1688", "alibaba"] },
+  { id: "V-DG-006", name: "Dongguan Lianxin Computer Parts", zh: "东莞联鑫电脑配件", city: "Dongguan", years: 8, rating: 4.6, verified: false, factory: true, cats: ["CMP", "ELC"], platforms: ["1688", "taobao"] },
+  { id: "V-JD-SELF", name: "JD Self-operated (京东自营)", zh: "京东自营", city: "Beijing", years: 20, rating: 4.9, verified: true, factory: false, cats: ["PHN", "CMP", "APL", "ELC"], platforms: ["jd"] },
+  { id: "V-TM-007", name: "Xiaomi Official Flagship (Tmall)", zh: "小米官方旗舰店", city: "Beijing", years: 11, rating: 4.9, verified: true, factory: false, cats: ["PHN", "ELC", "APL"], platforms: ["taobao"] }
+];
+
+/* ---------------------------------------------------------------- demo supply pool (used when no live endpoint) */
+var POOL = [
+  ["Xiaomi Mi Smart Kettle Pro", "米家恒温电水壶Pro", "Xiaomi", "MJHWSH02YM", "🫖", 199, 1.8, "APL"],
+  ["Baseus 65W GaN charger", "倍思65W氮化镓充电器", "Baseus", "CCGAN65", "🔌", 129, 0.3, "ELC"],
+  ["Dell 27″ monitor P2723D", "戴尔27英寸显示器", "Dell", "P2723D", "🖥️", 1899, 8, "CMP"],
+  ["Ugreen USB-C hub 7-in-1", "绿联七合一扩展坞", "Ugreen", "CM512", "🧩", 159, 0.3, "ELC"],
+  ["Ergonomic office chair", "人体工学办公椅", "Deli", "DL-4930", "🪑", 499, 16, "FRN"],
+  ["Hikvision 4MP CCTV kit (4 cam)", "海康威视监控套装", "Hikvision", "DS-7104", "📷", 1299, 6, "ELC"],
+  ["Philips air fryer 4.1L", "飞利浦空气炸锅", "Philips", "HD9252", "🍳", 599, 5, "APL"],
+  ["Huawei MatePad 11.5", "华为平板MatePad", "Huawei", "BTK-W00", "📲", 1999, 1.1, "CMP"],
+  ["Solar LED street light 200W", "太阳能路灯200W", "", "SL-200", "💡", 268, 9, "SOL"],
+  ["Stainless steel gas stove 2-burner", "不锈钢双灶燃气灶", "", "GS-2B", "🔥", 189, 7, "APL"],
+  ["Men's cotton thobe (khamiis)", "男士棉质长袍", "", "TH-01", "👘", 58, 0.6, "HOM"],
+  ["Plastic chairs stackable (set 10)", "塑料叠椅10把", "", "PC-10", "🪑", 320, 25, "FRN"]
+];
+
+/* ---------------------------------------------------------------- adapters */
+function demoOffer(platform, ref, hint) {
+  var r = rng(platform + ref), row = hint || POOL[Math.floor(r() * POOL.length)];
+  var base = Math.round(row[5] * (0.88 + r() * 0.24)), bulk = platform === "1688" || platform === "alibaba";
+  var vend = VENDORS.filter(function (v) { return v.platforms.indexOf(platform === "tmall" ? "taobao" : platform) >= 0; });
+  var seller = vend.length ? vend[Math.floor(r() * vend.length)] : VENDORS[0];
+  var skus = [{ id: ref + "-A", label: "Standard", attrs: {}, cost: base }];
+  if (r() > 0.5) skus.push({ id: ref + "-B", label: "Pro / weyn", attrs: {}, cost: Math.round(base * 1.22) });
+  return {
+    platform: platform, ref: ref, url: A[platform].url(ref), title: row[0], titleZh: row[1], brand: row[2], modelNo: row[3],
+    icon: row[4], kg: row[6], cat: row[7], currency: "CNY", skus: skus,
+    moq: bulk ? [2, 5, 10, 20][Math.floor(r() * 4)] : 1,
+    tiers: bulk ? [{ minQty: 1, cost: base }, { minQty: 50, cost: Math.round(base * 0.9) }, { minQty: 200, cost: Math.round(base * 0.82) }] : [{ minQty: 1, cost: base }],
+    stock: 50 + Math.floor(r() * 5000), seller: seller, live: false
+  };
+}
+var A = {
+  jd:      { name: "JD.com", zh: "京东", retail: true,  re: /(?:item\.(?:m\.)?jd\.com\/(?:product\/)?|jd\.com\/.*?sku=)(\d{5,})/i, url: function (id) { return "https://item.jd.com/" + id + ".html"; } },
+  "1688":  { name: "1688.com", zh: "阿里巴巴1688", retail: false, re: /1688\.com\/offer\/(\d{5,})/i, url: function (id) { return "https://detail.1688.com/offer/" + id + ".html"; } },
+  taobao:  { name: "Taobao / Tmall", zh: "淘宝/天猫", retail: true, re: /(?:taobao|tmall)\.com\/.*?[?&]id=(\d{5,})/i, url: function (id) { return "https://item.taobao.com/item.htm?id=" + id; } },
+  pdd:     { name: "Pinduoduo", zh: "拼多多", retail: true, re: /(?:yangkeduo|pinduoduo)\.com\/.*?goods_id=(\d{5,})/i, url: function (id) { return "https://mobile.yangkeduo.com/goods.html?goods_id=" + id; } },
+  alibaba: { name: "Alibaba.com", zh: "阿里巴巴国际站", retail: false, re: /alibaba\.com\/product-detail\/[^?#]*?_(\d{6,})\.html/i, url: function (id) { return "https://www.alibaba.com/product-detail/_" + id + ".html"; } }
+};
+var config = { endpoint: (window.GARSOORE_CONFIG && window.GARSOORE_CONFIG.chinaEndpoint) || "", fx: 7.2 };
+
+function identify(url) {
+  url = String(url || "").trim();
+  for (var k in A) { var m = url.match(A[k].re); if (m) return { platform: k, ref: m[1] }; }
+  return null;
+}
+
+/* sync fetch for demo; async live fetch via proxy */
+function fetchOffer(platform, ref, cb) {
+  if (!config.endpoint) return cb(null, demoOffer(platform, ref));
+  fetch(config.endpoint + "/item?platform=" + encodeURIComponent(platform) + "&id=" + encodeURIComponent(ref))
+    .then(function (r) { if (!r.ok) throw new Error("proxy " + r.status); return r.json(); })
+    .then(function (o) { o.live = true; cb(null, o); })
+    .catch(function (err) { cb(err, null); });   // live mode: NEVER substitute demo data for a real product
+}
+
+/* normalise an offer into a Garsoore product; attach to an existing catalogue SKU only on exact identity */
+function toProduct(o) {
+  var existing = C.products.filter(function (p) {
+    return p.sources.some(function (s) { return s.channel === o.platform && s.ref === o.ref; }) ||
+      (o.brand && o.modelNo && p.brand === o.brand && p.modelNo === o.modelNo);
+  })[0];
+  if (existing) {
+    if (!existing.sources.some(function (s) { return s.channel === o.platform && s.ref === o.ref; }))
+      existing.sources.push({ channel: o.platform, ref: o.ref, seller: o.seller.name });
+    return { mode: "catalog", product: existing, offer: o };
+  }
+  var name = A[o.platform].name;
+  var p = { sku: "GRS-TMP-" + o.ref.slice(-5), cat: o.cat || "ELC", brand: o.brand || "", model: (o.brand && o.title.indexOf(o.brand) === 0) ? o.title.slice(o.brand.length).trim() : o.title, modelNo: o.modelNo || "", icon: o.icon || "📦", kg: o.kg || 1,
+    blurb: "Dalab hal mar ah — Garsoore ayaa ka iibsan doona " + name + " oo kuu keeni doona.",
+    specs: [["Il", name], ["Iibiye", (o.seller.verified ? "✓ " : "") + o.seller.city], ["Kayd", o.stock > 100 ? "Badan" : String(o.stock)], ["Celin", "7 maalmood"]],
+    variants: o.skus.map(function (s) { return { vsku: s.id, label: s.label, cost: s.cost }; }),
+    sources: [{ channel: o.platform, ref: o.ref, seller: o.seller.name }], oneoff: true };
+  return { mode: "oneoff", product: p, offer: o };
+}
+
+/* cross-platform search (demo pool; live → proxy /search) */
+function search(q, opts, cb) {
+  opts = opts || {}; q = (q || "").toLowerCase();
+  var plats = opts.platforms || ["jd", "1688", "taobao", "pdd", "alibaba"];
+  if (config.endpoint) {
+    return fetch(config.endpoint + "/search?q=" + encodeURIComponent(q) + "&platforms=" + plats.join(","))
+      .then(function (r) { return r.json(); })
+      .then(function (a) { var core = coreOffers(q, plats); cb(core.concat(Array.isArray(a) ? a : [])); })
+      .catch(function () { cb(coreOffers(q, plats)); });
+  }
+  cb(demoSearch(q, plats));
+}
+function coreOffers(q, plats) {
+  var words = (q || "").toLowerCase().split(/\s+/).filter(Boolean), out = [];
+  C.products.forEach(function (p) {
+    if (!p.core) return;
+    var src = p.sources[0]; if (plats.indexOf(src.channel) < 0) return;
+    var hay = (p.brand + " " + p.model + " " + p.modelNo + " " + p.cat).toLowerCase();
+    if (words.length && !words.every(function (w) { return hay.indexOf(w) >= 0; })) return;
+    var base = p.variants[0].cost, vend = VENDORS.filter(function (v) { return v.name === src.seller; })[0] || VENDORS[0];
+    out.push({ platform: src.channel, ref: p.sku, url: src.url || A[src.channel].url(src.ref || "0"), title: (p.brand ? p.brand + " " : "") + p.model, titleZh: p.sku,
+      brand: p.brand, modelNo: p.modelNo, icon: p.icon, kg: p.kg, cat: p.cat, currency: "CNY",
+      skus: p.variants.map(function (v) { return { id: v.vsku, label: v.label, attrs: {}, cost: v.cost }; }),
+      moq: p.moq || 1, tiers: [{ minQty: 1, cost: base }, { minQty: 50, cost: Math.round(base * .93) }, { minQty: 200, cost: Math.round(base * .86) }],
+      stock: 500, seller: vend, live: false, core: true, verified: p.verified });
+  });
+  return out;
+}
+function demoSearch(q, plats) {
+  var core = coreOffers(q, plats); if (core.length) return core.slice(0, 40);
+  var out = [];
+  POOL.forEach(function (row, i) {
+    var hay = (row[0] + " " + row[1] + " " + row[2] + " " + row[7]).toLowerCase();
+    if (q && !q.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; })) return;
+    plats.forEach(function (pl, j) {
+      if ((i + j) % 2) return; // each item listed on roughly half the platforms
+      var ref = String(600000000000 + i * 1000 + j);
+      out.push(demoOffer(pl, ref, row));
+    });
+  });
+  return out;
+}
+
+/* landed pricing — consumer gets total only; business gets per-unit landed + tier */
+function tierCost(o, qty) { var c = o.tiers[0].cost; o.tiers.forEach(function (t) { if (qty >= t.minQty) c = t.cost; }); return c; }
+function landed(o, qty, mode) {
+  qty = Math.max(qty || 1, o.moq || 1);
+  var unitCny = tierCost(o, qty), kg = (o.kg || 1) * qty;
+  var sea = mode === "sea" || kg > 300;
+  var b = C._breakdown(unitCny * qty, kg);
+  if (sea) { b.intlFreight = kg * 0.45 + 180; b.etaDays = 42; }
+  var total = Math.ceil(b.goods + b.chinaFreight + b.consolidation + b.intlFreight + b.duty + b.margin);
+  return { qty: qty, unitCny: unitCny, total: total, perUnit: Math.round(total / qty * 100) / 100, etaDays: b.etaDays, mode: sea ? "sea" : "air", moq: o.moq };
+}
+
+/* business: send a China procurement RFQ into the existing B2B flow, with Garsoore China as a quoting supplier */
+function procure(o, qty, buyer) {
+  if (!RF.b2b) return { error: "B2B module not loaded." };
+  var L = landed(o, qty);
+  var rfq = RF.b2b.rfqs.post({ buyer: buyer || RF.identity.get() || "Your company", kind: "good", category: "China procurement",
+    title: o.title + " (" + A[o.platform].name + ")", qty: L.qty, unit: "pcs", deliverTo: "Mogadishu", incoterm: "DAP",
+    notes: "Source: " + o.url + " · seller " + o.seller.name, source: { platform: o.platform, ref: o.ref } });
+  RF.b2b.rfqs.quote(rfq.id, { supplier: "Garsoore China Procurement", unitPrice: L.perUnit, qty: L.qty, leadDays: L.etaDays, incoterm: "DAP Mogadishu",
+    note: "Landed, all-in: goods + China freight + consolidation + " + L.mode + " freight + duty." });
+  return { rfq: rfq, landed: L };
+}
+
+RF.sources = { ADAPTERS: A, VENDORS: VENDORS, config: config, identify: identify, fetchOffer: fetchOffer, toProduct: toProduct,
+  search: search, landed: landed, tierCost: tierCost, procure: procure };
+
+/* consumer entry point keeps the same API: RF.china.resolve(url) → { mode, product } | { error } */
+RF.china = {
+  parse: identify,
+  resolve: function (url) {
+    var id = identify(url);
+    if (!id) return { error: "Ku dheji link ka yimid JD, 1688, Taobao/Tmall, Pinduoduo ama Alibaba.com." };
+    var out; fetchOffer(id.platform, id.ref, function (err, o) { out = o ? toProduct(o) : null; }); // sync in demo mode
+    return out || { pending: true, id: id };
+  },
+  resolveAsync: function (url, cb) {
+    var id = identify(url); if (!id) return cb({ error: this.resolve(url).error });
+    fetchOffer(id.platform, id.ref, function (err, o) {
+      if (!o) return cb({ error: "Ma helin macluumaadka alaabtan hadda — waxaad codsan kartaa qiimo rasmi ah.", canQuote: true, id: id, url: url });
+      cb(toProduct(o)); });
+  }
+};
+})();

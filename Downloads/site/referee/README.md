@@ -1,0 +1,157 @@
+# Referee
+
+A rolled-up marketplace for **Somalia** — **Contracts & Tenders, Jobs, Local Services, Marketplace**
+and a **commodity Exchange** — on one board where every counterparty is verified before they can
+post and payment is held until both sides are done.
+
+Localised to the Somali market: locations are Mogadishu, Hargeisa, Bosaso, Kismayo, Berbera, Baidoa,
+Garowe and Beledweyne; prices are in USD (the trade currency); payment/escrow references mobile money
+(EVC Plus / ZAAD / Sahal) and letters of credit / hawala for large lots. Seed data uses real Somali
+institutions and trade categories (FGS ministries, Banadir Regional Administration, WFP, Hormuud,
+Premier Bank, Dahabshiil; solar, boreholes, generators, bajaj, livestock, land).
+
+Static site, no build step. Separate HTML page per board so each page only loads and renders its
+own slice; shared CSS + JS are cached once.
+
+```
+index.html         landing — the boards + B2B + Commodity Exchange
+contracts.html     window.BOARD = "tenders"
+jobs.html          window.BOARD = "jobs"
+services.html      window.BOARD = "services"
+marketplace.html   window.BOARD = "classifieds"
+b2b.html           window.BOARD = "b2b"       — wholesale marketplace: goods + services, RFQ → order
+logistics.html     window.BOARD = "logi"      — freight board: "Just move it" RFQ over air/sea/land lanes
+exchange.html      window.BOARD = "exchange"  — graded-commodity order book
+activity.html      window.BOARD = "activity"  — your listings, deals, B2B orders, freight bookings, RFQs, wallet
+assets/
+  style.css        theme-aware, soft black/white
+  engine.js        operations layer  (window.RF)  — no DOM
+  market.js        commodity-exchange mechanism  (window.RF.market)  — no DOM
+  b2b.js           B2B transaction core  (window.RF.b2b)  — no DOM
+  logistics.js     freight lane board + matching  (window.RF.logi)  — no DOM
+  app.js           UI layer — depends on RF
+```
+
+## Logistics layer — `assets/logistics.js` (`window.RF.logi`)
+
+A freight board built on rails. Shippers press **"Just move it"** → a 12-step guided RFQ
+(`RF.Wizard` with a custom fieldset, dynamic `from`/`to` options per mode). Underneath is the
+mechanism carriers and coordinators actually use: capacity posted against **fixed lanes**.
+
+| Mode | Lanes (both directions) |
+| --- | --- |
+| **Air** | MGQ⇄HGA, MGQ⇄BSA, MGQ⇄GGR, MGQ⇄GLK, MGQ⇄KMU, MGQ⇄BIB, HGA⇄BSA, HGA⇄BBO + MGQ⇄NBO / MGQ⇄JIB feeders |
+| **Sea** | Mogadishu⇄Bosaso, Mogadishu⇄Kismayo, Berbera⇄Bosaso, Berbera⇄Mogadishu, Mogadishu⇄Marka |
+| **Land** | Mogadishu⇄Baidoa / Beledweyne / Kismayo / Galkayo, Galkayo⇄Garowe, Garowe⇄Bosaso, Berbera⇄Hargeisa, Hargeisa⇄Wajaale, Baidoa⇄Doolow, Kismayo⇄Dhobley, Afgooye⇄Baidoa |
+
+- **Capacity** — a carrier posts space on a lane (also on rails): service, equipment, departure,
+  cut-off, transit, **rate basis** (`$/kg` air · `$/MT` `$/m³` `$/TEU` sea · `$/truck` `$/MT` land),
+  rate, min charge, available quantity, reefer / DG flags.
+- **Matching** — `RF.logi.match(shipment)` resolves candidate lanes (or all modes for
+  *Cheapest* / *Fastest*), filters capacity by departure window, space, handling and
+  packaging/equipment compatibility, computes a quote (chargeable weight = IATA volumetric for air,
+  W/M revenue ton for sea, truckloads for land), and ranks by price (or transit for *Fastest*).
+- **Booking** — a deal on the `logi` lifecycle: `BOOKED → CONFIRMED → PICKED_UP → IN_TRANSIT →
+  ARRIVED → DELIVERED → POD → SETTLED` (branches `CANCELLED`, `EXCEPTION`). AWB / BL / CN issued at
+  CONFIRMED, POD at DELIVERED. Escrow held in the business wallet, released to the carrier at SETTLED.
+
+## B2B layer — `assets/b2b.js` (`window.RF.b2b`)
+
+Phase 1 of the "small Somali Alibaba for B2B" plan: a wholesale marketplace whose
+transaction core is built **exchange-ready** from day one, so Phase 3 needs no rewrite —
+just: `RFQ → Quotes → Orders → Standardisation → Warehouse receipt → Bid/Ask`.
+
+| Piece | What it does |
+| --- | --- |
+| **catalogue** | Supplier offers — GOODS + SERVICES — with `unitPrice`, `moq`, `availableQty`, `origin`, `incoterm`, `leadDays`, `warehouse`, optional `grade`/`commodity`. `isStandardized()` flags graded, warehouse-backed goods. |
+| **rfqs** | `post` an RFQ → suppliers `quote` → buyer `accept` → a purchase order is created and the other quotes auto-decline. |
+| **orders** | A confirmed order is a **deal on the `b2b` lifecycle** (`PLACED → ACCEPTED → PROCESSING → READY → SHIPPED → RECEIVED → SETTLED`, branches `CANCELLED` / `DISPUTED`). A **warehouse receipt** is issued at READY, an **invoice** at SHIPPED. Flows through *My activity*. |
+| **wallet** | Per-business escrow wallet. Funds are **held** on order placement, **released** to the supplier at SETTLED, **refunded** on cancel/dispute. Ledger view + demo top-up. |
+| **exchange seam** | `promote(offer)` — a standardised, graded, warehouse-backed good is listed on a **runtime-registered market** on `market.js` (`RF.market.registerMarket`). Same matching engine, same settlement lifecycle as the built-in commodity markets. `commodityQuotes()` powers the *Commodity prices* tab. |
+
+Standardised contracts shipped: **Sesame Seed** (FAQ / B / A par, $/MT) and **White Maize**
+(Feed / Milling par, $/MT), each as a `WR-*` warehouse-receipt market.
+
+Run it from a server (pages share a script), e.g. `python -m http.server` then open
+`http://localhost:8000`.
+
+## Operations layer — `assets/engine.js` (`window.RF`)
+
+Ported from the earlier *Market Cypher* prototype and generalised to four boards.
+
+| Module | What it does |
+| --- | --- |
+| **SCHEMA** | Per-board field definitions (`type`, `required`, `options`, conditional `dependsOn`), the deal **lifecycle** (ordered states + which actor advances each + side branches + terminal effects), and the **verification checklist**. Change a board here — no UI edits. |
+| **store** | `localStorage`-backed CRUD mirroring a DB API (`listings`, `addListing`, `updateListing`, `deals`, `addDeal`, `updateDeal`). Seeds once. `identity` is the auth stand-in. |
+| **verify** | `required(listing)` → checks that apply · `status()` → done/pending + ratio · `publishable()` gate · `approve()` simulates a reviewer. Auto-checks pass from listing content (e.g. a salary range satisfies "pay disclosed"); the rest need a human. |
+| **score** | Deterministic **Referee Score** 0–100 = verification completeness (40) + freshness (20) + transparency (25) + responsiveness (15). Returns `{score, band, factors}`. |
+| **lifecycle** | `states(board)`, `transitions(board, state, actor)`, `create(listing, counterparty)`, `advance(dealId, toState, actor)`. Enforces actor permissions, moves escrow with the state, closes the listing on terminal states like `HIRED` / `COMPLETED`. |
+| **parser** | `parse(board, text)` — paste a job description / tender notice / ad → structured field proposal + confidence + notes. Deterministic regex extractors for money, salary ranges, dates, licence numbers, reference numbers, categories, employment type, condition, etc. Never publishes; the wizard pre-fills from it and the user confirms every field. |
+| **Wizard** | Staged posting flow: board → paste-or-scratch → one field at a time (required first, `dependsOn`-aware) → review → submit. `back()` history, `skip()` for optional fields, `applyProposal(parsed)`, `missingRequired()`, `build()` → listing (enters `in_review`). |
+
+### Board lifecycles
+
+```
+Contracts    NOTICE_OPEN → INTENT_REGISTERED → CLARIFICATIONS → BID_SUBMITTED
+             → UNDER_EVALUATION → AWARDED → CONTRACT_SIGNED      (branch: UNSUCCESSFUL)
+Jobs         OPEN → APPLIED → SCREENING → INTERVIEW → OFFER → HIRED
+             (branches: REJECTED, DECLINED · HIRED closes the listing)
+Services     REQUESTED → ACCEPTED → SCHEDULED → IN_PROGRESS → COMPLETED → RELEASED
+             (branch: DECLINED · escrow releases on RELEASED)
+Marketplace  ENQUIRY → RESERVED → PAYMENT_HELD → INSPECTION → RELEASED → COMPLETED
+             (branches: CANCELLED, REFUNDED · escrow ≥ $500)
+```
+
+## Commodity exchange — `assets/market.js` (`window.RF.market`)
+
+A continuous limit order book for Somalia's export and staple trade. Four markets:
+**Export Livestock (Sheep & Goat), Frankincense (Beeyo), Sesame Seed (Whitish), Red Sorghum
+(Domestic)** — each with a delivery-point list (Berbera / Bosaso / Erigavo / Mogadishu / Marka /
+Kismayo / Baidoa / Beledweyne) and a published **grade-differential schedule**.
+
+- **Par-grade book.** Every order is normalised to the par grade: `parLimit = rawLimit − differential(grade)`.
+  One clean book per (market, delivery point) holds every deliverable grade.
+- **Matching** — price-time priority, best-first, partial fills. A buy crosses a sell when
+  `buy.parLimit ≥ sell.parLimit` **and** the seller's grade is the buyer's required grade *or better*
+  (grade `rank`). Trades print at the resting (passive) order's par price.
+- **Settlement price** = trade par price `+ differential(delivered grade)` — deliver a better grade,
+  earn the premium; a worse grade clears at the discount.
+- Each fill spawns an **exchange settlement** = a deal on the `exchange` lifecycle
+  (`MATCHED → GRADE_SUBMITTED → GRADE_VERIFIED → IN_TRANSIT → DELIVERED → SETTLED`, branch
+  `GRADE_REJECTED`), escrow held from match to settle. These appear on **My activity**.
+
+API: `book`, `depth`, `quote`, `tape`, `submitOrder`, `cancelOrder`, `myOrders`, `ensureSeed`, `reseed`.
+Markets seed a deterministic random book + trade history (mulberry32 keyed by market id) so the
+tape, day range and depth ladder are populated on first load.
+
+```
+Livestock     par Export grade · Cull −18 / Local 2 −7 / Prime export +12       ($/head, 50-head lot)
+Frankincense  par Grade 2 · Fusus −3.50 / Grade 3 −1.75 / Mushuq +4.25          ($/kg, 50 kg sack)
+Sesame        par Grade 1 · FAQ −120 / Grade 2 −45 / Hulled +260                ($/tonne, 5 t lot)
+Sorghum       par Grade 1 · Feed −4.00 / Grade 2 −1.50 / White food +3.00       ($/quintal, 50-quintal lot)
+```
+
+## Demo notes
+
+- All data lives in your browser (`localStorage` key `referee.v1`). "Reset demo data" in the footer wipes it.
+- New listings enter **verification** and stay hidden until every required check clears — use
+  **Simulate reviewer** on *My activity* to clear them.
+- Set your name (top-right) to post listings under it and to appear as a party on deals.
+
+## Garsoore core catalogue (~1,000 SKUs)
+- `data/catalog.csv` is the source of truth — one row per variant, rows sharing a `sku` are one product.
+  Columns: `sku, cat, brand, model, model_no, variant, color, color_hex, cost_cny, kg, moq, source_platform, source_url, supplier, cost_verified, blurb_so`.
+- `python tools/import-catalog.py` validates the CSV and writes `assets/catalog-data.js` (bad rows are reported and skipped).
+- `python tools/gen-catalog.py` created the *starter* list (999 products, placeholder costs). It overwrites the CSV — run it once only.
+- Links for items outside the range become quote requests (`RF.quotes`), priced by staff at `business/quotes.html`.
+
+## Live China data (Apify)
+`server/china-proxy.js` is a Cloudflare Worker that calls Apify actors so the token never reaches the browser:
+1688 detail + search (`automation-lab/1688-scraper`), Taobao/Tmall detail (`zen-studio/taobao-detail-scraper`),
+JD keyword search (`zen-studio/jd-com-search-scraper`). Not covered → the site offers a staff-priced quote request instead:
+JD-by-link, Pinduoduo, Alibaba.com. None of the actors return weight, so freight on live one-offs is an estimate.
+
+1. Create an Apify account, copy an API token, and set a monthly usage limit in the Apify console.
+2. `cd server && npx wrangler secret put APIFY_TOKEN && npx wrangler deploy` (attach a custom domain such as china.garsoore.com — the Cache API needs one).
+3. Put that URL in `assets/config.js` (`chinaEndpoint`). Leave it empty to stay on demo data.
+4. Optional: `python tools/apify-refresh.py --limit 25 --yes` refreshes core-catalogue costs (needs `source_url` filled in). It writes `cost_verified=check`; a person confirms the match.
