@@ -177,7 +177,7 @@ function chrome() {
   } catch (x) { document.documentElement.setAttribute("data-theme", "light"); }
   document.body.insertAdjacentHTML("afterbegin",
     '<header class="site"><div class="wrap bar">' +
-      '<a class="brand" href="' + (biz ? "index.html" : "index.html") + '">' + FLAG + ' Garsoore' + (biz ? ' <span class="bizmark">Ganacsi</span>' : '') + '</a>' +
+      '<a class="brand" href="' + (biz ? "index.html" : "index.html") + '">' + FLAG + '<span class="bname"> Garsoore</span>' + (biz ? ' <span class="bizmark">Ganacsi</span>' : '') + '</a>' +
       '<nav class="nav">' +
         (biz
           ? nl("index.html", "Suuqa ganacsiga", cur === "b2b") + nl("china.html", "Iibsi Shiinaha", window.SHOP === "bizchina", "cnlink") + nl("contracts.html", "Qandaraasyo", cur === "tenders") +
@@ -238,7 +238,7 @@ function chrome() {
 }
 function refreshWho() {
   var n = RF.api && RF.api.remote ? (RF.api.user ? RF.api.user.name.split(" ")[0] : "") : RF.identity.get();
-  document.getElementById("whoBtn").textContent = n ? "👤 " + n : "Gal";
+  var wb = document.getElementById("whoBtn"); wb.textContent = n ? "👤 " + n : "Gal"; wb.classList.toggle("in", !!n); wb.title = n || "Gal";
 }
 function closeModal() { document.getElementById("modal").classList.remove("on"); }
 function closeDrawer() { document.getElementById("drawer").classList.remove("on"); document.getElementById("scrim").classList.remove("on"); }

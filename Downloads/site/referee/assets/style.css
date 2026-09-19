@@ -498,7 +498,7 @@ footer.site b{color:var(--fg);font-weight:650}
   .g-specs,.g-how{grid-template-columns:1fr 1fr}.g-trust{grid-template-columns:1fr}
   .g-bizband{flex-direction:column;align-items:stretch}.g-local,.g-china,.g-chero{padding:24px}
   .g-bi{display:none}.g-price{font-size:24px}.g-buy{padding:12px 16px}
-  .nav{overflow-x:auto;white-space:nowrap;scrollbar-width:none}.lang,#whoBtn{display:none}
+  .nav{overflow-x:auto;white-space:nowrap;scrollbar-width:none}.lang{display:none}
 }
 /* business China procurement */
 .g-otable{display:flex;flex-direction:column;gap:10px}
@@ -646,4 +646,15 @@ footer.site b{color:var(--fg);font-weight:650}
   .g-steps{grid-template-columns:1fr 1fr}
   .ops-funnel div{grid-template-columns:90px 1fr 40px 36px}
   .g-paynote .btn{margin-left:0}
+}
+/* phones: the account button is primary (orders, pickup codes); "sell" moves out of the way */
+@media (max-width:560px){
+  /* row 1: logo · switch · cart · account (icon-sized)   row 2: nav */
+  #postBtn{display:none}
+  .cartbtn{order:3;padding:7px 9px}
+  #whoBtn{order:4;padding:7px 9px;max-width:40px;overflow:hidden;white-space:nowrap;font-size:14px}
+  #whoBtn:not(.in){font-size:12.5px;max-width:none}
+}
+@media (max-width:420px){
+  .brand .bname,.brand .bizmark{display:none}   /* the switch already says "Garsoore | Ganacsi" */
 }

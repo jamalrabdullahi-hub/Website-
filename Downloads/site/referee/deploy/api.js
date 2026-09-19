@@ -146,7 +146,8 @@ export async function handleApi(req, env, url) {
     if (!(req.headers.get("content-type") || "").includes("application/json")) return err("JSON only", 415);
     const origin = req.headers.get("origin");
     if (origin) {
-      const oh = new URL(origin).hostname, apex = url.hostname.replace(/^(www|business)\./, "");
+      let oh = ""; try { oh = new URL(origin).hostname; } catch { return err("Bad origin", 403); }
+      const apex = url.hostname.replace(/^(www|business)\./, "");
       if (!(oh === url.hostname || oh === apex || oh.endsWith("." + apex))) return err("Bad origin", 403);
     }
   }
