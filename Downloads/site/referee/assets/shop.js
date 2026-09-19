@@ -68,7 +68,7 @@ function productView(p, host) {
         '<span class="g-pill ' + (china ? "gold" : "") + '">' + (china ? (src.channel === "web" ? "Garsoore · link ka yimid " + e(RF.sources.hostOf(p.pageUrl || "")) : "Garsoore China · " + chName(src.channel)) + (v.quoted ? " · qiimo rasmi" : p.oneoff ? " · dalab hal mar" : "") : "✓ " + e(src.seller) + " · " + e(src.city)) + '</span>' +
         '<div class="g-sku">' + p.sku + (p.modelNo ? " · " + e(p.modelNo) : "") + '</div>' +
         '<h1>' + e((p.brand ? p.brand + " " : "") + p.model) + '</h1><p class="g-blurb">' + e(p.blurb) + '</p>' +
-        (p.pageUrl ? '<div class="g-eta">Il: <a href="' + e(p.pageUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--pri);font-weight:700">' + e(RF.sources.hostOf(p.pageUrl)) + ' ↗</a></div>' : "") +
+        (p.pageUrl ? '<div class="g-eta">Il: <a href="' + e(p.pageUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link);font-weight:700">' + e(RF.sources.hostOf(p.pageUrl)) + ' ↗</a></div>' : "") +
         (p.variants.length > 1 ? '<div class="g-lbl">Nooca</div><div>' + p.variants.map(function (x, i) {
           return '<button class="g-o' + (i === vi ? " on" : "") + '" data-i="' + i + '">' + (x.hex ? '<i style="background:' + x.hex + '"></i>' : "") + e(x.label) + (x.color && x.color !== "—" ? " · " + e(x.color) : "") + '</button>';
         }).join("") + '</div>' : "") +
@@ -261,7 +261,7 @@ function quotesAdmin(app) {
       '<p class="g-eta" style="max-width:70ch;margin-bottom:14px">Codsiyada alaabta aan katalogga ku jirin. Hubi isku-xigga, qiimee alaabta (tixraac ¥ + rar + canshuur + faa\'iido), kadibna ku qor qiimaha rasmiga ah ee doolarka.</p>' +
       (list.length ? list.map(function (x) {
         return '<div class="g-order"><div class="g-ohead"><div class="g-th">' + x.icon + '</div><div style="flex:1"><b>' + e(x.title) + '</b>' +
-          '<div class="g-eta">' + x.id + ' · <a href="' + e(x.url) + '" target="_blank" rel="noopener" style="color:var(--pri);font-weight:700">' + chName(x.platform) + ' ↗</a> · ' + e(x.seller || "") + ' · ' + x.kg + ' kg · ' + e(x.contact || "aan magac lahayn") + '</div>' +
+          '<div class="g-eta">' + x.id + ' · <a href="' + e(x.url) + '" target="_blank" rel="noopener" style="color:var(--link);font-weight:700">' + chName(x.platform) + ' ↗</a> · ' + e(x.seller || "") + ' · ' + x.kg + ' kg · ' + e(x.contact || "aan magac lahayn") + '</div>' +
           '<div class="g-eta">Qiyaasta nidaamka: ' + (x.estimate == null ? "aan la garanayn" : money(x.estimate)) + '</div></div>' +
           (x.status === "pending" ? '<div class="g-oqty"><label class="g-eta">Qiimo $</label><input type="number" min="1" value="' + (x.estimate == null ? "" : x.estimate) + '" data-t="' + x.id + '"></div>' +
             '<div class="g-oqty"><label class="g-eta">Maalmo</label><input type="number" min="1" value="20" data-d="' + x.id + '"></div>' +
