@@ -162,7 +162,8 @@ function china(app) {
       }
       var o = r.offer, sel = o.seller;
       $("res").innerHTML = '<div class="g-found">✓ ' + (r.mode === "catalog" ? "Waa la aqoonsaday — alaab ku jirta katalogga Garsoore" : "Waa la aqoonsaday — dalab hal mar ah") +
-        ' · ' + e(S.label(o)) + ' · iibiye ' + (sel.verified ? "la hubiyay" : "aan weli la hubin") + '</div><div id="pv"></div>';
+        ' · ' + e(S.label(o)) + ' · iibiye ' + (sel.verified ? "la hubiyay" : "aan weli la hubin") +
+        (o.confidence === "low" ? '<div class="g-eta" style="margin-top:4px;color:var(--fg)">⚠ Macluumaadka bogga ma dhammaystirna — Garsoore ayaa hubinaya alaabta saxda ah ka hor inta aan qiimo bixin.</div>' : "") + '</div><div id="pv"></div>';
       productView(r.product, $("pv"));
     });
   }

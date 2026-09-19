@@ -1,0 +1,13 @@
+{
+  // China supply proxy — development deployment at china.buurwen.com. No secrets here.
+  // Optional secret for Apify-backed routes:  npx wrangler secret put APIFY_TOKEN --config wrangler.dev.jsonc
+  // /link (the generic page reader) works without it.
+  "name": "garsoore-china-dev",
+  "main": "china-proxy.js",
+  "compatibility_date": "2025-09-01",
+  "routes": [{ "pattern": "china.buurwen.com", "custom_domain": true }],
+  "vars": {
+    "ALLOW_ORIGINS": "https://buurwen.com,https://www.buurwen.com,https://business.buurwen.com",
+    "CACHE_SECONDS": "21600"
+  }
+}

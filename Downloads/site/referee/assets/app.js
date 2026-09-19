@@ -158,7 +158,9 @@ function chrome() {
   function nl(href, label, on, cls) { return '<a href="' + href + '"' + (on || cls ? ' class="' + (on ? "on " : "") + (cls || "") + '"' : "") + '>' + label + '</a>'; }
   /* two surfaces: consumer at the root (garsoore.com), business under /business/ (business.garsoore.com) */
   var biz = window.SURFACE === "business";
-  var CP = biz ? "../" : "", BP = biz ? "" : "business/";
+  /* On a real domain the two surfaces are subdomains (buurwen.com / business.buurwen.com); locally and on *.workers.dev they are folders. */
+  var H = location.hostname, real = /\.[a-z]{2,}$/i.test(H) && !/(^|\.)(workers|pages)\.dev$/.test(H), root = H.replace(/^business\./, "");
+  var CP = biz ? (real ? location.protocol + "//" + root + "/" : "../") : "", BP = biz ? "" : (real ? location.protocol + "//business." + root + "/" : "business/");
   document.body.classList.toggle("biz", biz);
   document.body.insertAdjacentHTML("afterbegin",
     '<header class="site"><div class="wrap bar">' +

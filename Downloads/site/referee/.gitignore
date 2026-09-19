@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 data/catalog.backup.csv
 .claude/
+deploy/public/
+deploy/node_modules/
+.wrangler/

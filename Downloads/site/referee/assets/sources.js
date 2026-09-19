@@ -92,7 +92,7 @@ function demoWeb(url) {
   var slug = seg.replace(/\.[a-z0-9]{2,5}$/i, "").replace(/[-_+.]+/g, " ").replace(/\d{6,}/g, "").trim();
   var host = u.hostname.replace(/^www\./, "");
   return { platform: "web", ref: url, url: url, title: slug.length > 3 ? slug.replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); }) : host, titleZh: "", brand: "", modelNo: "",
-    icon: "🔗", kg: 1, kgGuess: true, cat: "ELC", currency: "CNY", moq: 1, stock: 0, live: false, demoWeb: true,
+    icon: "🔗", kg: 1, kgGuess: true, cat: "ELC", currency: "CNY", moq: 1, stock: 0, live: false, demoWeb: true, confidence: "low",
     skus: [{ id: shortId(url) + "-A", label: "Standard", attrs: {}, cost: 0 }], tiers: [{ minQty: 1, cost: 0 }],
     seller: { id: "", name: host, city: "", years: 0, rating: 0, verified: false, factory: false } };
 }

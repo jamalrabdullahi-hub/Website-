@@ -162,3 +162,18 @@ Paste any product link (or a WeChat/Taobao share text) into the home search box 
 - Known product in the core range → normal buyable product page. Anything else → a one-off product page (title, image, source link) with **"Qiimo la sugayo" / ≈ estimate** and a **Codso qiimo rasmi ah** button; staff price it at `business/quotes.html`.
 - Demo mode: title comes from the link's own wording, price stays unknown (nothing is invented).
 - Live mode: `/item` (Apify) first, then the Worker's `/link` page reader (Open Graph + schema.org JSON-LD; SSRF-guarded, honest bot user-agent), then a quote request. Non-CNY page prices are never used as our cost.
+
+## Deploy (development: Buurwen.com on Cloudflare Workers)
+| Address | What |
+|---|---|
+| `buurwen.com` (+ `www` → apex) | consumer site (`garsoore-dev` Worker, static assets) |
+| `business.buurwen.com` | business site — the Worker maps it onto `business/`; shared `/assets/` come from the root |
+| `china.buurwen.com` | China supply proxy (`garsoore-china-dev` Worker) — `/link` works without secrets, `/item` + `/search` need `APIFY_TOKEN` |
+
+```
+python tools/build-site.py --china https://china.buurwen.com   # packages only public files into deploy/public
+cd deploy && npx wrangler deploy                                # site
+cd server && npx wrangler deploy --config wrangler.dev.jsonc    # proxy
+```
+Auth is via the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` environment variables — never in a file. The built site carries `robots.txt` = disallow-all while it is a dev site.
+On a real domain `chrome()` links the two surfaces as subdomains; locally and on `*.workers.dev` they stay folders (`business/`).

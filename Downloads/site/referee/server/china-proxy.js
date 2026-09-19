@@ -63,7 +63,7 @@ export default {
         if (!isPublicUrl(target)) return json({ error: "link not allowed" }, 400, cors);
         const html = await readPage(target);
         if (!html) return json({ error: "page could not be read" }, 502, cors);
-        body = mapLink(parseHtml(html.text, html.finalUrl), html.finalUrl);
+        body = mapLink(parseHtml(html.text, html.finalUrl), html.finalUrl, html.moved);
         if (!body) return json({ error: "no product data on this page" }, 404, cors);
       } else return json({ error: "not found" }, 404, cors);
 
@@ -146,10 +146,19 @@ async function readPage(target) {
     const r = await fetch(target, { redirect: "follow", signal: ctl.signal, headers: {
       "user-agent": "Mozilla/5.0 (compatible; GarsooreBot/1.0; +https://garsoore.com)", "accept": "text/html,application/xhtml+xml", "accept-language": "en,zh;q=0.8,so;q=0.6" } });
     if (!r.ok || !isPublicUrl(r.url || target) || !/html/i.test(r.headers.get("content-type") || "")) return null;
-    const reader = r.body.getReader(), dec = new TextDecoder("utf-8", { fatal: false }); let text = "", n = 0;
-    while (n < 600000) { const { done, value } = await reader.read(); if (done) break; n += value.length; text += dec.decode(value, { stream: true }); }
+    const reader = r.body.getReader(), chunks = []; let n = 0;
+    while (n < 600000) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); n += value.length; }
     try { reader.cancel(); } catch {}
-    return { text, finalUrl: r.url || target };
+    const buf = new Uint8Array(n); let off = 0; for (const c of chunks) { buf.set(c, off); off += c.length; }
+    const head = /charset=["']?([\w-]+)/i.exec(r.headers.get("content-type") || "");
+    const sniff = /<meta[^>]+charset=["']?\s*([\w-]+)/i.exec(new TextDecoder("latin1").decode(buf.subarray(0, 4096)));
+    const label = ((head && head[1]) || (sniff && sniff[1]) || "utf-8").toLowerCase();
+    let text; try { text = new TextDecoder(label).decode(buf); } catch { text = new TextDecoder("utf-8").decode(buf); }
+    // Did the site send us somewhere else (login / risk-control / homepage)? Then the page is NOT the product we were asked for.
+    const a = new URL(target), b = new URL(r.url || target), reg = h => h.split(".").slice(-2).join(".");
+    const cleanP = p => p.replace(/\/+$/, "").toLowerCase();
+    if (reg(a.hostname) !== reg(b.hostname)) return null;
+    return { text, finalUrl: r.url || target, moved: cleanP(a.pathname) !== cleanP(b.pathname) };
   } catch { return null; } finally { clearTimeout(t); }
 }
 const ent = v => String(v == null ? "" : v).replace(/&(#x?[0-9a-f]+|amp|lt|gt|quot|apos|nbsp);/gi, (m, g) => {
@@ -176,13 +185,15 @@ export function parseHtml(html, pageUrl) {
   try { image = image ? new URL(image, pageUrl).href : ""; } catch { image = ""; }
   const price = offer.price || offer.lowPrice || metaContent(html, "product:price:amount") || metaContent(html, "og:price:amount");
   const cur = String(offer.priceCurrency || metaContent(html, "product:price:currency") || metaContent(html, "og:price:currency") || "").toUpperCase();
-  return { title, image, brand: ent(pick(p.brand) || metaContent(html, "product:brand")), modelNo: ent(p.mpn || p.sku || ""), price: num(price), currency: cur,
+  const productLike = !!p.name || /product/i.test(metaContent(html, "og:type"));
+  return { title, image, productLike, brand: ent(pick(p.brand) || metaContent(html, "product:brand")), modelNo: ent(p.mpn || p.sku || ""), price: num(price), currency: cur,
            description: ent(metaContent(html, "og:description") || p.description || "").slice(0, 300) };
 }
-export function mapLink(d, url) {
+export function mapLink(d, url, moved) {
   if (!d.title) return null;
   const host = new URL(url).hostname.replace(/^www\./, ""), cny = d.currency === "CNY" || d.currency === "RMB", cost = cny ? d.price : 0;
-  return base("web", url, url, d.title, "", { brand: d.brand, modelNo: d.modelNo, image: d.image, icon: "🔗", description: d.description,
+  // "high" only when the page itself says it is a product AND we were not redirected away from the requested address
+  return base("web", url, url, d.title, "", { confidence: d.productLike && !moved ? "high" : "low", brand: d.brand, modelNo: d.modelNo, image: d.image, icon: "🔗", description: d.description,
     skus: [{ id: "web-A", label: "Standard", attrs: {}, cost }], tiers: [{ minQty: 1, cost }],
     priceOriginal: d.price || 0, currencyOriginal: d.currency || "",          // non-CNY prices are shown to staff, never used as our cost
     seller: { id: "", name: host, city: "", years: 0, rating: 0, verified: false, factory: false } });
