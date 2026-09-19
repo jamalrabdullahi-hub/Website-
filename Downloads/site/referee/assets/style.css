@@ -11,16 +11,18 @@
   --r:12px;
   --fd:"Playfair Display",Georgia,serif; --fb:Manrope,ui-sans-serif,"Segoe UI",sans-serif;
 }
-@media (prefers-color-scheme:dark){
-  :root{
+/* Light (cream / beige) is ALWAYS the default — the site does not follow the device's dark mode.
+   Dark stays available on demand: <html data-theme="dark"> (or ?theme=dark, see app.js). */
+:root[data-theme="dark"]{
     --bg:#1E1915; --fg:#F0E7DA; --muted:#B0A291; --faint:#7C6F61;
     --line:#3A3129; --line-2:#2A231D; --surface:#2A231D; --chip:#332A22;
     --card:#26201B; --inverse-fg:#1E1915; --btn:#D6C08F;
     --pri:#D6C08F; --pri-2:#C9B27A; --pri-soft:#3A3323; --pri-ink:#1E1915; --pri-line:#A48A55; --link:#E4C98F;
     --gold:#D4AE4A; --gold-soft:#3A3120; --silver:#6E7178; --silver-soft:#34302C;
     --up:#6DB585; --down:#D8695F;
-  }
 }
+:root{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-font-smoothing:antialiased}
 body{background:var(--bg);color:var(--fg);

@@ -162,6 +162,11 @@ function chrome() {
   var H = location.hostname, real = /\.[a-z]{2,}$/i.test(H) && !/(^|\.)(workers|pages)\.dev$/.test(H), root = H.replace(/^business\./, "");
   var CP = biz ? (real ? location.protocol + "//" + root + "/" : "../") : "", BP = biz ? "" : (real ? location.protocol + "//business." + root + "/" : "business/");
   document.body.classList.toggle("biz", biz);
+  /* cream/beige (light) is the default; dark is opt-in only:  ?theme=dark  (remembered)  /  ?theme=light  (back) */
+  try {
+    var th = new URLSearchParams(location.search).get("theme"); if (th) localStorage.setItem("garsoore.theme", th === "dark" ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", localStorage.getItem("garsoore.theme") === "dark" ? "dark" : "light");
+  } catch (x) { document.documentElement.setAttribute("data-theme", "light"); }
   document.body.insertAdjacentHTML("afterbegin",
     '<header class="site"><div class="wrap bar">' +
       '<a class="brand" href="' + (biz ? "index.html" : "index.html") + '">' + FLAG + ' Garsoore' + (biz ? ' <span class="bizmark">Ganacsi</span>' : '') + '</a>' +
@@ -183,7 +188,7 @@ function chrome() {
   document.body.insertAdjacentHTML("beforeend",
     '<footer class="site"><div class="wrap fgrid">' +
       '<div><b>Garsoore</b> — garsooraha u dhexeeya iibsadaha iyo iibiyaha. Prototype · xogtu waxay ku jirtaa browser-kaaga. ' +
-        '<a href="#" id="resetBtn" style="text-decoration:underline">Dib u deji xogta</a></div>' +
+        '<a href="#" id="resetBtn" style="text-decoration:underline">Dib u deji xogta</a>' + (window.GARSOORE_CONFIG && GARSOORE_CONFIG.build ? ' <span style="opacity:.6">· build ' + GARSOORE_CONFIG.build + '</span>' : '') + '</div>' +
       (biz ? '<div><a href="' + CP + 'index.html">garsoore.com</a> · <a href="' + CP + 'china.html">Ka iibso Shiinaha</a> · <a href="' + CP + 'marketplace.html">Xayeysiis</a></div>'
            : '<div><a href="' + BP + 'index.html">business.garsoore.com</a> · <a href="' + BP + 'contracts.html">Qandaraasyo</a> · <a href="' + BP + 'logistics.html">Rar</a> · <a href="' + BP + 'exchange.html">Suuqa badeecada</a></div>') +
     '</div></footer>' +
