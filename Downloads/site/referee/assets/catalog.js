@@ -229,6 +229,11 @@ RF.recent = {
 /* promo codes (demo) — percentage off goods, never off delivery */
 RF.promo = { CODES: { SOODHAWOW: 0.05 }, check: function (c) { return RF.promo.CODES[String(c || "").toUpperCase().replace(/\s+/g, "")] || 0; } };
 /* Somali mobile-money numbers: +252 / 0 prefix optional, 61/62/63/65/68/69/71/77/90 operators, 7 digits after */
+RF.phoneFmt = function (s) {
+  var d = String(s || "").replace(/\D/g, "");
+  if (d.length === 12 && d.indexOf("252") === 0) return "+252 " + d.slice(3, 5) + " " + d.slice(5, 8) + " " + d.slice(8);
+  return String(s || "");
+};
 RF.phoneOk = function (s) { return /^(?:\+?252|0)?\s?(61|62|63|65|68|69|71|77|90)\d{7}$/.test(String(s || "").replace(/[\s-]/g, "")); };
 
 /* ---------------------------------------------------------------- staff-priced quote requests

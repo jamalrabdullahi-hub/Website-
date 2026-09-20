@@ -240,11 +240,7 @@ function chrome() {
     if (u && u.mustChangePin && RF.pinGate) RF.pinGate();
   });
   document.getElementById("whoBtn").onclick = function () {
-    if (RF.api && RF.api.remote) {
-      if (!RF.api.user) return RF.authUI.open().catch(function () {});
-      if (confirm("Waxaad ku jirtaa sidii " + RF.api.user.name + " (" + RF.api.user.phone + "). Ka bax?")) RF.api.logout().then(function () { location.reload(); });
-      return;
-    }
+    if (RF.api && RF.api.remote) { location.href = (biz ? "" : "") + "account.html"; return; }
     var n = prompt("Your name or organisation (used to sign your listings and track your deals):", RF.identity.get());
     if (n != null) { RF.identity.set(n.trim()); refreshWho(); if (window.BOARD === "activity") activityPage(); }
   };
@@ -257,7 +253,7 @@ function chrome() {
 }
 function refreshWho() {
   var n = RF.api && RF.api.remote ? (RF.api.user ? RF.api.user.name.split(" ")[0] : "") : RF.identity.get();
-  var wb = document.getElementById("whoBtn"); wb.textContent = n ? "👤 " + n : "Gal"; wb.classList.toggle("in", !!n); wb.title = n || "Gal";
+  var wb = document.getElementById("whoBtn"); wb.textContent = n ? "👤 " + n : (RF.api && RF.api.remote ? "Samee akoon" : "Gal"); wb.classList.toggle("in", !!n); wb.title = n || "Gal";
 }
 function closeModal() { document.getElementById("modal").classList.remove("on"); }
 function closeDrawer() { document.getElementById("drawer").classList.remove("on"); document.getElementById("scrim").classList.remove("on"); }

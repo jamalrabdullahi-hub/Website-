@@ -98,7 +98,9 @@ async function newSession(env, url, userId) {
   return sessionCookie(url, token, 30 * 86400);
 }
 const pubUser = u => u && { id: u.id, name: u.name, phone: mask(u.phone), role: u.role, refCode: u.ref_code, credit: u.credit,
-  status: u.status || "active", mustChangePin: !!u.must_change_pin };
+  status: u.status || "active", mustChangePin: !!u.must_change_pin,
+  /* saved details, so nobody types their address twice (only ever sent to the person themselves) */
+  profile: { city: u.city || "", address: u.address || "", payMethod: u.pay_method || "", payPhone: u.pay_phone || "", phoneFull: "+" + u.phone, joined: u.created_at } };
 
 function merchants(env) {
   return { "EVC Plus": env.MERCHANT_EVC || "", "ZAAD": env.MERCHANT_ZAAD || "", "Sahal": env.MERCHANT_SAHAL || "", "Premier Wallet": env.MERCHANT_PREMIER || "" };
@@ -247,7 +249,7 @@ export async function handleApi(req, env, url) {
 
     if (path === "/health") return json({ ok: true, time: now() });
     if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
-    if (path === "/me") return json({ user: pubUser(user) });
+    if (path === "/me" && M === "GET") return json({ user: pubUser(user) });
 
     /* ---- auth: phone + PIN (SMS/WhatsApp OTP is a launch item once a provider is contracted) */
     if (path === "/auth/register" && M === "POST") {
@@ -365,6 +367,8 @@ export async function handleApi(req, env, url) {
         orders.push(o.id);
       });
       if (creditTotal) stmts.push(env.DB.prepare("UPDATE users SET credit = credit - ? WHERE id = ? AND credit >= ?").bind(creditTotal, user.id, creditTotal));
+      /* save what they just used, so the next checkout is two taps */
+      stmts.push(env.DB.prepare("UPDATE users SET pay_method = ?, pay_phone = ?, address = COALESCE(NULLIF(?, ''), address) WHERE id = ?").bind(b.pay, payPhone, delivery ? address : "", user.id));
       stmts.push(env.DB.prepare("INSERT INTO events (name, sid, at) VALUES ('order', ?, ?)").bind(String(b.sid || "").slice(0, 40), t));
       await env.DB.batch(stmts);
       const amount = sub - Math.min(Math.round(sub * pct), cap) + fee - creditTotal;
@@ -422,6 +426,19 @@ export async function handleApi(req, env, url) {
         : await env.DB.prepare("SELECT * FROM quotes WHERE user_id = ? ORDER BY created_at DESC LIMIT 100").bind(user.id).all();
       return json({ quotes: r.results.map(q => ({ id: q.id, status: q.status, title: q.title, icon: q.icon, platform: q.platform, ref: q.ref, url: q.url, seller: q.seller, kg: q.kg, estimate: q.estimate,
         note: q.note, total: q.total, etaDays: q.eta_days, staffNote: q.staff_note, createdAt: q.created_at, quotedAt: q.quoted_at, contact: staff && q.u_name ? q.u_name + " · +" + q.u_phone : undefined })) });
+    }
+
+    /* ---------------------------------------------------------------- account: saved details */
+    if (path === "/me" && M === "POST") {
+      const b = await body(req), name = String(b.name || "").trim().slice(0, 60);
+      if (name && name.length < 2) return err("Magacu waa gaaban yahay.");
+      const payPhone = b.payPhone ? normPhone(b.payPhone) : null;
+      if (b.payPhone && !payPhone) return err("Lambarka lacag bixinta ma saxna.");
+      if (b.payMethod && !PAYS.includes(b.payMethod)) return err("Habka lacag bixinta ma saxna.");
+      await env.DB.prepare("UPDATE users SET name = COALESCE(?, name), city = ?, address = ?, pay_method = ?, pay_phone = COALESCE(?, pay_phone) WHERE id = ?")
+        .bind(name || null, String(b.city || "").slice(0, 40), String(b.address || "").slice(0, 200), b.payMethod || null, payPhone, user.id).run();
+      const row = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
+      return json({ user: pubUser(row) });
     }
 
     /* ---------------------------------------------------------------- account: change your own PIN */

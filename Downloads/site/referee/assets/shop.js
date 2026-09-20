@@ -179,6 +179,9 @@ var PAYS = { "EVC Plus": "61/77", "ZAAD": "63", "Sahal": "90", "Premier Wallet":
 function checkout(items, fromCart) {
   var st = { delivery: false, pay: "EVC Plus", payPhone: "", promo: "", disc: 0, cap: Infinity, discCode: "", address: "", useCredit: true, name: "", pin: "" };
   try { var mem = JSON.parse(localStorage.getItem("garsoore.checkout")) || {}; st.pay = mem.pay || st.pay; st.payPhone = mem.phone || ""; st.address = mem.address || ""; } catch (x) {}
+  /* a signed-in person has these saved on their account, so a new device is still two taps */
+  var prof = RF.api.user && RF.api.user.profile;
+  if (prof) { st.pay = prof.payMethod || st.pay; st.payPhone = (RF.phoneFmt && prof.payPhone ? RF.phoneFmt(prof.payPhone) : prof.payPhone) || st.payPhone; st.address = prof.address || st.address; }
   var box = $("modalBox"), A = RF.api;
   RF.api.ev("checkout");
   function nm(p) { return (p.brand ? p.brand + " " : "") + p.model; }
@@ -522,9 +525,9 @@ RF.shopUI = function (page, h) {
   /* the pro screens for agents / FBG / China sourcing only render in Xirfadle mode */
   if (RF.mode && RF.mode.simple() && RF.simpleUI && ["agents", "fbg", "bizchina"].indexOf(page) >= 0)
     return RF.api.ready.then(function () { RF.simpleUI(app, { agents: "agent", fbg: "fbg", bizchina: "china" }[page]); });
-  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); }, admin: function (a) { RF.adminUI(a, qs("tab") || "home"); }, fbg: function (a) { RF.fbgUI(a); } }[page] || home)(app); };
+  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); }, admin: function (a) { RF.adminUI(a, qs("tab") || "home"); }, fbg: function (a) { RF.fbgUI(a); }, account: function (a) { RF.accountUI(a); } }[page] || home)(app); };
   /* staff pages need to know whether the API is there before drawing; shop pages draw immediately */
-  if ((page === "quotes" || page === "ops" || page === "agents" || page === "admin" || page === "fbg") && RF.api) RF.api.ready.then(run);
+  if ((page === "quotes" || page === "ops" || page === "agents" || page === "admin" || page === "fbg" || page === "account") && RF.api) RF.api.ready.then(run);
   else if (RF.backend && ["home", "product", "cart", "china"].indexOf(page) >= 0)
     RF.backend.listings().then(function (l) { C.addLive(l || []); }).catch(function () {}).then(run);
   else run();
