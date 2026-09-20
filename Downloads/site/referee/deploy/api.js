@@ -298,6 +298,15 @@ export async function handleApi(req, env, url) {
       return json({ ok: true });
     }
 
+    /* public: FBG stock for sale on the consumer marketplace (local goods, ready today) */
+    if (path === "/listings" && M === "GET") {
+      const r = await env.DB.prepare(`SELECT i.id, i.title, i.cat, i.icon, i.image, i.price, i.qty_available, u.name seller
+        FROM fbg_inventory i JOIN users u ON u.id = i.user_id
+        WHERE i.disposition = 'listed' AND i.qty_available > 0 AND i.price > 0 ORDER BY i.updated_at DESC LIMIT 200`).all();
+      return json({ listings: r.results.map(x => ({ id: x.id, title: x.title, cat: x.cat || "HOM", icon: x.icon || "📦", image: x.image || "",
+        price: x.price, qty: x.qty_available, seller: x.seller })) });
+    }
+
     if (!user) return err("Fadlan gal (login).", 401);
     if (user.status === "suspended") return err("Akoonkan waa la hakiyay.", 403);
 
@@ -638,15 +647,6 @@ export async function handleApi(req, env, url) {
       }
       return err("Ficil aan la aqoon.");
     }
-    /* public: FBG stock for sale on the consumer marketplace (local goods, ready today) */
-    if (path === "/listings" && M === "GET") {
-      const r = await env.DB.prepare(`SELECT i.id, i.title, i.cat, i.icon, i.image, i.price, i.qty_available, u.name seller
-        FROM fbg_inventory i JOIN users u ON u.id = i.user_id
-        WHERE i.disposition = 'listed' AND i.qty_available > 0 AND i.price > 0 ORDER BY i.updated_at DESC LIMIT 200`).all();
-      return json({ listings: r.results.map(x => ({ id: x.id, title: x.title, cat: x.cat || "HOM", icon: x.icon || "📦", image: x.image || "",
-        price: x.price, qty: x.qty_available, seller: x.seller })) });
-    }
-
     /* ---- staff: the China facility and the Somali warehouse */
     if (path.startsWith("/ops/fbg")) {
       if (!staff) return err("Shaqaalaha Garsoore oo keliya.", 403);
