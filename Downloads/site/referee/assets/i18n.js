@@ -250,9 +250,9 @@ var DICT = {
   "Maxaad u samaynaysaa akoon?": "Why create an account?",
   "Dalabkaaga la soco": "Follow your order",
   "— halka uu marayo iyo koodhka qaadashada.": "— where it is, and your pickup code.",
-  "Hal mar ku qor": "Type it once",
+  "Hal mar ku qor": "Type it once:",
   "cinwaankaaga iyo lambarka lacag bixinta — mar dambe laba taabasho ayaa ku filan.":
-    "your address and payment number — after that two taps is enough.",
+    "your address and payment number. After that, two taps is enough.",
   "Lacagtaadu way xajisan tahay": "Your money is held",
   "ilaa aad alaabta hesho — cabasho 7 maalmood.": "until you receive the goods — 7-day complaints.",
   "Hal akoon": "One account", "Garsoore.com iyo Ganacsi.": "for Garsoore.com and Business.",
