@@ -183,6 +183,34 @@ function chinaAddress(env, suite) {
     : "(dev) Cinwaanka bakhaarka Shiinaha weli lama dejin — ha dirin alaab. Kood: " + suite;
 }
 const FX = 7.2;                       // CNY per USD — the rate the catalogue prices were built with
+
+/* ---- what a shipment actually costs Garsoore under the contracted rate card.
+   This is the same arithmetic as assets/shipping.js, against the same generated cards, and it exists because the
+   consignment ledger must be costed at the contracted rate rather than at the FBG price list. Those are different
+   numbers for a good reason: FBG.airPerKg is what Garsoore CHARGES a merchant to move their goods; the rate card is
+   what Garsoore PAYS to move anything. Costing our own cargo at the sell price is how a business convinces itself it
+   is profitable when it is not. */
+export function rateCardFor(mode, at) {
+  const when = (at || new Date().toISOString()).slice(0, 10);
+  const live = RATES.cards.filter(c => c.mode === mode && c.status !== "expired" && c.effectiveFrom <= when && (!c.effectiveUntil || c.effectiveUntil >= when));
+  const pool = live.length ? live : RATES.cards.filter(c => c.mode === mode && c.status !== "expired");
+  return pool.sort((a, b) => a.effectiveFrom < b.effectiveFrom ? 1 : -1)[0] || null;
+}
+export function shipCost(mode, kg, cbm, at, cardId) {
+  const card = cardId ? RATES.cards.find(c => c.id === cardId) : rateCardFor(mode, at);
+  if (!card) return null;
+  kg = +kg || 0; cbm = +cbm || 0;
+  let chargeable;
+  if (card.mode === "air") chargeable = Math.max(kg, card.volumetricDivisor > 0 ? (cbm * 1e6) / card.volumetricDivisor : 0);
+  else chargeable = Math.max(cbm, card.weightCapPerCbm > 0 ? kg / card.weightCapPerCbm : 0);
+  chargeable = Math.max(chargeable, card.minimumBillable || 0);
+  const step = card.roundingUnit || 0;
+  if (step > 0) chargeable = Math.ceil(chargeable / step - 1e-9) * step;
+  let rate = card.tiers[0].rate;
+  card.tiers.forEach(t => { if (chargeable >= t.from) rate = t.rate; });
+  const cost = Math.max(rate * chargeable, card.minimumCharge || 0);
+  return { cost: Math.round(cost * 100) / 100, chargeable: Math.round(chargeable * 1000) / 1000, rate, unit: card.unit, rateCardId: card.id };
+}
 const procOut = r => ({ id: r.id, orderId: r.order_id, sku: r.sku, title: r.title, qty: r.qty, platform: r.platform,
   sourceUrl: r.source_url, supplier: r.supplier, targetCny: r.target_cny, paidCny: r.paid_cny, tracking: r.tracking,
   cartons: r.cartons, kg: r.kg, cbm: r.cbm, consignment: r.consignment, state: r.state, note: r.note,
@@ -856,23 +884,34 @@ export async function handleApi(req, env, url) {
         const pos = (await env.DB.prepare("SELECT * FROM procurement WHERE consignment = ?").bind(cn.id).all()).results;
         if (m[2] === "ship") {
           if (cn.state !== "OPEN") return err("Horey ayaa loo diray.");
-          const cost = +b.cost > 0 ? +b.cost : (cn.kg || 0) * (cn.mode === "air" ? FBG.airPerKg : FBG.seaPerKg);
+          /* A real invoice from the provider wins (b.cost). Otherwise the contracted rate card prices it from what
+             the facility actually weighed and measured — never the FBG sell price, and never weight alone. */
+          const q = shipCost(cn.mode, cn.kg, cn.cbm, t);
+          const cost = +b.cost > 0 ? +b.cost : (q ? q.cost : (cn.kg || 0) * (cn.mode === "air" ? FBG.airPerKg : FBG.seaPerKg));
           const stmts = [env.DB.prepare("UPDATE fbg_consignments SET state = 'SHIPPED', awb = ?, cost_usd = ?, eta = ?, updated_at = ? WHERE id = ?")
             .bind(String(b.awb || "").slice(0, 40), +cost.toFixed(2), String(b.eta || "").slice(0, 30), t, cn.id)];
-          const totalKg = rows.concat(pos).reduce((s, r) => s + (r.kg || 0), 0) || 1;
+          /* Apportion by each item's own chargeable quantity. Sharing a bulky item's freight by actual weight makes
+             the dense cargo in the same consignment subsidise it, which quietly misprices both. */
+          const chargeableOf = r => { const c = shipCost(cn.mode, r.kg, r.cbm, t); return c ? c.chargeable : (r.kg || 0); };
+          const totalKg = rows.concat(pos).reduce((s, r) => s + chargeableOf(r), 0) || 1;
           rows.forEach(r => {                                   // freight is shared out by weight
-            const share = +(cost * (r.kg || 0) / totalKg).toFixed(2), h = J(r.history) || [];
+            const share = +(cost * chargeableOf(r) / totalKg).toFixed(2), h = J(r.history) || [];
             h.push({ state: "SHIPPED", at: t, by: user.name });
             stmts.push(env.DB.prepare("UPDATE fbg_inbound SET state = 'SHIPPED', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, r.id),
               env.DB.prepare("INSERT INTO fbg_ledger (id,user_id,at,kind,amount,ref,note) VALUES (?,?,?, 'freight', ?, ?, ?)")
                 .bind(rid("LG-", 6), r.user_id, t, -share, r.id, cn.mode + " " + (r.kg || 0) + " kg · " + cn.id));
           });
           for (const r of pos) {                                 // our own goods: the freight share lands on the order
-            const share = +(cost * (r.kg || 0) / totalKg).toFixed(2), h = J(r.history) || [];
+            const share = +(cost * chargeableOf(r) / totalKg).toFixed(2), h = J(r.history) || [];
             h.push({ state: "SHIPPED", at: t, by: user.name });
-            const ord = await env.DB.prepare("SELECT econ, history FROM orders WHERE id = ?").bind(r.order_id).first();
+            const ord = await env.DB.prepare("SELECT econ, history, ship_cost FROM orders WHERE id = ?").bind(r.order_id).first();
             const econ = (ord && J(ord.econ)) || {};
             econ.freightActual = share;
+            /* What we quoted the customer against what the lane really cost. Garsoore absorbs the difference by
+               design, but absorbing it silently is how an estimate error survives for a year, so it is recorded on
+               every order and totalled in the console. */
+            econ.freightQuoted = ord && ord.ship_cost != null ? +ord.ship_cost : null;
+            econ.freightVariance = econ.freightQuoted != null ? +(share - econ.freightQuoted).toFixed(2) : null;
             econ.goodsActual = r.paid_cny ? +(r.paid_cny / FX).toFixed(2) : null;
             if (econ.goodsActual != null) econ.grossActual = +((econ.revenue || 0) + (econ.cogs || 0) - econ.goodsActual - share - (econ.deliveryCost || 0) - (econ.payFee || 0)).toFixed(2);
             const oh = (ord && J(ord.history)) || []; oh.push({ state: "IN_TRANSIT", at: t, by: user.name });
