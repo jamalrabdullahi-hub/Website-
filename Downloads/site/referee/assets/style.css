@@ -709,3 +709,14 @@ footer.site b{color:var(--fg);font-weight:650}
 .ad-tbl.log>div{grid-template-columns:150px 130px 130px 130px 1fr}
 .ad-tbl span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:760px){ .ad-tbl>div,.ad-tbl.log>div{grid-template-columns:1fr 1fr} .ad-sel{flex:1} }
+
+/* ---------------------------------------------------------------- FBG */
+.fb-addr{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
+.fb-addr>div{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.fb-addrtxt{font-size:13px;line-height:1.5;margin:4px 0 8px}
+.fb-addr .g-amt{font-size:26px}.fb-addr .g-amt.neg{color:var(--down)}
+.fb-photos{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.fb-photos img{width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.fb-led>div{grid-template-columns:90px 150px 90px 110px 1fr}
+.fb-led .neg{color:var(--down);font-weight:700}.fb-led .pos{color:var(--up);font-weight:700}
+@media (max-width:760px){ .fb-addr{grid-template-columns:1fr} }

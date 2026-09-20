@@ -75,6 +75,21 @@ RF.catalog = {
       return q.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; });
     });
   },
+  /* FBG stock: goods owned by an importer, sitting in the Garsoore warehouse in Mogadishu. They are sold like any
+     local product (ready today, no freight), and the price is whatever the owner set. Merged in at page load. */
+  addLive: function (list) {
+    var have = {};
+    P.forEach(function (p) { have[p.sku] = 1; });
+    list.forEach(function (x) {
+      if (have[x.id]) return;
+      P.push({ sku: x.id, cat: x.cat || "HOM", brand: "", model: x.title, modelNo: "", icon: x.icon || "📦", image: x.image || "", kg: 0,
+        blurb: "Diyaar maanta — bakhaarka Garsoore, Muqdisho. Waxaa leh iibiye la hubiyay; Garsoore ayaa hayn doona lacagtaada ilaa aad qaadato.",
+        specs: [["Halka ay taallo", "Bakhaarka Garsoore · Muqdisho"], ["Diyaar", "Maanta"], ["Kayd", x.qty + " xabbo"], ["Celin", "7 maalmood"]],
+        variants: [{ vsku: x.id + "-1", label: "Standard", price: x.price }],
+        sources: [{ channel: "domestic", seller: "FBG · " + x.seller, city: "Muqdisho" }], fbg: true, verified: true, stock: x.qty });
+    });
+    return list.length;
+  },
   /* one product from each category in turn — a mixed default feed instead of 200 phones in a row */
   mixed: function (list) {
     var by = {}, ids = [], out = [];

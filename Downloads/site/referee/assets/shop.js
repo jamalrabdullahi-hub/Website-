@@ -118,7 +118,7 @@ function productView(p, host, quoteId) {
       (isReq ? '<div class="g-found" style="margin-top:12px">' + (pr.total == null ? 'Alaabtan ma ahan kuwa katalogga, qiimana lama helin. ' : 'Alaabtan ma ahan kuwa katalogga. Qiimahan waa qiyaas — ') +
         'koox Garsoore ah ayaa hubinaysa oo kuu soo diraysa qiimo rasmi ah (saacado gudahood), kadibna waad iibsan kartaa.</div>' : "");
     [].forEach.call(host.querySelectorAll(".g-o"), function (b) { b.onclick = function () { vi = +b.dataset.i; render(); }; });
-    [].forEach.call(host.querySelectorAll("[data-dq]"), function (b) { b.onclick = function () { qty = Math.max(1, Math.min(99, qty + +b.dataset.dq)); render(); }; });
+    [].forEach.call(host.querySelectorAll("[data-dq]"), function (b) { b.onclick = function () { qty = Math.max(1, Math.min(p.stock || 99, qty + +b.dataset.dq)); render(); }; });
     if ($("addBtn")) $("addBtn").onclick = function () { RF.cart.add(p.sku, vi, qty, quoteId, quoteId ? p : null); RF.api.ev("cart", p.sku); toast("✓ " + qty + " × waa lagu daray dambiisha"); };
     if ($("shareBtn")) $("shareBtn").onclick = function () {
       var url = location.href, t = (p.brand ? p.brand + " " : "") + p.model + " — " + money(pr.total) + " · Garsoore";
@@ -126,7 +126,7 @@ function productView(p, host, quoteId) {
       else window.open("https://wa.me/?text=" + encodeURIComponent(t + " " + url), "_blank", "noopener");
     };
     $("buyBtn").onclick = function () {
-      if (!isReq) return checkout([{ product: p, variant: v, price: pr, line: { qty: qty, quote: quoteId || null } }]);
+      if (!isReq) return checkout([{ product: p, variant: v, price: pr, line: { qty: qty, quote: quoteId || null, fbg: p.fbg ? p.sku : null } }]);
       RF.backend.needUser("Gal si aan qiimaha rasmiga ah kuugu soo dirno.").then(function () { return RF.backend.requestQuote(p); }).then(function (q) {
         RF.api.ev("quote", p.sku);
         $("buyBtn").outerHTML = '<a class="btn g-buy" href="orders.html?quote=' + q.id + '">✓ La diray — eeg Dalabyadayda</a>';
@@ -518,8 +518,12 @@ function quotesAdmin(app) {
 RF.shopUI = function (page, h) {
   e = h.e; toast = h.toast;
   var app = document.getElementById("app");
-  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); }, admin: function (a) { RF.adminUI(a, qs("tab") || "home"); } }[page] || home)(app); };
+  /* FBG stock is live data, so it is fetched before the first paint of any shop page */
+  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); }, admin: function (a) { RF.adminUI(a, qs("tab") || "home"); }, fbg: function (a) { RF.fbgUI(a); } }[page] || home)(app); };
   /* staff pages need to know whether the API is there before drawing; shop pages draw immediately */
-  if ((page === "quotes" || page === "ops" || page === "agents" || page === "admin") && RF.api) RF.api.ready.then(run); else run();
+  if ((page === "quotes" || page === "ops" || page === "agents" || page === "admin" || page === "fbg") && RF.api) RF.api.ready.then(run);
+  else if (RF.backend && ["home", "product", "cart", "china"].indexOf(page) >= 0)
+    RF.backend.listings().then(function (l) { C.addLive(l || []); }).catch(function () {}).then(run);
+  else run();
 };
 })();

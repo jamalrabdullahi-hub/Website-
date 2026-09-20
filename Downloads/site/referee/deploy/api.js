@@ -124,6 +124,32 @@ async function expireUnpaid(env) {
 async function body(req) { try { return await req.json(); } catch { return {}; } }
 
 
+/* ---- FBG (Fulfilment by Garsoore): the importer owns the goods, Garsoore is paid for the rail around them.
+   Fees are charged to the importer's ledger as the goods move; the commission is taken only when something sells. */
+export const FBG = {
+  receivingPerCarton: 1.5,   // scan, photograph, weigh, put away at the China facility
+  storagePerCbmDay: 0.35,    // Mogadishu warehouse
+  freeStorageDays: 30,
+  airPerKg: 7.5,             // charged on consolidated freight (same rates as the catalogue build-up)
+  seaPerKg: 1.1,
+  pickPack: 1,               // per order picked and handed over in Mogadishu
+  commissionPct: 10,         // Garsoore's cut when FBG stock sells on the marketplace
+  chinaCity: "Guangzhou"
+};
+function chinaAddress(env, suite) {
+  return env.FBG_CHINA_ADDRESS
+    ? String(env.FBG_CHINA_ADDRESS).replace("{suite}", suite)
+    : "(dev) Cinwaanka bakhaarka Shiinaha weli lama dejin — ha dirin alaab. Kood: " + suite;
+}
+const inboundOut = r => ({ id: r.id, supplier: r.supplier, platform: r.platform, tracking: r.tracking, title: r.title,
+  qtyExpected: r.qty_expected, qtyReceived: r.qty_received, value: r.value_usd, disposition: r.disposition, state: r.state,
+  cartons: r.cartons, kg: r.kg, cbm: r.cbm, photos: J(r.photos) || [], problem: r.problem, consignment: r.consignment,
+  history: J(r.history) || [], createdAt: r.created_at, updatedAt: r.updated_at });
+const invOut = r => ({ id: r.id, inboundId: r.inbound_id, title: r.title, cat: r.cat, icon: r.icon, image: r.image,
+  qtyTotal: r.qty_total, qtyAvailable: r.qty_available, qtyReserved: r.qty_reserved, qtySold: r.qty_sold,
+  landedUnit: r.landed_unit, price: r.price, disposition: r.disposition, mandateId: r.mandate_id, location: r.location,
+  note: r.note, createdAt: r.created_at });
+
 /* ---- agents: how a mandate's spread is divided (see docs/DOCTRINE.md — the agent's incentive is visible to everyone) */
 export const AGENT = {
   capLiquidity: 15,     // liquidity mandate: the agent may price at most this % past the principal's floor
@@ -163,6 +189,15 @@ async function priceItems(env, user, items) {
       const q = await env.DB.prepare("SELECT * FROM quotes WHERE id = ? AND status = 'quoted' AND (user_id = ? OR user_id IS NULL)").bind(String(it.quote), user.id).first();
       if (!q) throw new Error("Qiimahan rasmiga ah lama helin ama wuu dhacay.");
       out.push({ sku: "GRS-Q-" + q.id.slice(2), vsku: q.id, quoteId: q.id, title: q.title, icon: q.icon || "📦", variant: "", qty, unit: q.total, etaDays: q.eta_days || 20, flow: "china", cogs: null, quoted: true });
+      continue;
+    }
+    if (it.fbg) {                      // someone else's stock, held in the Garsoore warehouse (FBG)
+      const iv = await env.DB.prepare("SELECT * FROM fbg_inventory WHERE id = ? AND disposition = 'listed'").bind(String(it.fbg)).first();
+      if (!iv) return Promise.reject(new Error("Alaabtan hadda lama iibinayo."));
+      if (iv.qty_available < qty) throw new Error("Kaydka: " + iv.qty_available + " ayaa hadhay.");
+      if (iv.user_id === user.id) throw new Error("Alaabtaada adigu ma iibsan kartid.");
+      out.push({ sku: iv.id, vsku: null, fbgId: iv.id, ownerId: iv.user_id, title: iv.title, icon: iv.icon || "📦", variant: "",
+        qty, unit: iv.price, etaDays: 0, flow: "local", cogs: null, seller: "FBG" });
       continue;
     }
     const p = CATALOG[it.sku], v = p && p.variants[Math.floor(+it.vi || 0)];
@@ -205,7 +240,7 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
-    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
+    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
     if (path === "/me") return json({ user: pubUser(user) });
 
     /* ---- auth: phone + PIN (SMS/WhatsApp OTP is a launch item once a provider is contracted) */
@@ -300,15 +335,18 @@ export async function handleApi(req, env, url) {
         const f = k === 0 ? fee : 0;
         const credit = Math.min(creditLeft, gross - disc + f); creditLeft -= credit;
         const total = gross - disc + f - credit;
-        const revenue = it.flow === "local" ? gross * ECON.commission : it.cogs != null ? gross - it.cogs * it.qty : gross * 0.10;
+        const revenue = it.fbgId ? gross * FBG.commissionPct / 100 + FBG.pickPack
+          : it.flow === "local" ? gross * ECON.commission : it.cogs != null ? gross - it.cogs * it.qty : gross * 0.10;
         const deliveryCost = delivery && k === 0 ? ECON.deliveryCost : 0;
         const econ = { revenue: +revenue.toFixed(2), discount: disc, credit, feeIn: f, deliveryCost, payFee: +((total) * ECON.payFee).toFixed(2),
           gross: +(revenue - disc - credit + f - deliveryCost - total * ECON.payFee).toFixed(2), cogs: it.cogs != null ? +(it.cogs * it.qty).toFixed(2) : null, seller: it.seller || null };
         const o = { id: rid("GRS-", 7), code: String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000)) };
-        stmts.push(env.DB.prepare(`INSERT INTO orders (id,user_id,basket,sku,vsku,quote_id,title,icon,variant,qty,unit,discount,credit_used,fee,total,flow,state,eta_days,pickup,address,pay,pay_phone,escrow,code,econ,history,created_at,updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(o.id, user.id, basket, it.sku, it.vsku, it.quoteId || null, it.title, it.icon, it.variant, it.qty, it.unit, disc, credit, f, total,
+        if (it.fbgId) stmts.push(env.DB.prepare("UPDATE fbg_inventory SET qty_available = qty_available - ?, qty_reserved = qty_reserved + ?, updated_at = ? WHERE id = ? AND qty_available >= ?")
+          .bind(it.qty, it.qty, t, it.fbgId, it.qty));
+        stmts.push(env.DB.prepare(`INSERT INTO orders (id,user_id,basket,sku,vsku,quote_id,title,icon,variant,qty,unit,discount,credit_used,fee,total,flow,state,eta_days,pickup,address,pay,pay_phone,escrow,code,econ,history,created_at,updated_at,fbg_id)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(o.id, user.id, basket, it.sku, it.vsku, it.quoteId || null, it.title, it.icon, it.variant, it.qty, it.unit, disc, credit, f, total,
           it.flow, total > 0 ? "AWAITING_PAYMENT" : "PLACED", it.etaDays, delivery ? "Gaarsiin guriga" : "Xarunta Garsoore · Km4, Muqdisho", delivery ? address : null, b.pay, payPhone,
-          total > 0 ? "none" : "held", o.code, JSON.stringify(econ), JSON.stringify([{ state: total > 0 ? "AWAITING_PAYMENT" : "PLACED", at: t }]), t, t));
+          total > 0 ? "none" : "held", o.code, JSON.stringify(econ), JSON.stringify([{ state: total > 0 ? "AWAITING_PAYMENT" : "PLACED", at: t }]), t, t, it.fbgId || null));
         orders.push(o.id);
       });
       if (creditTotal) stmts.push(env.DB.prepare("UPDATE users SET credit = credit - ? WHERE id = ? AND credit >= ?").bind(creditTotal, user.id, creditTotal));
@@ -336,6 +374,7 @@ export async function handleApi(req, env, url) {
         if (!ok) return err("Dalabkan lama joojin karo hadda — alaabta waa la iibsaday. Fur cabasho marka aad hesho haddii ay dhibaato jirto.");
         const paid = o.escrow === "held" || o.state === "PAYMENT_REVIEW";
         h.push({ state: "CANCELLED", at: t });
+        if (o.fbg_id) await env.DB.prepare("UPDATE fbg_inventory SET qty_available = qty_available + ?, qty_reserved = MAX(0, qty_reserved - ?), updated_at = ? WHERE id = ?").bind(o.qty, o.qty, t, o.fbg_id).run();
         await env.DB.batch([
           env.DB.prepare("UPDATE orders SET state = 'CANCELLED', escrow = ?, cancel_reason = ?, history = ?, updated_at = ? WHERE id = ?").bind(paid ? "refund_due" : "none", String(b.why || "").slice(0, 200), JSON.stringify(h), t, o.id),
           ...(o.credit_used ? [env.DB.prepare("UPDATE users SET credit = credit + ? WHERE id = ?").bind(o.credit_used, user.id)] : [])
@@ -508,6 +547,220 @@ export async function handleApi(req, env, url) {
       if (path === "/admin/log" && M === "GET") {
         const rows = (await env.DB.prepare("SELECT * FROM admin_log ORDER BY at DESC LIMIT 200").all()).results;
         return json({ log: rows.map(x => ({ at: x.at, who: x.who_name, action: x.action, target: x.target, detail: x.detail })) });
+      }
+      return err("Not found", 404);
+    }
+
+    /* ---------------------------------------------------------------- FBG — Fulfilment by Garsoore
+       The importer buys in China and ships to their Garsoore China suite. We receive, inspect, photograph, weigh,
+       consolidate, freight to Mogadishu and store. They then keep it, sell it on Garsoore, or hand it to an agent.
+       The goods stay theirs until sold; Garsoore charges fees + a commission on what sells. */
+    if (path === "/fbg/me" && M === "GET") {
+      const acc = await env.DB.prepare("SELECT * FROM fbg_accounts WHERE user_id = ?").bind(user.id).first();
+      if (!acc) return json({ account: null, fees: FBG, address: null });
+      const inb = (await env.DB.prepare("SELECT * FROM fbg_inbound WHERE user_id = ? ORDER BY created_at DESC LIMIT 100").bind(user.id).all()).results;
+      const inv = (await env.DB.prepare("SELECT * FROM fbg_inventory WHERE user_id = ? AND disposition != 'closed' ORDER BY created_at DESC LIMIT 100").bind(user.id).all()).results;
+      const led = (await env.DB.prepare("SELECT * FROM fbg_ledger WHERE user_id = ? ORDER BY at DESC LIMIT 100").bind(user.id).all()).results;
+      const bal = led.reduce((s, l) => s + l.amount, 0);
+      return json({ account: { suite: acc.suite, since: acc.created_at }, address: chinaAddress(env, acc.suite), fees: FBG,
+        inbound: inb.map(inboundOut), inventory: inv.map(invOut), ledger: led.map(l => ({ at: l.at, kind: l.kind, amount: +l.amount.toFixed(2), ref: l.ref, note: l.note })),
+        balance: +bal.toFixed(2) });
+    }
+    if (path === "/fbg/enroll" && M === "POST") {
+      const ex = await env.DB.prepare("SELECT suite FROM fbg_accounts WHERE user_id = ?").bind(user.id).first();
+      if (ex) return json({ suite: ex.suite, address: chinaAddress(env, ex.suite) });
+      const suite = "GS-" + String(1000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 9000));
+      await env.DB.prepare("INSERT INTO fbg_accounts (id, user_id, suite, status, created_at) VALUES (?,?,?, 'active', ?)").bind(rid("FB-", 6), user.id, suite, now()).run();
+      return json({ suite, address: chinaAddress(env, suite) });
+    }
+    if (path === "/fbg/inbound" && M === "POST") {
+      const acc = await env.DB.prepare("SELECT suite FROM fbg_accounts WHERE user_id = ?").bind(user.id).first();
+      if (!acc) return err("Isdiiwaangeli FBG marka hore.");
+      const b = await body(req), title = String(b.title || "").trim().slice(0, 120);
+      if (title.length < 2) return err("Ku qor alaabta aad soo dirayso.");
+      const qty = Math.max(1, Math.min(1000000, Math.round(+b.qty || 1)));
+      const t = now(), id = rid("IN-", 6);
+      await env.DB.prepare(`INSERT INTO fbg_inbound (id,user_id,supplier,platform,tracking,title,qty_expected,value_usd,disposition,state,history,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?, 'EXPECTED', ?, ?, ?)`).bind(id, user.id, String(b.supplier || "").slice(0, 120), String(b.platform || "other").slice(0, 20),
+        String(b.tracking || "").slice(0, 60), title, qty, Math.round(+b.value || 0) || null, ["keep", "sell", "agent"].includes(b.disposition) ? b.disposition : "sell",
+        JSON.stringify([{ state: "EXPECTED", at: t }]), t, t).run();
+      return json({ id, suite: acc.suite });
+    }
+    if ((m = path.match(/^\/fbg\/inbound\/(IN-[A-Z0-9]+)$/)) && M === "POST") {
+      const row = await env.DB.prepare("SELECT * FROM fbg_inbound WHERE id = ? AND user_id = ?").bind(m[1], user.id).first();
+      if (!row) return err("Lama helin.", 404);
+      const b = await body(req);
+      if (b.cancel) {
+        if (row.state !== "EXPECTED") return err("Waa la helay — lama joojin karo.");
+        await env.DB.prepare("DELETE FROM fbg_inbound WHERE id = ?").bind(row.id).run();
+        return json({ ok: true });
+      }
+      if (!["keep", "sell", "agent"].includes(b.disposition)) return err("Dooro waxa lagu sameeyo alaabta.");
+      if (["SHIPPED", "ARRIVED", "CLOSED"].includes(row.state)) return err("Waa la diray — beddelka waxaa lagu sameeyaa kaydka.");
+      await env.DB.prepare("UPDATE fbg_inbound SET disposition = ?, updated_at = ? WHERE id = ?").bind(b.disposition, now(), row.id).run();
+      return json({ ok: true });
+    }
+    /* what the owner does with stock that has arrived: keep it, list it, or hand it to an agent */
+    if ((m = path.match(/^\/fbg\/inventory\/(IV-[A-Z0-9]+)$/)) && M === "POST") {
+      const iv = await env.DB.prepare("SELECT * FROM fbg_inventory WHERE id = ? AND user_id = ?").bind(m[1], user.id).first();
+      if (!iv) return err("Lama helin.", 404);
+      const b = await body(req), t = now();
+      if (b.action === "list") {
+        const price = Math.round(+b.price);
+        if (!(price > 0)) return err("Ku qor qiimaha iibka.");
+        await env.DB.prepare("UPDATE fbg_inventory SET disposition = 'listed', price = ?, updated_at = ? WHERE id = ?").bind(price, t, iv.id).run();
+        return json({ ok: true, commissionPct: FBG.commissionPct, net: +(price * (1 - FBG.commissionPct / 100) - FBG.pickPack).toFixed(2) });
+      }
+      if (b.action === "unlist") {
+        await env.DB.prepare("UPDATE fbg_inventory SET disposition = 'stored', updated_at = ? WHERE id = ?").bind(t, iv.id).run();
+        return json({ ok: true });
+      }
+      if (b.action === "release") {                       // ship the stock to the owner
+        if (iv.qty_reserved > 0) return err("Qaar waa la dalbaday — sug inta dalabyadu dhammaanayaan.");
+        await env.DB.prepare("UPDATE fbg_inventory SET disposition = 'release', updated_at = ? WHERE id = ?").bind(t, iv.id).run();
+        return json({ ok: true });
+      }
+      if (b.action === "agent") {                          // hand it to a selling agent (mandate)
+        const mode = b.mode === "margin" ? "margin" : "liquidity";
+        const floor = Math.round(+b.floor);
+        if (!(floor > 0)) return err("Ku qor qiimaha ugu yar ee aad aqbali karto.");
+        const capPct = mode === "liquidity" ? AGENT.capLiquidity : AGENT.capMargin;
+        const sellerPct = mode === "liquidity" ? 0 : Math.max(AGENT.sellerPctMin, Math.min(AGENT.sellerPctMax, Math.round(+b.sellerPct || 50)));
+        const md = rid("MD-", 6);
+        await env.DB.batch([
+          env.DB.prepare(`INSERT INTO mandates (id,user_id,side,mode,title,cat,qty,unit,floor,cap_pct,seller_pct,city,notes,state,expires_at,created_at,updated_at)
+            VALUES (?,?, 'sell', ?,?,?,?, 'xabbo', ?,?,?, 'Muqdisho', ?, 'OPEN', ?, ?, ?)`).bind(md, user.id, mode, iv.title, iv.cat, iv.qty_available, floor, capPct, sellerPct,
+            "FBG: alaabtu waxay ku jirtaa bakhaarka Garsoore (" + iv.id + ")", new Date(Date.now() + 30 * 864e5).toISOString(), t, t),
+          env.DB.prepare("INSERT INTO mandate_events (mandate_id, at, who, who_name, kind, amount, text) VALUES (?,?,?,?, 'created', ?, ?)").bind(md, t, user.id, user.name, floor, "FBG stock " + iv.id),
+          env.DB.prepare("UPDATE fbg_inventory SET disposition = 'agent', mandate_id = ?, updated_at = ? WHERE id = ?").bind(md, t, iv.id)
+        ]);
+        return json({ ok: true, mandate: md });
+      }
+      return err("Ficil aan la aqoon.");
+    }
+    /* public: FBG stock for sale on the consumer marketplace (local goods, ready today) */
+    if (path === "/listings" && M === "GET") {
+      const r = await env.DB.prepare(`SELECT i.id, i.title, i.cat, i.icon, i.image, i.price, i.qty_available, u.name seller
+        FROM fbg_inventory i JOIN users u ON u.id = i.user_id
+        WHERE i.disposition = 'listed' AND i.qty_available > 0 AND i.price > 0 ORDER BY i.updated_at DESC LIMIT 200`).all();
+      return json({ listings: r.results.map(x => ({ id: x.id, title: x.title, cat: x.cat || "HOM", icon: x.icon || "📦", image: x.image || "",
+        price: x.price, qty: x.qty_available, seller: x.seller })) });
+    }
+
+    /* ---- staff: the China facility and the Somali warehouse */
+    if (path.startsWith("/ops/fbg")) {
+      if (!staff) return err("Shaqaalaha Garsoore oo keliya.", 403);
+      if (path === "/ops/fbg" && M === "GET") {
+        const inb = (await env.DB.prepare(`SELECT f.*, u.name u_name, u.phone u_phone, a.suite FROM fbg_inbound f JOIN users u ON u.id = f.user_id
+          LEFT JOIN fbg_accounts a ON a.user_id = f.user_id WHERE f.state NOT IN ('CLOSED') ORDER BY f.created_at ASC LIMIT 200`).all()).results;
+        const cons = (await env.DB.prepare("SELECT * FROM fbg_consignments WHERE state != 'ARRIVED' ORDER BY created_at DESC LIMIT 50").all()).results;
+        const rel = (await env.DB.prepare("SELECT i.*, u.name u_name FROM fbg_inventory i JOIN users u ON u.id = i.user_id WHERE i.disposition = 'release' LIMIT 50").all()).results;
+        return json({ inbound: inb.map(x => Object.assign(inboundOut(x), { owner: x.u_name, phone: "+" + x.u_phone, suite: x.suite })),
+          consignments: cons.map(c => ({ id: c.id, mode: c.mode, awb: c.awb, kg: c.kg, cbm: c.cbm, cost: c.cost_usd, state: c.state, eta: c.eta })),
+          releases: rel.map(x => Object.assign(invOut(x), { owner: x.u_name })), fees: FBG });
+      }
+      if ((m = path.match(/^\/ops\/fbg\/inbound\/(IN-[A-Z0-9]+)\/(receive|inspect|problem)$/)) && M === "POST") {
+        const row = await env.DB.prepare("SELECT * FROM fbg_inbound WHERE id = ?").bind(m[1]).first();
+        if (!row) return err("Lama helin.", 404);
+        const b = await body(req), t = now(), h = J(row.history) || [];
+        if (m[2] === "problem") {
+          h.push({ state: "PROBLEM", at: t, by: user.name });
+          await env.DB.prepare("UPDATE fbg_inbound SET state = 'PROBLEM', problem = ?, history = ?, updated_at = ? WHERE id = ?").bind(String(b.note || "").slice(0, 300), JSON.stringify(h), t, row.id).run();
+          return json({ ok: true });
+        }
+        if (m[2] === "receive") {
+          const cartons = Math.max(1, Math.round(+b.cartons || 1)), kg = +b.kg, cbm = +b.cbm || 0, qty = Math.round(+b.qty || row.qty_expected);
+          if (!(kg > 0)) return err("Ku qor miisaanka (kg).");
+          h.push({ state: "RECEIVED", at: t, by: user.name });
+          const fee = +(cartons * FBG.receivingPerCarton).toFixed(2);
+          await env.DB.batch([
+            env.DB.prepare("UPDATE fbg_inbound SET state = 'RECEIVED', cartons = ?, kg = ?, cbm = ?, qty_received = ?, photos = ?, history = ?, updated_at = ? WHERE id = ?")
+              .bind(cartons, kg, cbm, qty, JSON.stringify((Array.isArray(b.photos) ? b.photos : []).slice(0, 8)), JSON.stringify(h), t, row.id),
+            env.DB.prepare("INSERT INTO fbg_ledger (id,user_id,at,kind,amount,ref,note) VALUES (?,?,?, 'receiving', ?, ?, ?)")
+              .bind(rid("LG-", 6), row.user_id, t, -fee, row.id, cartons + " sanduuq · " + kg + " kg")
+          ]);
+          return json({ ok: true, fee });
+        }
+        h.push({ state: "INSPECTED", at: t, by: user.name });
+        await env.DB.prepare("UPDATE fbg_inbound SET state = 'INSPECTED', problem = ?, history = ?, updated_at = ? WHERE id = ?").bind(String(b.note || "").slice(0, 300) || null, JSON.stringify(h), t, row.id).run();
+        return json({ ok: true });
+      }
+      if (path === "/ops/fbg/consolidate" && M === "POST") {
+        const b = await body(req), ids = (Array.isArray(b.ids) ? b.ids : []).slice(0, 100).map(String);
+        if (!ids.length) return err("Dooro alaabta la isku darayo.");
+        const mode = b.mode === "air" ? "air" : "sea", t = now(), cid = rid("CN-", 6);
+        const rows = (await env.DB.prepare(`SELECT * FROM fbg_inbound WHERE id IN (${ids.map(() => "?").join(",")}) AND state IN ('RECEIVED','INSPECTED')`).bind(...ids).all()).results;
+        if (!rows.length) return err("Alaabtan lama isku dari karo (waa in la helo oo la hubiyo).");
+        const kg = rows.reduce((s, r) => s + (r.kg || 0), 0), cbm = rows.reduce((s, r) => s + (r.cbm || 0), 0);
+        const stmts = [env.DB.prepare("INSERT INTO fbg_consignments (id, mode, kg, cbm, state, created_at, updated_at) VALUES (?,?,?,?, 'OPEN', ?, ?)").bind(cid, mode, +kg.toFixed(2), +cbm.toFixed(3), t, t)];
+        rows.forEach(r => {
+          const h = J(r.history) || []; h.push({ state: "CONSOLIDATED", at: t, by: user.name });
+          stmts.push(env.DB.prepare("UPDATE fbg_inbound SET state = 'CONSOLIDATED', consignment = ?, history = ?, updated_at = ? WHERE id = ?").bind(cid, JSON.stringify(h), t, r.id));
+        });
+        await env.DB.batch(stmts);
+        return json({ ok: true, id: cid, kg: +kg.toFixed(2), cbm: +cbm.toFixed(3), items: rows.length });
+      }
+      if ((m = path.match(/^\/ops\/fbg\/consignments\/(CN-[A-Z0-9]+)\/(ship|arrive)$/)) && M === "POST") {
+        const cn = await env.DB.prepare("SELECT * FROM fbg_consignments WHERE id = ?").bind(m[1]).first();
+        if (!cn) return err("Lama helin.", 404);
+        const b = await body(req), t = now();
+        const rows = (await env.DB.prepare("SELECT * FROM fbg_inbound WHERE consignment = ?").bind(cn.id).all()).results;
+        if (m[2] === "ship") {
+          if (cn.state !== "OPEN") return err("Horey ayaa loo diray.");
+          const cost = +b.cost > 0 ? +b.cost : (cn.kg || 0) * (cn.mode === "air" ? FBG.airPerKg : FBG.seaPerKg);
+          const stmts = [env.DB.prepare("UPDATE fbg_consignments SET state = 'SHIPPED', awb = ?, cost_usd = ?, eta = ?, updated_at = ? WHERE id = ?")
+            .bind(String(b.awb || "").slice(0, 40), +cost.toFixed(2), String(b.eta || "").slice(0, 30), t, cn.id)];
+          const totalKg = rows.reduce((s, r) => s + (r.kg || 0), 0) || 1;
+          rows.forEach(r => {                                   // freight is shared out by weight
+            const share = +(cost * (r.kg || 0) / totalKg).toFixed(2), h = J(r.history) || [];
+            h.push({ state: "SHIPPED", at: t, by: user.name });
+            stmts.push(env.DB.prepare("UPDATE fbg_inbound SET state = 'SHIPPED', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, r.id),
+              env.DB.prepare("INSERT INTO fbg_ledger (id,user_id,at,kind,amount,ref,note) VALUES (?,?,?, 'freight', ?, ?, ?)")
+                .bind(rid("LG-", 6), r.user_id, t, -share, r.id, cn.mode + " " + (r.kg || 0) + " kg · " + cn.id));
+          });
+          await env.DB.batch(stmts);
+          return json({ ok: true, cost: +cost.toFixed(2) });
+        }
+        /* arrived in Mogadishu: the goods become inventory the owner can sell, keep or hand to an agent */
+        const stmts = [env.DB.prepare("UPDATE fbg_consignments SET state = 'ARRIVED', updated_at = ? WHERE id = ?").bind(t, cn.id)];
+        for (const r of rows) {
+          const h = J(r.history) || []; h.push({ state: "ARRIVED", at: t, by: user.name });
+          const qty = r.qty_received || r.qty_expected;
+          const led = (await env.DB.prepare("SELECT COALESCE(SUM(amount),0) s FROM fbg_ledger WHERE ref = ?").bind(r.id).first()).s;
+          const landed = qty ? +(((r.value_usd || 0) + Math.abs(led)) / qty).toFixed(2) : null;   // the owner's own cost per unit
+          stmts.push(env.DB.prepare("UPDATE fbg_inbound SET state = 'ARRIVED', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, r.id));
+          if (r.disposition === "keep") {
+            stmts.push(env.DB.prepare(`INSERT INTO fbg_inventory (id,user_id,inbound_id,title,cat,icon,qty_total,qty_available,landed_unit,disposition,location,created_at,updated_at)
+              VALUES (?,?,?,?,?, '📦', ?,?,?, 'release', 'Km4', ?, ?)`).bind(rid("IV-", 6), r.user_id, r.id, r.title, null, qty, qty, landed, t, t));
+          } else {
+            stmts.push(env.DB.prepare(`INSERT INTO fbg_inventory (id,user_id,inbound_id,title,cat,icon,qty_total,qty_available,landed_unit,disposition,location,created_at,updated_at)
+              VALUES (?,?,?,?,?, '📦', ?,?,?, 'stored', 'Km4', ?, ?)`).bind(rid("IV-", 6), r.user_id, r.id, r.title, null, qty, qty, landed, t, t));
+          }
+        }
+        await env.DB.batch(stmts);
+        return json({ ok: true, items: rows.length });
+      }
+      if ((m = path.match(/^\/ops\/fbg\/inventory\/(IV-[A-Z0-9]+)\/(released|adjust)$/)) && M === "POST") {
+        const iv = await env.DB.prepare("SELECT * FROM fbg_inventory WHERE id = ?").bind(m[1]).first();
+        if (!iv) return err("Lama helin.", 404);
+        const b = await body(req), t = now();
+        if (m[2] === "released") {                 // handed over to the owner
+          await env.DB.prepare("UPDATE fbg_inventory SET disposition = 'closed', qty_available = 0, updated_at = ? WHERE id = ?").bind(t, iv.id).run();
+          return json({ ok: true });
+        }
+        const qty = Math.max(0, Math.round(+b.qty));
+        await env.DB.prepare("UPDATE fbg_inventory SET qty_available = ?, qty_total = ?, note = ?, updated_at = ? WHERE id = ?")
+          .bind(qty, qty + iv.qty_sold + iv.qty_reserved, String(b.note || "").slice(0, 200), t, iv.id).run();
+        return json({ ok: true });
+      }
+      if (path === "/ops/fbg/payout" && M === "POST") {
+        const b = await body(req), amount = +b.amount;
+        if (!(amount > 0)) return err("Ku qor lacagta la bixiyay.");
+        const target = await env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(String(b.userId || "")).first();
+        if (!target) return err("Milkiile lama helin.");
+        await env.DB.prepare("INSERT INTO fbg_ledger (id,user_id,at,kind,amount,ref,note) VALUES (?,?,?, 'payout', ?, ?, ?)")
+          .bind(rid("LG-", 6), target.id, now(), -Math.abs(amount), String(b.ref || "").slice(0, 40), String(b.note || "").slice(0, 200)).run();
+        return json({ ok: true });
       }
       return err("Not found", 404);
     }
@@ -706,6 +959,17 @@ export async function handleApi(req, env, url) {
       if (!o) return err("Koodhkan ma laha dalab diyaar ah.", 404);
       const t = now(), h = J(o.history) || []; h.push({ state: "COMPLETED", at: t, by: user.name });
       const stmts = [env.DB.prepare("UPDATE orders SET state = 'COMPLETED', escrow = 'released', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id)];
+      if (o.fbg_id) {        // FBG sale: the stock was someone else's, so credit them the price less commission and pick & pack
+        const iv = await env.DB.prepare("SELECT * FROM fbg_inventory WHERE id = ?").bind(o.fbg_id).first();
+        if (iv) {
+          const gross = o.unit * o.qty, commission = +(gross * FBG.commissionPct / 100).toFixed(2), pp = FBG.pickPack;
+          stmts.push(
+            env.DB.prepare("UPDATE fbg_inventory SET qty_reserved = qty_reserved - ?, qty_sold = qty_sold + ?, updated_at = ? WHERE id = ?").bind(o.qty, o.qty, t, iv.id),
+            env.DB.prepare("INSERT INTO fbg_ledger (id,user_id,at,kind,amount,ref,note) VALUES (?,?,?, 'sale', ?, ?, ?)").bind(rid("LG-", 6), iv.user_id, t, gross, o.id, o.title + " ×" + o.qty),
+            env.DB.prepare("INSERT INTO fbg_ledger (id,user_id,at,kind,amount,ref,note) VALUES (?,?,?, 'commission', ?, ?, ?)").bind(rid("LG-", 6), iv.user_id, t, -(commission + pp), o.id, FBG.commissionPct + "% + pick & pack")
+          );
+        }
+      }
       let rewarded = false;
       if (o.referred_by) {
         const prev = await env.DB.prepare("SELECT COUNT(*) n FROM orders WHERE user_id = ? AND state = 'COMPLETED'").bind(o.user_id).first();

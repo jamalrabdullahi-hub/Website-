@@ -60,6 +60,7 @@ var local = {
   requestQuote: function (p) { return P(RF.quotes.request(p)); },
   requestLink: function (id, url) { return P(RF.quotes.requestLink(id, url)); },
   social: function (sku) { return P({ bought30: null, reviews: RF.orders.reviewsFor(sku) }); },
+  listings: function () { return P([]); },
   promo: function (code) { var r = RF.promo.check(code); return r ? P({ pct: r, cap: 10 }) : Promise.reject(new Error("Koodhkan ma shaqaynayo.")); }
 };
 function quoteBody(p) {
@@ -70,7 +71,7 @@ function quoteBody(p) {
 var remote = {
   orders: function () { return call("GET", "/orders").then(function (j) { return j.orders; }); },
   place: function (items, st) {
-    return call("POST", "/orders", { items: items.map(function (it) { return { sku: it.product.sku, vi: it.product.variants.indexOf(it.variant), qty: it.line.qty, quote: it.line.quote || null }; }),
+    return call("POST", "/orders", { items: items.map(function (it) { return { sku: it.product.sku, vi: it.product.variants.indexOf(it.variant), qty: it.line.qty, quote: it.line.quote || null, fbg: it.product.fbg ? it.product.sku : null }; }),
       delivery: st.delivery, address: st.address, pay: st.pay, payPhone: st.payPhone, promo: st.discCode || "", useCredit: !!st.useCredit, sid: sid() });
   },
   paid: function (ids, txn) { return call("POST", "/orders/paid", { ids: ids, txn: txn, sid: sid() }); },
@@ -82,6 +83,7 @@ var remote = {
   requestQuote: function (p) { return call("POST", "/quotes", quoteBody(p)); },
   requestLink: function (id, url) { return call("POST", "/quotes", { title: "Alaab ka timid " + (RF.chName ? RF.chName(id.platform) : id.platform), icon: "📦", platform: id.platform, ref: id.ref, url: url }); },
   social: function (sku) { return call("GET", "/social?sku=" + encodeURIComponent(sku)); },
+  listings: function () { return call("GET", "/listings").then(function (j) { return j.listings; }); },
   promo: function (code) { return call("POST", "/promo", { code: code }); }
 };
 RF.backend = {};

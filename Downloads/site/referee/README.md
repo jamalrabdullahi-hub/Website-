@@ -218,3 +218,19 @@ only admin reaches `business.<domain>/admin.html`). Business accounts carry a pr
   PIN, adjust store credit, approve businesses and set a per-business commission, approve agents, and an audit log.
 - New accounts start with a temporary PIN and must set their own on first sign-in (`RF.pinGate`, `/api/auth/pin`).
 - Every admin action is written to `admin_log` with who did it — account changes are always traceable.
+
+## FBG — Fulfilment by Garsoore (`assets/fbg.js`, `deploy/schema-3.sql`)
+Import → consolidate → store → sell, with the importer owning the goods the whole way.
+1. The importer enrols and gets a **suite code**; Chinese suppliers ship to the Garsoore China address (`vars.FBG_CHINA_ADDRESS`,
+   `{suite}` is replaced) with that code on every carton.
+2. They declare each expected shipment (supplier, platform, tracking, value, and what to do with it).
+3. Staff (ops console → **FBG**) receive: cartons, weight, cbm, count, photos → receiving fee charged; inspect; flag problems.
+4. Several inbounds are **consolidated** into one air or sea consignment; on shipping, the freight cost is split across
+   them by weight and charged to each owner's ledger.
+5. On arrival the goods become **inventory** with a landed cost per unit (their goods cost + their share of fees).
+6. The owner then picks per item: **keep** (we hand it over), **sell** (listed on buurwen.com as local stock, ready today —
+   Garsoore takes `FBG.commissionPct` + pick & pack when it sells), or **agent** (creates a mandate, liquidity or margin).
+7. A consumer order against FBG stock reserves units; the pickup code releases them, credits the owner's ledger with the
+   sale and charges the commission. Cancelling returns the units to stock.
+Fees live in `deploy/api.js → FBG`. Storage (`storagePerCbmDay` after `freeStorageDays`) is defined but **not yet charged
+automatically** — add it before launch. Garsoore never finances the stock: the importer pays for the goods and owns them.
