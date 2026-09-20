@@ -202,3 +202,19 @@ business.buurwen.com (session cookie on `.buurwen.com`). Database: Cloudflare D1
 
 **Read next:** [docs/LAUNCH.md](docs/LAUNCH.md) (what blocks a profitable launch, unit economics) ·
 [docs/DOCTRINE.md](docs/DOCTRINE.md) (UX doctrine — the psychology rules every screen follows).
+
+## Accounts & admin panel
+Roles on `users.role`: **consumer · business · agent · staff · admin** (staff and admin both reach the ops console;
+only admin reaches `business.<domain>/admin.html`). Business accounts carry a profile in `businesses`:
+`seller` (sells their own stock) · `fbg` (Fulfilled by Garsoore — stock held and shipped by us) · `buyer` (wholesale) ·
+`supplier` (factory) · `logistics`.
+
+- **Bootstrap** (once): `cd deploy && npx wrangler d1 execute garsoore-dev-db --remote --file schema-2.sql`, then
+  `npx wrangler secret put ADMIN_PHONES` (one number) and `npx wrangler secret put STAFF_PHONES` (comma-separated).
+  Those numbers get their role when they register on the site. Exactly one admin is allowed; the panel refuses to
+  create a second, or to demote/suspend the admin.
+- **The panel** (`assets/admin.js`): overview by role, account search, create accounts of any type (business and agent
+  accounts get their profile in the same step), change role, suspend (existing sessions are dropped), issue a temporary
+  PIN, adjust store credit, approve businesses and set a per-business commission, approve agents, and an audit log.
+- New accounts start with a temporary PIN and must set their own on first sign-in (`RF.pinGate`, `/api/auth/pin`).
+- Every admin action is written to `admin_log` with who did it — account changes are always traceable.

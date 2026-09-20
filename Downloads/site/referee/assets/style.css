@@ -689,3 +689,23 @@ footer.site b{color:var(--fg);font-weight:650}
 .ag-how h3{font-family:var(--fd);margin:18px 0 6px}
 .ag-how ul{margin:6px 0 0 18px;line-height:1.7}
 @media (max-width:760px){ .ag-modes,.ag-row{grid-template-columns:1fr} }
+
+/* ---------------------------------------------------------------- admin panel */
+.ad-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.ad-bar .g-in{margin-top:0;width:auto;flex:1;min-width:180px}
+.ad-bar select.g-in{flex:0 0 190px}
+.ad-tag{display:inline-block;font-size:11px;font-weight:800;padding:3px 8px;border-radius:8px;background:var(--surface);color:var(--muted);margin-left:4px;vertical-align:middle}
+.ad-tag.ok{background:#DCEFE2;color:#2E7D4F}
+.ad-tag.sus{background:#F6DDDA;color:#B0413A}
+.ad-tag.r-admin{background:var(--gold);color:var(--gold-ink)}
+.ad-tag.r-staff{background:var(--pri);color:var(--pri-ink)}
+.ad-tag.r-agent{background:#E2E7F2;color:#3A5580}
+.ad-tag.r-business{background:var(--pri-soft);color:var(--link)}
+.ad-sel{margin-top:0;width:auto;flex:0 0 150px;padding:7px 8px;font-size:13px}
+.ad-row .g-ohead{align-items:center;flex-wrap:wrap;gap:8px}
+.ad-roles div{flex:1;text-align:center}
+.ad-tbl{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:12.5px}
+.ad-tbl>div{display:grid;grid-template-columns:130px 1.6fr .7fr .7fr .9fr 1fr;gap:10px;background:var(--card);padding:9px 12px}
+.ad-tbl.log>div{grid-template-columns:150px 130px 130px 130px 1fr}
+.ad-tbl span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:760px){ .ad-tbl>div,.ad-tbl.log>div{grid-template-columns:1fr 1fr} .ad-sel{flex:1} }

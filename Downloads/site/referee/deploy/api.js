@@ -28,6 +28,24 @@ const FLOW = {
 const PAYS = ["EVC Plus", "ZAAD", "Sahal", "Premier Wallet"];
 const EVENTS = ["view", "cart", "checkout", "order", "paid", "quote", "search"];
 
+/* account types. staff and admin both reach the ops console; only admin reaches the admin panel. */
+const ROLES = {
+  consumer: "Macmiil",
+  business: "Ganacsi",
+  agent: "Wakiil",
+  staff: "Shaqaale Garsoore",
+  admin: "Maamule"
+};
+const BIZ_KINDS = {
+  seller: "Iibiye (alaabtiisa ayuu iibinayaa)",
+  fbg: "FBG — alaabta Garsoore ayaa u haysa oo u diraya",
+  buyer: "Iibsade jumlo",
+  supplier: "Alaab-qeybiye / warshad",
+  logistics: "Rar iyo gaarsiin"
+};
+const bizOut = b => ({ id: b.id, company: b.company, kind: b.kind, kindName: BIZ_KINDS[b.kind] || b.kind, city: b.city,
+  regNo: b.reg_no, contact: b.contact, commission: b.commission, status: b.status, note: b.note, createdAt: b.created_at });
+
 /* ---------------------------------------------------------------- helpers */
 const now = () => new Date().toISOString();
 const json = (d, s = 200, h = {}) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...h } });
@@ -79,7 +97,8 @@ async function newSession(env, url, userId) {
   await env.DB.prepare("INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)").bind(await sha(token), userId, exp, now()).run();
   return sessionCookie(url, token, 30 * 86400);
 }
-const pubUser = u => u && { id: u.id, name: u.name, phone: mask(u.phone), role: u.role, refCode: u.ref_code, credit: u.credit };
+const pubUser = u => u && { id: u.id, name: u.name, phone: mask(u.phone), role: u.role, refCode: u.ref_code, credit: u.credit,
+  status: u.status || "active", mustChangePin: !!u.must_change_pin };
 
 function merchants(env) {
   return { "EVC Plus": env.MERCHANT_EVC || "", "ZAAD": env.MERCHANT_ZAAD || "", "Sahal": env.MERCHANT_SAHAL || "", "Premier Wallet": env.MERCHANT_PREMIER || "" };
@@ -182,7 +201,7 @@ export async function handleApi(req, env, url) {
   }
   try {
     const user = await currentUser(req, env);
-    const staff = user && user.role === "staff";
+    const staff = user && (user.role === "staff" || user.role === "admin");
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
@@ -200,7 +219,9 @@ export async function handleApi(req, env, url) {
       let ref = null;
       if (b.ref) { const r = await env.DB.prepare("SELECT id FROM users WHERE ref_code = ?").bind(String(b.ref).toUpperCase().trim()).first(); ref = r && r.id; }
       const staffList = String(env.STAFF_PHONES || "").split(",").map(normPhone).filter(Boolean);
-      const u = { id: rid("U-"), phone, name, role: staffList.includes(phone) ? "staff" : "customer", ref: rid("", 6) };
+      const adminList = String(env.ADMIN_PHONES || "").split(",").map(normPhone).filter(Boolean);
+      const role = adminList.includes(phone) ? "admin" : staffList.includes(phone) ? "staff" : "consumer";
+      const u = { id: rid("U-"), phone, name, role, ref: rid("", 6) };
       await env.DB.prepare("INSERT INTO users (id, phone, name, pin_hash, role, ref_code, referred_by, credit, created_at) VALUES (?,?,?,?,?,?,?,0,?)")
         .bind(u.id, phone, name, await pinHash(String(b.pin)), u.role, u.ref, ref, now()).run();
       const row = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
@@ -213,6 +234,7 @@ export async function handleApi(req, env, url) {
       const tries = await env.DB.prepare("SELECT COUNT(*) n FROM login_attempts WHERE phone = ? AND at > ?").bind(phone, since).first();
       if (tries.n >= 5) return err("Isku day badan. Sug 15 daqiiqo.", 429);
       const u = await env.DB.prepare("SELECT * FROM users WHERE phone = ?").bind(phone).first();
+      if (u && u.status === "suspended") return err("Akoonkan waa la hakiyay. La xidhiidh Garsoore.", 403);
       if (!u || !(await pinOk(String(b.pin || ""), u.pin_hash))) {
         await env.DB.prepare("INSERT INTO login_attempts (phone, at) VALUES (?, ?)").bind(phone, now()).run();
         return err("Lambarka ama PIN-ka waa khalad.", 401);
@@ -242,6 +264,7 @@ export async function handleApi(req, env, url) {
     }
 
     if (!user) return err("Fadlan gal (login).", 401);
+    if (user.status === "suspended") return err("Akoonkan waa la hakiyay.", 403);
 
     /* ---- customer: orders */
     if (path === "/promo" && M === "POST") {
@@ -345,6 +368,148 @@ export async function handleApi(req, env, url) {
         : await env.DB.prepare("SELECT * FROM quotes WHERE user_id = ? ORDER BY created_at DESC LIMIT 100").bind(user.id).all();
       return json({ quotes: r.results.map(q => ({ id: q.id, status: q.status, title: q.title, icon: q.icon, platform: q.platform, ref: q.ref, url: q.url, seller: q.seller, kg: q.kg, estimate: q.estimate,
         note: q.note, total: q.total, etaDays: q.eta_days, staffNote: q.staff_note, createdAt: q.created_at, quotedAt: q.quoted_at, contact: staff && q.u_name ? q.u_name + " · +" + q.u_phone : undefined })) });
+    }
+
+    /* ---------------------------------------------------------------- account: change your own PIN */
+    if (path === "/auth/pin" && M === "POST") {
+      const b = await body(req);
+      if (!user.must_change_pin && !(await pinOk(String(b.old || ""), user.pin_hash))) return err("PIN-ka hore waa khalad.");
+      const pin = String(b.pin || "");
+      if (!/^\d{4,6}$/.test(pin)) return err("PIN cusub waa 4–6 lambar.");
+      if (/^(\d)\1+$/.test(pin) || "0123456789".includes(pin) || "9876543210".includes(pin)) return err("PIN-kan aad buu u fudud yahay.");
+      await env.DB.prepare("UPDATE users SET pin_hash = ?, must_change_pin = 0 WHERE id = ?").bind(await pinHash(pin), user.id).run();
+      return json({ ok: true });
+    }
+
+    /* ---------------------------------------------------------------- business account (company profile) */
+    if (path === "/business/me" && M === "GET") {
+      const b = await env.DB.prepare("SELECT * FROM businesses WHERE user_id = ?").bind(user.id).first();
+      return json({ business: b ? bizOut(b) : null, kinds: BIZ_KINDS });
+    }
+    if (path === "/business/apply" && M === "POST") {
+      const b = await body(req), company = String(b.company || "").trim().slice(0, 120);
+      if (company.length < 2) return err("Ku qor magaca shirkadda.");
+      if (!BIZ_KINDS[b.kind]) return err("Dooro nooca akoonka ganacsiga.");
+      const ex = await env.DB.prepare("SELECT id, status FROM businesses WHERE user_id = ?").bind(user.id).first();
+      const t = now();
+      if (ex) {
+        await env.DB.prepare("UPDATE businesses SET company = ?, kind = ?, city = ?, reg_no = ?, contact = ?, updated_at = ? WHERE id = ?")
+          .bind(company, b.kind, String(b.city || "").slice(0, 40), String(b.regNo || "").slice(0, 40), String(b.contact || "").slice(0, 60), t, ex.id).run();
+        return json({ ok: true, id: ex.id, status: ex.status });
+      }
+      const id = rid("BZ-", 6);
+      await env.DB.prepare("INSERT INTO businesses (id, user_id, company, kind, city, reg_no, contact, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,'pending',?,?)")
+        .bind(id, user.id, company, b.kind, String(b.city || "").slice(0, 40), String(b.regNo || "").slice(0, 40), String(b.contact || "").slice(0, 60), t, t).run();
+      return json({ ok: true, id, status: "pending" });
+    }
+
+    /* ---------------------------------------------------------------- admin panel (role 'admin' only) */
+    if (path.startsWith("/admin/")) {
+      if (user.role !== "admin") return err("Maamulaha oo keliya.", 403);
+      const alog = (action, target, detail) => env.DB.prepare("INSERT INTO admin_log (at, who, who_name, action, target, detail) VALUES (?,?,?,?,?,?)")
+        .bind(now(), user.id, user.name, action, target || null, detail || null);
+
+      if (path === "/admin/overview" && M === "GET") {
+        const roles = (await env.DB.prepare("SELECT role, COUNT(*) n FROM users GROUP BY role").all()).results;
+        const st = (await env.DB.prepare("SELECT status, COUNT(*) n FROM users GROUP BY status").all()).results;
+        const biz = (await env.DB.prepare("SELECT kind, status, COUNT(*) n FROM businesses GROUP BY kind, status").all()).results;
+        const ag = (await env.DB.prepare("SELECT status, COUNT(*) n FROM agents GROUP BY status").all()).results;
+        const pend = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM businesses WHERE status='pending') b, (SELECT COUNT(*) FROM agents WHERE status='pending') a").first();
+        return json({ roles, status: st, businesses: biz, agents: ag, pending: pend, roleList: ROLES, kinds: BIZ_KINDS });
+      }
+      if (path === "/admin/users" && M === "GET") {
+        const q = (url.searchParams.get("q") || "").trim(), role = url.searchParams.get("role") || "";
+        const like = "%" + q.replace(/[%_]/g, "") + "%";
+        const rows = (await env.DB.prepare(`SELECT u.*, b.company, b.kind, b.status b_status, a.status a_status,
+              (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) orders
+            FROM users u LEFT JOIN businesses b ON b.user_id = u.id LEFT JOIN agents a ON a.user_id = u.id
+            WHERE (? = '' OR u.role = ?) AND (? = '' OR u.name LIKE ? OR u.phone LIKE ?)
+            ORDER BY u.created_at DESC LIMIT 200`).bind(role, role, q, like, like).all()).results;
+        return json({ users: rows.map(u => ({ id: u.id, name: u.name, phone: "+" + u.phone, role: u.role, status: u.status, credit: u.credit,
+          mustChangePin: !!u.must_change_pin, refCode: u.ref_code, orders: u.orders, createdAt: u.created_at,
+          company: u.company || null, kind: u.kind || null, bizStatus: u.b_status || null, agentStatus: u.a_status || null })) });
+      }
+      if (path === "/admin/users" && M === "POST") {
+        const b = await body(req), phone = normPhone(b.phone), name = String(b.name || "").trim().slice(0, 60);
+        if (!phone) return err("Lambarka taleefanka ma saxna.");
+        if (name.length < 2) return err("Ku qor magaca.");
+        if (!ROLES[b.role]) return err("Dooro nooca akoonka.");
+        if (b.role === "admin") return err("Hal maamule ayaa jira. Wareeji xilka haddii loo baahdo.");
+        if (await env.DB.prepare("SELECT 1 FROM users WHERE phone = ?").bind(phone).first()) return err("Lambarkan akoon ayuu leeyahay.", 409);
+        const pin = String(b.pin || "").trim() || String(100000 + Math.floor(Math.random() * 899999));
+        if (!/^\d{4,6}$/.test(pin)) return err("PIN-ku waa 4–6 lambar.");
+        const id = rid("U-"), t = now(), stmts = [
+          env.DB.prepare("INSERT INTO users (id, phone, name, pin_hash, role, ref_code, credit, created_at, status, must_change_pin, created_by) VALUES (?,?,?,?,?,?,0,?, 'active', 1, ?)")
+            .bind(id, phone, name, await pinHash(pin), b.role, rid("", 6), t, user.id),
+          alog("user.create", id, name + " · " + b.role)
+        ];
+        if (b.role === "business") {
+          if (!BIZ_KINDS[b.kind]) return err("Dooro nooca ganacsiga (FBG, iibiye, iibsade…).");
+          stmts.push(env.DB.prepare("INSERT INTO businesses (id, user_id, company, kind, city, reg_no, contact, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,'approved',?,?)")
+            .bind(rid("BZ-", 6), id, String(b.company || name).slice(0, 120), b.kind, String(b.city || "").slice(0, 40), String(b.regNo || "").slice(0, 40), "+" + phone, t, t));
+        }
+        if (b.role === "agent") {
+          stmts.push(env.DB.prepare("INSERT INTO agents (id, user_id, name, cats, cities, capacity, status, created_at) VALUES (?,?,?,?,?,?,'approved',?)")
+            .bind(rid("AG-", 6), id, name, JSON.stringify(Array.isArray(b.cats) ? b.cats : []), JSON.stringify(b.city ? [b.city] : []), Math.max(1, Math.min(50, +b.capacity || 5)), t));
+        }
+        await env.DB.batch(stmts);
+        return json({ id, pin, note: "Lambarkan PIN ah u sheeg qofka — waa inuu beddelaa markuu galo." });
+      }
+      if ((m = path.match(/^\/admin\/users\/(U-[A-Z0-9]+)$/)) && M === "POST") {
+        const b = await body(req), target = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(m[1]).first();
+        if (!target) return err("Akoon lama helin.", 404);
+        const stmts = [];
+        if (b.role && ROLES[b.role] && b.role !== target.role) {
+          if (b.role === "admin") return err("Hal maamule ayaa jira.");
+          if (target.role === "admin") return err("Maamulaha xilka lagama qaadi karo halkan.");
+          stmts.push(env.DB.prepare("UPDATE users SET role = ? WHERE id = ?").bind(b.role, target.id), alog("user.role", target.id, target.role + " → " + b.role));
+        }
+        if (b.status && ["active", "suspended"].includes(b.status) && b.status !== target.status) {
+          if (target.role === "admin") return err("Maamulaha lama hakin karo.");
+          stmts.push(env.DB.prepare("UPDATE users SET status = ? WHERE id = ?").bind(b.status, target.id), alog("user.status", target.id, b.status + (b.note ? " · " + b.note : "")));
+          if (b.status === "suspended") stmts.push(env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(target.id));   // sign them out now
+        }
+        if (b.credit != null) {
+          const c = Math.max(0, Math.min(100000, Math.round(+b.credit)));
+          stmts.push(env.DB.prepare("UPDATE users SET credit = ? WHERE id = ?").bind(c, target.id), alog("user.credit", target.id, target.credit + " → " + c + (b.note ? " · " + b.note : "")));
+        }
+        let pin = null;
+        if (b.resetPin) {
+          pin = String(100000 + Math.floor(Math.random() * 899999));
+          stmts.push(env.DB.prepare("UPDATE users SET pin_hash = ?, must_change_pin = 1 WHERE id = ?").bind(await pinHash(pin), target.id),
+            env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(target.id), alog("user.pin", target.id, "temporary PIN issued"));
+        }
+        if (!stmts.length) return err("Wax isbeddel ah ma jiro.");
+        await env.DB.batch(stmts);
+        return json({ ok: true, pin });
+      }
+      if (path === "/admin/businesses" && M === "GET") {
+        const rows = (await env.DB.prepare("SELECT b.*, u.name u_name, u.phone u_phone FROM businesses b JOIN users u ON u.id = b.user_id ORDER BY (b.status='pending') DESC, b.created_at DESC LIMIT 200").all()).results;
+        return json({ businesses: rows.map(b => Object.assign(bizOut(b), { owner: b.u_name, phone: "+" + b.u_phone })), kinds: BIZ_KINDS });
+      }
+      if ((m = path.match(/^\/admin\/businesses\/(BZ-[A-Z0-9]+)$/)) && M === "POST") {
+        const b = await body(req), st = ["approved", "paused", "rejected", "pending"].includes(b.status) ? b.status : null;
+        const row = await env.DB.prepare("SELECT * FROM businesses WHERE id = ?").bind(m[1]).first();
+        if (!row) return err("Lama helin.", 404);
+        const stmts = [];
+        if (st) {
+          stmts.push(env.DB.prepare("UPDATE businesses SET status = ?, note = ?, updated_at = ? WHERE id = ?").bind(st, String(b.note || "").slice(0, 200), now(), row.id), alog("business.status", row.id, st));
+          if (st === "approved") stmts.push(env.DB.prepare("UPDATE users SET role = 'business' WHERE id = ? AND role = 'consumer'").bind(row.user_id));
+        }
+        if (b.commission != null) {
+          const c = Math.max(0, Math.min(50, Math.round(+b.commission)));
+          stmts.push(env.DB.prepare("UPDATE businesses SET commission = ?, updated_at = ? WHERE id = ?").bind(c, now(), row.id), alog("business.commission", row.id, c + "%"));
+        }
+        if (b.kind && BIZ_KINDS[b.kind]) stmts.push(env.DB.prepare("UPDATE businesses SET kind = ?, updated_at = ? WHERE id = ?").bind(b.kind, now(), row.id), alog("business.kind", row.id, b.kind));
+        if (!stmts.length) return err("Wax isbeddel ah ma jiro.");
+        await env.DB.batch(stmts);
+        return json({ ok: true });
+      }
+      if (path === "/admin/log" && M === "GET") {
+        const rows = (await env.DB.prepare("SELECT * FROM admin_log ORDER BY at DESC LIMIT 200").all()).results;
+        return json({ log: rows.map(x => ({ at: x.at, who: x.who_name, action: x.action, target: x.target, detail: x.detail })) });
+      }
+      return err("Not found", 404);
     }
 
     /* ---------------------------------------------------------------- agents & mandates (business side)

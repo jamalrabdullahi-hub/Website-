@@ -518,8 +518,8 @@ function quotesAdmin(app) {
 RF.shopUI = function (page, h) {
   e = h.e; toast = h.toast;
   var app = document.getElementById("app");
-  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); } }[page] || home)(app); };
+  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); }, admin: function (a) { RF.adminUI(a, qs("tab") || "home"); } }[page] || home)(app); };
   /* staff pages need to know whether the API is there before drawing; shop pages draw immediately */
-  if ((page === "quotes" || page === "ops" || page === "agents") && RF.api) RF.api.ready.then(run); else run();
+  if ((page === "quotes" || page === "ops" || page === "agents" || page === "admin") && RF.api) RF.api.ready.then(run); else run();
 };
 })();

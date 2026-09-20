@@ -93,6 +93,25 @@ RF.backend.needUser = function (why) {
   return api.ready.then(function () { return !api.remote || api.user ? api.user : RF.authUI.open(why); });
 };
 
+/* forced PIN change after an admin issues a temporary one */
+RF.pinGate = function () {
+  if (!RF.api || !RF.api.user || !RF.api.user.mustChangePin) return;
+  var box = document.getElementById("modalBox");
+  function draw(msg) {
+    box.innerHTML = '<div class="g-co"><h2>Beddel PIN-kaaga</h2><div class="g-sku">PIN-kaagu waa mid ku meel gaadh ah oo maamulku bixiyay.</div>' +
+      '<label class="g-lbl">PIN cusub (4–6 lambar)</label><input class="g-in" id="pgNew" type="password" inputmode="numeric" maxlength="6">' +
+      '<div class="g-err sm" id="pgErr"' + (msg ? "" : " hidden") + '>' + e(msg || "") + '</div>' +
+      '<button class="btn g-buy full" id="pgGo">Kaydi</button></div>';
+    document.getElementById("pgGo").onclick = function () {
+      RF.api.call("POST", "/auth/pin", { pin: document.getElementById("pgNew").value })
+        .then(function () { document.getElementById("modal").classList.remove("on"); RF.api.refresh(); alert("PIN-ka waa la beddelay"); })
+        .catch(function (x) { draw(x.message); });
+    };
+  }
+  draw();
+  document.getElementById("modal").classList.add("on");
+};
+
 /* ---------------------------------------------------------------- sign-in sheet */
 RF.authUI = {
   open: function (why) {

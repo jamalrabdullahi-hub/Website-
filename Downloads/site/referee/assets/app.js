@@ -217,8 +217,11 @@ function chrome() {
   if (RF.api) RF.api.onUser(function (u) {
     refreshWho();
     var nav = document.querySelector("header.site .nav"), has = nav && nav.querySelector(".opslink");
-    if (u && u.role === "staff" && nav && !has) nav.insertAdjacentHTML("beforeend", '<a class="opslink' + (window.SHOP === "ops" || window.SHOP === "quotes" ? " on" : "") + '" href="' + (biz ? "" : BP) + 'ops.html">⚙ Hawlgalka</a>');
-    if ((!u || u.role !== "staff") && has) has.remove();
+    var isStaff = u && (u.role === "staff" || u.role === "admin");
+    if (isStaff && nav && !has) nav.insertAdjacentHTML("beforeend", '<a class="opslink' + (window.SHOP === "ops" || window.SHOP === "quotes" ? " on" : "") + '" href="' + (biz ? "" : BP) + 'ops.html">⚙ Hawlgalka</a>' +
+      (u.role === "admin" ? '<a class="opslink' + (window.SHOP === "admin" ? " on" : "") + '" href="' + (biz ? "" : BP) + 'admin.html">🛡 Maamulka</a>' : ""));
+    if (!isStaff && has) [].forEach.call(nav.querySelectorAll(".opslink"), function (x) { x.remove(); });
+    if (u && u.mustChangePin && RF.pinGate) RF.pinGate();
   });
   document.getElementById("whoBtn").onclick = function () {
     if (RF.api && RF.api.remote) {
