@@ -8,3 +8,4 @@ deploy/node_modules/
 
 deploy/catalog.gen.js
 deploy/.dev.vars
+data/harvest-cache/

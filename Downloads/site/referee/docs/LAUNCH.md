@@ -21,10 +21,11 @@ launch is mostly **business setup**, listed below in the order it blocks money.
 
 1. **Merchant accounts** — EVC Plus (Hormuud), ZAAD (Telesom), Sahal (Golis), Premier Wallet. Put the numbers in
    `deploy/wrangler.jsonc → vars.MERCHANT_*`. Until then the payment step says "(Dev) not configured — do not send money".
-2. **Real costs.** All 1,673 catalogue variants are placeholders (`cost_verified = no`). For each product you will really
-   sell: open the source link, put the real ¥ cost and weight in `data/catalog.csv`, set `cost_verified = yes`,
-   run `python tools/import-catalog.py`. Start with 50–100 best sellers. Turn on `REQUIRE_VERIFIED = "1"` for launch —
-   everything else still sells, via a staff quote.
+2. **Confirm prices.** The catalogue is now built from real supplier listings (`tools/harvest-mic.py`), but a listed
+   price is an asking price (`cost_verified = check`). For each product you will really sell: message the supplier from
+   the `source_url`, confirm unit price at your quantity, packed weight and lead time, update `data/catalog.csv`, set
+   `cost_verified = yes`, run `python tools/import-catalog.py`. Start with 50–100 best sellers. Turn on
+   `REQUIRE_VERIFIED = "1"` for launch — everything else still sells, via a staff quote.
 3. **Supply chain contracts**: a buying agent / consolidator in Guangzhou (or Yiwu), an air + sea forwarder to MGQ, a
    customs broker, and the Km4 pickup counter. Their real rates replace the assumptions in `assets/catalog.js → RULES`.
 4. **Domestic sellers**: signed agreements with the commission (8% in `ECON.commission`) and payout terms

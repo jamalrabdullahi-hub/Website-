@@ -94,3 +94,60 @@ CREATE TABLE IF NOT EXISTS events (
   at          TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_name ON events(name, at);
+
+-- ---------------------------------------------------------------- selling & buying agents (wakiillo)
+-- A mandate consigns a sale (or a purchase) to an agent. The agent's income is the spread between the
+-- principal's floor (or ceiling, when buying) and the price actually achieved.
+--   mode 'liquidity' : principal takes the floor price, fast; the agent keeps the whole spread (markup capped)
+--   mode 'margin'    : the principal keeps seller_pct of the spread; worse for the agent, so slower to place
+CREATE TABLE IF NOT EXISTS agents (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL UNIQUE,
+  name        TEXT NOT NULL,
+  cats        TEXT NOT NULL DEFAULT '[]',   -- JSON array of category ids
+  cities      TEXT NOT NULL DEFAULT '[]',
+  capacity    INTEGER NOT NULL DEFAULT 5,   -- how many live mandates they can carry
+  status      TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | paused | blocked
+  note        TEXT,
+  created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mandates (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,                -- the principal (seller or buyer)
+  agent_id    TEXT,                         -- NULL while unassigned
+  side        TEXT NOT NULL,                -- sell | buy
+  mode        TEXT NOT NULL,                -- liquidity | margin
+  title       TEXT NOT NULL,
+  cat         TEXT,
+  qty         INTEGER NOT NULL DEFAULT 1,
+  unit        TEXT,
+  floor       INTEGER NOT NULL,             -- sell: net to the seller. buy: the most the buyer will pay
+  cap_pct     INTEGER NOT NULL,             -- how far past the floor the agent may price (buyer protection)
+  seller_pct  INTEGER NOT NULL DEFAULT 0,   -- principal's share of the spread (0 in liquidity mode)
+  ask         INTEGER,                      -- the agent's current price
+  city        TEXT,
+  notes       TEXT,
+  state       TEXT NOT NULL,                -- OPEN | ASSIGNED | LISTED | NEGOTIATING | SOLD | SETTLED | CANCELLED | EXPIRED
+  best_offer  INTEGER,
+  deal_price  INTEGER,
+  split       TEXT,                         -- JSON payout breakdown once sold
+  expires_at  TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mandates_state ON mandates(state, created_at);
+CREATE INDEX IF NOT EXISTS mandates_user ON mandates(user_id, created_at);
+CREATE INDEX IF NOT EXISTS mandates_agent ON mandates(agent_id, state);
+
+-- every action an agent takes on someone else's mandate is logged and shown to the principal
+CREATE TABLE IF NOT EXISTS mandate_events (
+  mandate_id  TEXT NOT NULL,
+  at          TEXT NOT NULL,
+  who         TEXT NOT NULL,                -- user id
+  who_name    TEXT NOT NULL,
+  kind        TEXT NOT NULL,                -- created | assigned | ask | offer | counter | sold | settled | cancelled | note
+  amount      INTEGER,
+  text        TEXT
+);
+CREATE INDEX IF NOT EXISTS mandate_events_m ON mandate_events(mandate_id, at);

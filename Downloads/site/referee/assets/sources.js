@@ -61,8 +61,16 @@ var A = {
   taobao:  { name: "Taobao / Tmall", zh: "淘宝/天猫", retail: true, re: /(?:taobao|tmall)\.com\/.*?[?&]id=(\d{5,})/i, url: function (id) { return "https://item.taobao.com/item.htm?id=" + id; } },
   pdd:     { name: "Pinduoduo", zh: "拼多多", retail: true, re: /(?:yangkeduo|pinduoduo)\.com\/.*?goods_id=(\d{5,})/i, url: function (id) { return "https://mobile.yangkeduo.com/goods.html?goods_id=" + id; } },
   alibaba: { name: "Alibaba.com", zh: "阿里巴巴国际站", retail: false, re: /alibaba\.com\/product-detail\/[^?#]*?_(\d{6,})\.html/i, url: function (id) { return "https://www.alibaba.com/product-detail/_" + id + ".html"; } },
-  web:     { name: "Web", zh: "", retail: true, re: /(?!)/, url: function (id) { return id; } }   // any other product link
+  /* Made-in-China.com — source of the real core catalogue (tools/harvest-mic.py). The full product URL is the reference
+     (it carries the supplier's subdomain). No live search API: pasted links are read by the proxy's generic /link reader. */
+  mic:     { name: "Made-in-China", zh: "中国制造网", retail: false, nosearch: true, re: /(https?:\/\/[a-z0-9-]+\.en\.made-in-china\.com\/product\/[A-Za-z0-9]+\/[^\s?#"]+?\.html)/i, url: function (id) { return id; } },
+  web:     { name: "Web", zh: "", retail: true, nosearch: true, re: /(?!)/, url: function (id) { return id; } }   // any other product link
 };
+/* supplier directory: the real suppliers behind the catalogue when the harvest has run, else the illustrative list above */
+if (window.RF_SUPPLIERS && window.RF_SUPPLIERS.length) VENDORS = window.RF_SUPPLIERS.map(function (v, i) {
+  return { id: "V-MIC-" + (i + 1), name: v.name, zh: "", city: "", verified: false, factory: /manufactur|factory|industr|technology|co\., ltd/i.test(v.name) && false,
+    cats: v.cats, platforms: [v.platform], products: v.products, sample: v.sample, real: true };
+});
 var config = { endpoint: (window.GARSOORE_CONFIG && window.GARSOORE_CONFIG.chinaEndpoint) || "", fx: 7.2 };
 
 /* Pull the first web link out of whatever was pasted: a bare URL, "item.jd.com/123.html" without https, or a WeChat / Taobao

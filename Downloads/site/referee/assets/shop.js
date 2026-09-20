@@ -16,7 +16,8 @@ function rating(sku) { var r = RF.orders.reviewsFor(sku); if (!r.length) return 
 function cardHTML(p) {
   var c = C.card(p), rt = rating(p.sku), sv = RF.saved.has(p.sku);
   return '<a class="g-pc" href="product.html?sku=' + c.sku + '"><div class="g-pimg"><span class="g-bd ' + (c.china ? "cn" : "lo") + '">' +
-    (c.china ? "SHIINAHA" : "GUDAHA") + '</span><button class="g-heart' + (sv ? " on" : "") + '" data-save="' + c.sku + '" aria-label="Kaydi" title="Kaydi">' + (sv ? "♥" : "♡") + '</button>' + c.icon + '</div><div class="g-pb"><div class="g-pn">' + e(c.title) + '</div>' +
+    (c.china ? "SHIINAHA" : "GUDAHA") + '</span><button class="g-heart' + (sv ? " on" : "") + '" data-save="' + c.sku + '" aria-label="Kaydi" title="Kaydi">' + (sv ? "♥" : "♡") + '</button>' +
+    (c.image ? '<img class="g-pimgi" loading="lazy" src="' + e(c.image) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(\'' + c.icon + '\'))">' : c.icon) + '</div><div class="g-pb"><div class="g-pn">' + e(c.title) + '</div>' +
     '<div class="g-pr">' + money(c.total) + '</div>' + (rt ? '<div class="g-eta">' + stars(rt.avg) + ' ' + rt.n + '</div>' : "") +
     '<div class="g-eta"><span class="g-v">✓</span> ' + eta(c.etaDays) + ' · ' + e(c.where) + '</div></div></a>';
 }
@@ -39,7 +40,7 @@ function home(app) {
         '<h1>Wax walba,<br>hal meel.</h1>' +
         '<p>Alaab, adeegyo iyo xayeysiis gudaha Soomaaliya — lacagtaadu way xajisan tahay ilaa aad hesho.</p>' +
         '<form class="g-search" id="sForm"><input id="sQ" placeholder="Raadi, ama ku dheji link alaab (JD, 1688, Taobao…)" value="' + e(q) + '"><button class="btn">Raadi</button></form>' +
-        '<div class="g-quick">' + ["Redmi", "Laptop", "Solar", "Qaboojiye", "Bajaj"].map(function (w) { return '<a class="chip" href="?q=' + encodeURIComponent(w) + '#feed">' + w + '</a>'; }).join("") + '</div>' +
+        '<div class="g-quick">' + ["Solar", "Inverter", "Qaboojiye", "Matoor", "Laptop", "Bajaj"].map(function (w) { return '<a class="chip" href="?q=' + encodeURIComponent(w) + '#feed">' + w + '</a>'; }).join("") + '</div>' +
       '</div>' +
       '<div class="g-china"><span class="g-tagw">GARSOORE CHINA</span><h2>Ka hel Shiinaha.<br>Ku iibso Garsoore.</h2>' +
         '<p>Ku dheji link JD, 1688, Taobao ama Pinduoduo — hal qiimo, hal badhan. Iibsiga, rarka iyo keenista annaga ayaa qabanayna.</p>' +
@@ -72,7 +73,8 @@ function home(app) {
     $("fCount").textContent = list.length.toLocaleString() + " alaab";
     $("grid").innerHTML = list.length ? list.slice(0, shown).map(cardHTML).join("") +
       (list.length > shown ? '<div class="g-more"><button class="btn ghost" id="moreBtn">Muuji dheeraad (' + (list.length - shown) + ')</button></div>' : "") :
-      '<div class="g-empty">Wax lama helin. <a href="china.html?q=' + encodeURIComponent(q) + '">Ka raadi Shiinaha →</a></div>';
+      (filt === "lo" ? '<div class="g-empty">Iibiyeyaasha gudaha (Muqdisho, Hargeysa…) waa la diiwaangelinayaa — alaabtooda halkan ayay ka soo muuqan doontaa. <a href="?#feed">Eeg alaabta Shiinaha →</a></div>'
+        : '<div class="g-empty">Wax lama helin. <a href="china.html?q=' + encodeURIComponent(q) + '">Ka raadi Shiinaha →</a></div>');
     if ($("moreBtn")) $("moreBtn").onclick = function () { shown += PAGE_N; draw(); };
   }
   draw();
@@ -94,7 +96,7 @@ function productView(p, host, quoteId) {
     var v = p.variants[vi], pr = C.price(p, v), china = !pr.local, src = p.sources[0], isReq = (p.oneoff && !v.quoted) || gate;
     host.innerHTML =
       '<div class="g-phero"><div class="g-pic">' + (p.image ? '<img src="' + e(p.image) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(\'' + p.icon + '\'))">' : p.icon) + '</div><div>' +
-        '<span class="g-pill ' + (china ? "gold" : "") + '">' + (china ? (src.channel === "web" ? "Garsoore · link ka yimid " + e(RF.sources.hostOf(p.pageUrl || "")) : "Garsoore China · " + chName(src.channel)) + (v.quoted ? " · qiimo rasmi" : p.oneoff ? " · dalab hal mar" : "") : "✓ " + e(src.seller) + " · " + e(src.city)) + '</span>' +
+        '<span class="g-pill ' + (china ? "gold" : "") + '">' + (china ? (src.channel === "web" ? "Garsoore · link ka yimid " + e(RF.sources.hostOf(p.pageUrl || "")) : "Garsoore China" + (src.channel === "mic" ? "" : " · " + chName(src.channel))) + (v.quoted ? " · qiimo rasmi" : p.oneoff ? " · dalab hal mar" : "") : "✓ " + e(src.seller) + " · " + e(src.city)) + '</span>' +
         '<div class="g-sku">' + p.sku + (p.modelNo ? " · " + e(p.modelNo) : "") + '</div>' +
         '<h1>' + e((p.brand ? p.brand + " " : "") + p.model) + '</h1><div id="soc" class="g-soc"></div><p class="g-blurb">' + e(p.blurb) + '</p>' +
         (p.pageUrl ? '<div class="g-eta">Il: <a href="' + e(p.pageUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link);font-weight:700">' + e(RF.sources.hostOf(p.pageUrl)) + ' ↗</a></div>' : "") +
@@ -296,7 +298,7 @@ function cart(app) {
 /* ---------------------------------------------------------------- Shop China */
 function china(app) {
   var u = qs("u"), q = qs("q"), S = RF.sources, A = S.ADAPTERS;
-  var chips = Object.keys(A).filter(function (k) { return k !== "web"; }).map(function (k) { return '<span>' + A[k].name + ' <small>' + A[k].zh + '</small></span>'; }).join("");
+  var chips = Object.keys(A).filter(function (k) { return !A[k].nosearch; }).map(function (k) { return '<span>' + A[k].name + ' <small>' + A[k].zh + '</small></span>'; }).join("");
   app.innerHTML = '<div class="wrap"><section class="g-chero"><span class="g-tagw">GARSOORE CHINA</span><h1>Ka hel Shiinaha. Ku iibso Garsoore.</h1>' +
     '<p>Kuma baahnid akoon Shiinees, luqad, lacag bixin Shiinees ama rar. Ku dheji link — waxaad helaysaa hal qiimo iyo hal badhan.</p>' +
     '<form class="g-paste big" id="pForm"><input id="pU" placeholder="Ku dheji link alaab kasta — JD, 1688, Taobao, Pinduoduo, Alibaba, ama bog kale…" value="' + e(u) + '"><button class="btn gold">Qiimee</button></form>' +
@@ -440,13 +442,14 @@ function bizChina(app) {
     '<p>Raadi 1688, Alibaba, JD, Taobao iyo Pinduoduo hal mar. Qiimaha waa <b>la keenay Muqdisho</b> (DAP): alaab, rar Shiinaha, isku-darid, rar bad/cir, canshuur. Garsoore ayaa la xiriira iibiyaha, lacagta haya, oo tayada hubiya.</p>' +
     '<form class="g-paste big" id="bForm"><input id="bQ" placeholder="Raadi (solar light, chairs, CCTV) ama ku dheji link alaab kasta…" value="' + e(u || q) + '"><button class="btn gold">Raadi</button></form>' +
     '<div class="g-src"><a href="?' + (q ? "q=" + encodeURIComponent(q) : "") + '"' + on("") + '>Dhammaan</a>' +
-      Object.keys(A).filter(function (k) { return k !== "web"; }).map(function (k) { return '<a href="?p=' + k + (q ? "&q=" + encodeURIComponent(q) : "") + '"' + on(k) + '>' + A[k].name + ' <small>' + A[k].zh + '</small></a>'; }).join("") + '</div></section>' +
+      Object.keys(A).filter(function (k) { return !A[k].nosearch; }).map(function (k) { return '<a href="?p=' + k + (q ? "&q=" + encodeURIComponent(q) : "") + '"' + on(k) + '>' + A[k].name + ' <small>' + A[k].zh + '</small></a>'; }).join("") + '</div></section>' +
     '<div class="g-sec"><h2>Dalabyo</h2><span class="g-eta">Qiimaha halkii unug = la keenay Muqdisho · beddel tirada si aad u aragto qiimaha jumladda</span></div>' +
     '<div id="offers"></div>' +
     '<div class="g-sec"><h2>Iibiyeyaasha Shiinaha</h2><span class="g-eta">Warshado iyo ganacsato ay Garsoore hubisay</span></div>' +
     '<div class="g-vendors">' + S.VENDORS.map(function (v) {
-      return '<div class="g-vendor"><b>' + e(v.name) + '</b><div class="g-eta">' + e(v.zh) + ' · ' + e(v.city) + ' · ' + v.years + ' sano · ★ ' + v.rating + '</div>' +
+      return '<div class="g-vendor"><b>' + e(v.name) + '</b><div class="g-eta">' + (v.real ? v.products + ' alaab katalogga · <a href="' + e(v.sample) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link)">Made-in-China ↗</a>' : e(v.zh) + ' · ' + e(v.city) + ' · ' + v.years + ' sano · ★ ' + v.rating) + '</div>' +
         '<div class="g-vtags">' + (v.verified ? '<span class="g-pill">✓ La hubiyay</span>' : '<span class="g-pill gold">Hubin socota</span>') + (v.factory ? '<span class="g-pill gold">Warshad</span>' : "") +
+          (v.real ? v.cats.map(function (c) { var k = C.CATS.filter(function (x) { return x.id === c; })[0]; return k ? '<span class="chip">' + k.so + '</span>' : ""; }).join("") : "") +
         v.platforms.map(function (p) { return '<span class="chip">' + (A[p] ? A[p].name : "Toos") + '</span>'; }).join("") + '</div></div>';
     }).join("") + '</div></div>';
   $("bForm").onsubmit = function (ev) { ev.preventDefault(); var v = $("bQ").value.trim(); location.href = S.urlOf(v) ? "?u=" + encodeURIComponent(S.urlOf(v)) : "?q=" + encodeURIComponent(v) + (plat ? "&p=" + plat : ""); };
@@ -515,8 +518,8 @@ function quotesAdmin(app) {
 RF.shopUI = function (page, h) {
   e = h.e; toast = h.toast;
   var app = document.getElementById("app");
-  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); } }[page] || home)(app); };
+  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); } }[page] || home)(app); };
   /* staff pages need to know whether the API is there before drawing; shop pages draw immediately */
-  if ((page === "quotes" || page === "ops") && RF.api) RF.api.ready.then(run); else run();
+  if ((page === "quotes" || page === "ops" || page === "agents") && RF.api) RF.api.ready.then(run); else run();
 };
 })();

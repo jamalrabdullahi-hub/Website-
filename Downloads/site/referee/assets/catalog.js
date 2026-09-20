@@ -19,65 +19,12 @@ var CATS = [
 ];
 
 /* ---------------------------------------------------------------- canonical products
-   variants: exact identity — vsku + attributes. sources: where Garsoore can procure it. */
-var P = [
-  { sku: "GRS-CMP-00318", cat: "CMP", brand: "Lenovo", model: "Xiaoxin Pro 14 (2025)", modelNo: "83HB", icon: "💻", kg: 2.4,
-    blurb: "Shaashad 2.8K OLED, Intel Core Ultra 5, batari 84Wh, miisaan 1.4kg.",
-    specs: [["Processor", "Core Ultra 5 125H"], ["Shaashad", "14″ 2.8K OLED"], ["Batari", "84Wh"], ["Miisaan", "1.4 kg"]],
-    variants: [{ vsku: "83HB-16-512-GR", label: "16GB · 512GB", ram: "16GB", storage: "512GB", color: "Grey", hex: "#9A9DA4", cost: 5299 },
-               { vsku: "83HB-32-1T-GR", label: "32GB · 1TB", ram: "32GB", storage: "1TB", color: "Grey", hex: "#9A9DA4", cost: 6499 }],
-    sources: [{ channel: "jd", ref: "100071383535" }] },
-  { sku: "GRS-PHN-00142", cat: "PHN", brand: "Xiaomi", model: "Redmi Note 14 Pro", modelNo: "24115RA8EC", icon: "📱", kg: 0.6,
-    blurb: "Kaamiro 200MP, batari 5,500mAh, shaashad AMOLED 6.67″, dallacaad 45W.",
-    specs: [["Kaamiro", "200MP"], ["Batari", "5,500mAh"], ["Shaashad", "6.67″ AMOLED"], ["Dallacaad", "45W"]],
-    variants: [{ vsku: "RN14P-12-256-BK", label: "12GB · 256GB", ram: "12GB", storage: "256GB", color: "Midnight", hex: "#2E3A4F", cost: 1699 },
-               { vsku: "RN14P-12-256-WH", label: "12GB · 256GB", ram: "12GB", storage: "256GB", color: "White", hex: "#E9E4DA", cost: 1699 },
-               { vsku: "RN14P-8-256-BK", label: "8GB · 256GB", ram: "8GB", storage: "256GB", color: "Midnight", hex: "#2E3A4F", cost: 1499 }],
-    sources: [{ channel: "jd", ref: "100113459881" }] },
-  { sku: "GRS-APL-00077", cat: "APL", brand: "Midea", model: "Inverter AC 1.5HP", modelNo: "KFR-35GW", icon: "🌀", kg: 42,
-    blurb: "Qaboojiye inverter ah, koronto yar, 220V, ku habboon kulaylka Muqdisho.",
-    specs: [["Awood", "1.5HP / 12,000 BTU"], ["Koronto", "220V · A++"], ["Qaylo", "22 dB"], ["Dammaanad", "12 bil"]],
-    variants: [{ vsku: "KFR35-WH", label: "1.5HP", color: "White", hex: "#F3F1EC", cost: 1580 }],
-    sources: [{ channel: "1688", ref: "712288934512" }] },
-  { sku: "GRS-SOL-00031", cat: "SOL", brand: "Jinko", model: "550W panel + 5kW inverter set", modelNo: "JKM550-SET5", icon: "☀️", kg: 0,
-    blurb: "Set solar guri oo dhammaystiran — 4 panel, inverter 5kW, rakibid Muqdisho gudaheeda.",
-    specs: [["Panel", "4 × 550W"], ["Inverter", "5kW hybrid"], ["Rakibid", "Ku jirta"], ["Dammaanad", "5 sano"]],
-    variants: [{ vsku: "JKSET5", label: "Set dhammaystiran", color: "—", price: 1140 }],
-    sources: [{ channel: "domestic", seller: "Km4 Solar Center", city: "Muqdisho" }] },
-  { sku: "GRS-PHN-00009", cat: "PHN", brand: "Samsung", model: "Galaxy A55 5G", modelNo: "SM-A556E", icon: "📱", kg: 0,
-    blurb: "Cusub, sanduuqeeda ku jira, dammaanad iibiye 6 bil.",
-    specs: [["Shaashad", "6.6″ AMOLED"], ["Kaamiro", "50MP"], ["Batari", "5,000mAh"], ["Xaalad", "Cusub"]],
-    variants: [{ vsku: "A556E-8-256-NV", label: "8GB · 256GB", color: "Navy", hex: "#2B3A55", price: 365 },
-               { vsku: "A556E-8-128-LC", label: "8GB · 128GB", color: "Lilac", hex: "#CDBFE0", price: 329 }],
-    sources: [{ channel: "domestic", seller: "Hodan Mobile", city: "Muqdisho" }] },
-  { sku: "GRS-ELC-00054", cat: "ELC", brand: "Anker", model: "Soundcore Q30", modelNo: "A3028", icon: "🎧", kg: 0,
-    blurb: "Headphone noise-cancelling, 40 saac batari.",
-    specs: [["ANC", "Haa"], ["Batari", "40 saac"], ["Bluetooth", "5.0"], ["Xaalad", "Cusub"]],
-    variants: [{ vsku: "A3028-BK", label: "Standard", color: "Black", hex: "#222", price: 64 }],
-    sources: [{ channel: "domestic", seller: "Bakaaraha Electronics", city: "Muqdisho" }] },
-  { sku: "GRS-CMP-00402", cat: "CMP", brand: "HP", model: "LaserJet Pro M141w", modelNo: "7MD74A", icon: "🖨️", kg: 7.5,
-    blurb: "Printer + scanner + copier, WiFi, ku habboon xafiis yar.",
-    specs: [["Nooca", "Laser mono"], ["Xawaare", "20 ppm"], ["WiFi", "Haa"], ["Scan", "Haa"]],
-    variants: [{ vsku: "7MD74A", label: "Standard", color: "White", hex: "#F3F1EC", cost: 1049 }],
-    sources: [{ channel: "jd", ref: "100009938112" }] },
-  { sku: "GRS-FRN-00021", cat: "FRN", brand: "Garsoore Local", model: "Kursi fadhi 3+2", modelNo: "SOFA-32", icon: "🛋️", kg: 0,
-    blurb: "Kursi fadhi cusub, maro adag, Hodan workshop — keenis bilaash ah Muqdisho.",
-    specs: [["Qaab", "3 + 2 kursi"], ["Maro", "Velvet"], ["Midab", "Beige"], ["Keenis", "Bilaash"]],
-    variants: [{ vsku: "SOFA-32-BG", label: "3 + 2", color: "Beige", hex: "#D8C8AA", price: 420 }],
-    sources: [{ channel: "domestic", seller: "Hodan Furniture", city: "Muqdisho" }] },
-  { sku: "GRS-APL-00112", cat: "APL", brand: "Haier", model: "Fridge 2-door 260L", modelNo: "BCD-260", icon: "🧊", kg: 58,
-    blurb: "Talaajad laba albaab, inverter, koronto yar.",
-    specs: [["Mug", "260L"], ["Inverter", "Haa"], ["Koronto", "220V"], ["Dammaanad", "12 bil"]],
-    variants: [{ vsku: "BCD260-SL", label: "260L", color: "Silver", hex: "#C9CCD1", cost: 1899 }],
-    sources: [{ channel: "1688", ref: "683312001477" }] },
-  { sku: "GRS-VEH-00008", cat: "VEH", brand: "Bajaj", model: "RE bajaj — cusub", modelNo: "RE-4S", icon: "🛺", kg: 0,
-    blurb: "Bajaj cusub, diiwaan-gelin ku jirta, Km4.",
-    specs: [["Mishiin", "236cc"], ["Shidaal", "Petrol"], ["Rakaab", "3"], ["Xaalad", "Cusub"]],
-    variants: [{ vsku: "RE4S-GR", label: "Standard", color: "Green", hex: "#4E7A4A", price: 3450 }],
-    sources: [{ channel: "domestic", seller: "Km4 Motors", city: "Muqdisho" }] }
-];
+   variants: exact identity — vsku + attributes. sources: where Garsoore can procure it.
+   Every product comes from data/catalog.csv (real supplier listings, tools/harvest-mic.py → tools/import-catalog.py).
+   Domestic sellers are added the same way once they have signed up — no invented products or sellers in code. */
+var P = [];
 
-/* core catalogue (~1,000 SKUs) generated from data/catalog.csv by tools/import-catalog.py */
+/* core catalogue generated from data/catalog.csv by tools/import-catalog.py */
 if (window.RF_CATALOG_DATA) P = P.concat(window.RF_CATALOG_DATA);
 
 /* ---------------------------------------------------------------- pricing (internal) */
@@ -109,9 +56,9 @@ function sameVariant(a, b) {
 
 function card(p) {
   var v = p.variants[0], pr = price(p, v), src = p.sources[0];
-  return { sku: p.sku, icon: p.icon, title: p.brand + " " + p.model + (v.label && v.label !== "Standard" ? " · " + v.label : ""),
+  return { sku: p.sku, icon: p.icon, image: p.image || "", title: (p.brand ? p.brand + " " : "") + p.model + (v.label && v.label !== "Standard" ? " · " + v.label : ""),
     total: pr.total, etaDays: pr.etaDays, china: !pr.local,
-    where: pr.local ? (src.seller + " · " + src.city) : chName(src.channel) };
+    where: pr.local ? (src.seller + " · " + src.city) : "Shiinaha" };
 }
 
 RF.catalog = {

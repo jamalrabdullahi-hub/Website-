@@ -658,3 +658,34 @@ footer.site b{color:var(--fg);font-weight:650}
 @media (max-width:420px){
   .brand .bname,.brand .bizmark{display:none}   /* the switch already says "Garsoore | Ganacsi" */
 }
+/* real product photos on cards (supplier images; white backgrounds sit on a white tile) */
+.g-pimg:has(.g-pimgi){background:#fff}
+.g-pimgi{width:100%;height:100%;object-fit:contain;padding:10px;box-sizing:border-box}
+/* supplier titles are long: two lines on cards, full title on the product page */
+.g-pn{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* ---------------------------------------------------------------- agents (wakiillo) */
+.ag-modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.ag-modes div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.ag-modes b{display:block;font-size:15px;margin-bottom:4px}
+.ag-modes span{font-size:12.5px;color:var(--muted);line-height:1.5}
+.ag-badge{font-size:10px;font-weight:800;letter-spacing:.08em;padding:6px 8px;border-radius:9px;align-self:flex-start}
+.ag-badge.liq{background:var(--gold-soft);color:var(--gold-ink)}
+.ag-badge.mar{background:var(--pri-soft);color:var(--link)}
+.ag-nums,.ag-split{display:flex;flex-wrap:wrap;gap:8px 18px}
+.ag-nums div span,.ag-split div span{display:block;font-size:11px;color:var(--muted);font-weight:700}
+.ag-nums div b,.ag-split div b{font-size:16px}
+.ag-split{margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--surface)}
+.ag-fore{margin-top:10px}
+.ag-log{margin-top:10px;border-left:2px solid var(--line);padding-left:12px;font-size:12.5px;display:grid;gap:5px}
+.ag-log i{font-style:normal;color:var(--muted)}
+.ag-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ag-pick{margin-top:12px}
+.g-rad>div{flex:1}
+.ag-tbl{width:100%;border-collapse:collapse;margin:10px 0 18px;font-size:13.5px}
+.ag-tbl th,.ag-tbl td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top}
+.ag-tbl th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.ag-tbl td:first-child{color:var(--muted);font-weight:700;width:150px}
+.ag-how h3{font-family:var(--fd);margin:18px 0 6px}
+.ag-how ul{margin:6px 0 0 18px;line-height:1.7}
+@media (max-width:760px){ .ag-modes,.ag-row{grid-template-columns:1fr} }

@@ -180,7 +180,7 @@ function chrome() {
       '<a class="brand" href="' + (biz ? "index.html" : "index.html") + '">' + FLAG + '<span class="bname"> Garsoore</span>' + (biz ? ' <span class="bizmark">Ganacsi</span>' : '') + '</a>' +
       '<nav class="nav">' +
         (biz
-          ? nl("index.html", "Suuqa ganacsiga", cur === "b2b") + nl("china.html", "Iibsi Shiinaha", window.SHOP === "bizchina", "cnlink") + nl("contracts.html", "Qandaraasyo", cur === "tenders") +
+          ? nl("index.html", "Suuqa ganacsiga", cur === "b2b") + nl("china.html", "Iibsi Shiinaha", window.SHOP === "bizchina", "cnlink") + nl("agents.html", "Wakiillo", window.SHOP === "agents") + nl("contracts.html", "Qandaraasyo", cur === "tenders") +
             nl("logistics.html", "Rar", cur === "logi") + nl("exchange.html", "Suuqa badeecada", cur === "exchange") +
             nl("activity.html", "Hawlaha shirkadda", cur === "activity")
           : nl("index.html", "Suuqa", sp === "home") + nl("marketplace.html", "Xayeysiis", cur === "classifieds") +

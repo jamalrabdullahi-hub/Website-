@@ -104,6 +104,35 @@ async function expireUnpaid(env) {
 
 async function body(req) { try { return await req.json(); } catch { return {}; } }
 
+
+/* ---- agents: how a mandate's spread is divided (see docs/DOCTRINE.md — the agent's incentive is visible to everyone) */
+export const AGENT = {
+  capLiquidity: 15,     // liquidity mandate: the agent may price at most this % past the principal's floor
+  capMargin: 40,        // margin mandate: more room, because the principal shares the upside
+  platformPct: 10,      // Garsoore's cut OF THE SPREAD (never of the principal's floor)
+  sellerPctMin: 25,     // limits on the principal's share of the spread in a margin mandate
+  sellerPctMax: 80,
+  defaultDays: 14
+};
+/* sell: buyer pays `price`, principal keeps floor + share of the spread.
+   buy:  principal pays no more than floor; the saving below it is the spread, split the same way. */
+function settle(md, price) {
+  const spread = Math.max(0, md.side === "sell" ? price - md.floor : md.floor - price);
+  const platform = Math.round(spread * AGENT.platformPct) / 100;
+  const rest = spread - platform;
+  const principal = Math.round(rest * md.seller_pct) / 100;
+  const agent = Math.round((rest - principal) * 100) / 100;
+  return { price, spread: +spread.toFixed(2), platform: +platform.toFixed(2), principalSpread: +principal.toFixed(2),
+           principalTotal: +((md.side === "sell" ? md.floor : price) + (md.side === "sell" ? principal : 0)).toFixed(2),
+           principalPays: md.side === "buy" ? +(price + 0).toFixed(2) : null, agent: agent };
+}
+function mandateOut(r) {
+  return { id: r.id, side: r.side, mode: r.mode, title: r.title, cat: r.cat, qty: r.qty, unit: r.unit, floor: r.floor,
+    capPct: r.cap_pct, sellerPct: r.seller_pct, ask: r.ask, city: r.city, notes: r.notes, state: r.state,
+    bestOffer: r.best_offer, dealPrice: r.deal_price, split: J(r.split), expiresAt: r.expires_at, createdAt: r.created_at,
+    updatedAt: r.updated_at, agentName: r.a_name || null, principal: r.u_name || null };
+}
+
 /* ---------------------------------------------------------------- pricing an order (server side) */
 async function priceItems(env, user, items) {
   if (!Array.isArray(items) || !items.length || items.length > 20) throw new Error("Dambiishu waa madhan tahay.");
@@ -157,7 +186,7 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
-    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
+    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
     if (path === "/me") return json({ user: pubUser(user) });
 
     /* ---- auth: phone + PIN (SMS/WhatsApp OTP is a launch item once a provider is contracted) */
@@ -318,6 +347,155 @@ export async function handleApi(req, env, url) {
         note: q.note, total: q.total, etaDays: q.eta_days, staffNote: q.staff_note, createdAt: q.created_at, quotedAt: q.quoted_at, contact: staff && q.u_name ? q.u_name + " · +" + q.u_phone : undefined })) });
     }
 
+    /* ---------------------------------------------------------------- agents & mandates (business side)
+       A mandate hands a sale (or a purchase) to an agent. The agent earns the spread between the principal's
+       floor and the price actually achieved; Garsoore takes a cut of that spread and holds the money.
+         liquidity : principal takes the floor, fast. The agent keeps the whole spread (markup capped hard).
+         margin    : the principal keeps seller_pct of the spread. Worse for the agent → slower to place. */
+    if (path === "/agents" && M === "GET") {
+      const r = await env.DB.prepare(`SELECT a.id, a.name, a.cats, a.cities, a.capacity, a.status, a.created_at,
+          (SELECT COUNT(*) FROM mandates m WHERE m.agent_id = a.id AND m.state IN ('ASSIGNED','LISTED','NEGOTIATING')) live,
+          (SELECT COUNT(*) FROM mandates m WHERE m.agent_id = a.id AND m.state IN ('SOLD','SETTLED')) done
+        FROM agents a WHERE a.status = 'approved' ORDER BY done DESC LIMIT 100`).all();
+      return json({ agents: r.results.map(x => ({ id: x.id, name: x.name, cats: J(x.cats) || [], cities: J(x.cities) || [], capacity: x.capacity, live: x.live, done: x.done, since: x.created_at })) });
+    }
+    if (path === "/agent/me" && M === "GET") {
+      const me = await env.DB.prepare("SELECT * FROM agents WHERE user_id = ?").bind(user.id).first();
+      return json({ agent: me ? { id: me.id, name: me.name, cats: J(me.cats), cities: J(me.cities), capacity: me.capacity, status: me.status, note: me.note } : null });
+    }
+    if (path === "/agent/apply" && M === "POST") {
+      const b = await body(req), cats = (Array.isArray(b.cats) ? b.cats : []).slice(0, 10).map(String);
+      const cities = (Array.isArray(b.cities) ? b.cities : []).slice(0, 10).map(x => String(x).slice(0, 30));
+      const cap = Math.max(1, Math.min(50, Math.round(+b.capacity || 5)));
+      const ex = await env.DB.prepare("SELECT id FROM agents WHERE user_id = ?").bind(user.id).first();
+      if (ex) { await env.DB.prepare("UPDATE agents SET cats = ?, cities = ?, capacity = ? WHERE id = ?").bind(JSON.stringify(cats), JSON.stringify(cities), cap, ex.id).run(); return json({ ok: true, id: ex.id }); }
+      const id = rid("AG-", 6);
+      await env.DB.prepare("INSERT INTO agents (id, user_id, name, cats, cities, capacity, status, created_at) VALUES (?,?,?,?,?,?,'pending',?)")
+        .bind(id, user.id, user.name, JSON.stringify(cats), JSON.stringify(cities), cap, now()).run();
+      return json({ ok: true, id, status: "pending" });
+    }
+
+    if (path === "/mandates" && M === "POST") {
+      const b = await body(req);
+      const side = b.side === "buy" ? "buy" : "sell", mode = b.mode === "margin" ? "margin" : "liquidity";
+      const title = String(b.title || "").trim().slice(0, 120);
+      if (title.length < 3) return err("Ku qor waxa aad rabto in wakiilku kuu iibiyo/kuu soo iibiyo.");
+      const floor = Math.round(+b.floor);
+      if (!(floor > 0 && floor <= 10000000)) return err(side === "sell" ? "Ku qor qiimaha ugu yaraan ee aad aqbali karto." : "Ku qor qiimaha ugu badan ee aad bixin karto.");
+      const qty = Math.max(1, Math.min(100000, Math.round(+b.qty || 1)));
+      const capPct = mode === "liquidity" ? AGENT.capLiquidity : AGENT.capMargin;
+      const sellerPct = mode === "liquidity" ? 0 : Math.max(AGENT.sellerPctMin, Math.min(AGENT.sellerPctMax, Math.round(+b.sellerPct || 50)));
+      const days = Math.max(1, Math.min(90, Math.round(+b.days || 14)));
+      const id = rid("MD-", 6), t = now();
+      await env.DB.batch([
+        env.DB.prepare(`INSERT INTO mandates (id,user_id,side,mode,title,cat,qty,unit,floor,cap_pct,seller_pct,city,notes,state,expires_at,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?,?,?)`).bind(id, user.id, side, mode, title, String(b.cat || "").slice(0, 8) || null, qty, String(b.unit || "").slice(0, 20) || null,
+          floor, capPct, sellerPct, String(b.city || "").slice(0, 40) || null, String(b.notes || "").slice(0, 600) || null, new Date(Date.now() + days * 864e5).toISOString(), t, t),
+        env.DB.prepare("INSERT INTO mandate_events (mandate_id, at, who, who_name, kind, amount, text) VALUES (?,?,?,?,'created',?,?)")
+          .bind(id, t, user.id, user.name, floor, mode === "liquidity" ? "Degdeg: qiimaha hoose, wakiilku wuxuu haystaa faa'iidada" : "Faa'iido: " + sellerPct + "% faa'iidada waxaa haysta milkiilaha")
+      ]);
+      return json({ id, capPct, sellerPct });
+    }
+    if (path === "/mandates" && M === "GET") {
+      const scope = url.searchParams.get("scope") || "mine";
+      const me = await env.DB.prepare("SELECT * FROM agents WHERE user_id = ?").bind(user.id).first();
+      let rows;
+      if (scope === "open") {                       // the mandate board an approved agent can claim from
+        if (!me || me.status !== "approved") return json({ mandates: [], needAgent: true });
+        rows = (await env.DB.prepare("SELECT m.*, u.name u_name FROM mandates m JOIN users u ON u.id = m.user_id WHERE m.state = 'OPEN' AND m.expires_at > ? ORDER BY (m.mode = 'liquidity') DESC, m.created_at ASC LIMIT 100").bind(now()).all()).results;
+      } else if (scope === "assigned") {
+        if (!me) return json({ mandates: [] });
+        rows = (await env.DB.prepare("SELECT m.*, u.name u_name FROM mandates m JOIN users u ON u.id = m.user_id WHERE m.agent_id = ? ORDER BY m.updated_at DESC LIMIT 100").bind(me.id).all()).results;
+      } else {
+        rows = (await env.DB.prepare("SELECT m.*, a.name a_name FROM mandates m LEFT JOIN agents a ON a.id = m.agent_id WHERE m.user_id = ? ORDER BY m.created_at DESC LIMIT 100").bind(user.id).all()).results;
+      }
+      return json({ mandates: rows.map(mandateOut), agent: me ? { id: me.id, status: me.status } : null, econ: AGENT });
+    }
+    if ((m = path.match(/^\/mandates\/(MD-[A-Z0-9]+)$/)) && M === "GET") {
+      const md = await env.DB.prepare("SELECT m.*, a.name a_name, u.name u_name FROM mandates m LEFT JOIN agents a ON a.id = m.agent_id JOIN users u ON u.id = m.user_id WHERE m.id = ?").bind(m[1]).first();
+      if (!md) return err("Lama helin.", 404);
+      const me = await env.DB.prepare("SELECT id FROM agents WHERE user_id = ?").bind(user.id).first();
+      const mine = md.user_id === user.id, isAgent = me && md.agent_id === me.id;
+      if (!(mine || isAgent || staff)) return err("Ma lihid fasax.", 403);
+      const ev = (await env.DB.prepare("SELECT * FROM mandate_events WHERE mandate_id = ? ORDER BY at ASC").bind(md.id).all()).results;
+      return json({ mandate: mandateOut(md), events: ev.map(x => ({ at: x.at, who: x.who_name, kind: x.kind, amount: x.amount, text: x.text })), role: mine ? "principal" : isAgent ? "agent" : "staff", econ: AGENT });
+    }
+    if ((m = path.match(/^\/mandates\/(MD-[A-Z0-9]+)\/(claim|ask|offer|sold|cancel|settle)$/)) && M === "POST") {
+      const md = await env.DB.prepare("SELECT * FROM mandates WHERE id = ?").bind(m[1]).first();
+      if (!md) return err("Lama helin.", 404);
+      const b = await body(req), t = now(), act = m[2];
+      const me = await env.DB.prepare("SELECT * FROM agents WHERE user_id = ?").bind(user.id).first();
+      const isAgent = me && md.agent_id === me.id, mine = md.user_id === user.id;
+      const log = (kind, amount, text) => env.DB.prepare("INSERT INTO mandate_events (mandate_id, at, who, who_name, kind, amount, text) VALUES (?,?,?,?,?,?,?)")
+        .bind(md.id, t, user.id, user.name, kind, amount == null ? null : Math.round(amount), text || null);
+
+      if (act === "claim") {
+        if (!me || me.status !== "approved") return err("Wakiillada Garsoore ee la ansixiyay oo keliya.", 403);
+        if (md.state !== "OPEN") return err("Mandate-kan horey ayaa loo qaatay.");
+        if (md.user_id === user.id) return err("Mandate-kaaga adigu ma qaadan kartid.");
+        const live = await env.DB.prepare("SELECT COUNT(*) n FROM mandates WHERE agent_id = ? AND state IN ('ASSIGNED','LISTED','NEGOTIATING')").bind(me.id).first();
+        if (live.n >= me.capacity) return err("Awooddaada (" + me.capacity + " mandate) way buuxdaa.");
+        await env.DB.batch([
+          env.DB.prepare("UPDATE mandates SET agent_id = ?, state = 'ASSIGNED', updated_at = ? WHERE id = ? AND state = 'OPEN'").bind(me.id, t, md.id),
+          log("assigned", null, "Wakiil: " + user.name)
+        ]);
+        return json({ ok: true });
+      }
+      if (act === "ask") {
+        if (!isAgent) return err("Wakiilka loo xilsaaray oo keliya.", 403);
+        const ask = Math.round(+b.ask);
+        const lo = md.side === "sell" ? md.floor : Math.round(md.floor * (1 - md.cap_pct / 100));
+        const hi = md.side === "sell" ? Math.round(md.floor * (1 + md.cap_pct / 100)) : md.floor;
+        if (!(ask >= lo && ask <= hi)) return err("Qiimuhu waa inuu u dhexeeyaa $" + lo + " iyo $" + hi + " (xadka mandate-ka).");
+        await env.DB.batch([
+          env.DB.prepare("UPDATE mandates SET ask = ?, state = CASE WHEN state = 'ASSIGNED' THEN 'LISTED' ELSE state END, updated_at = ? WHERE id = ?").bind(ask, t, md.id),
+          log("ask", ask, String(b.note || "").slice(0, 200) || null)
+        ]);
+        return json({ ok: true });
+      }
+      if (act === "offer") {
+        if (!isAgent) return err("Wakiilka loo xilsaaray oo keliya.", 403);
+        const amount = Math.round(+b.amount);
+        if (!(amount > 0)) return err("Ku qor qiimaha la soo bandhigay.");
+        const best = md.best_offer == null ? amount : (md.side === "sell" ? Math.max(md.best_offer, amount) : Math.min(md.best_offer, amount));
+        await env.DB.batch([
+          env.DB.prepare("UPDATE mandates SET best_offer = ?, state = CASE WHEN state IN ('ASSIGNED','LISTED') THEN 'NEGOTIATING' ELSE state END, updated_at = ? WHERE id = ?").bind(best, t, md.id),
+          log("offer", amount, String(b.from || "").slice(0, 60) || null)
+        ]);
+        return json({ ok: true });
+      }
+      if (act === "sold") {
+        if (!isAgent) return err("Wakiilka loo xilsaaray oo keliya.", 403);
+        if (!["ASSIGNED", "LISTED", "NEGOTIATING"].includes(md.state)) return err("Mandate-kan lama xidhi karo hadda.");
+        const price = Math.round(+b.price);
+        const lo = md.side === "sell" ? md.floor : 1;
+        const hi = md.side === "sell" ? Math.round(md.floor * (1 + md.cap_pct / 100)) : md.floor;
+        if (!(price >= lo && price <= hi)) return err("Qiimaha heshiisku waa inuu u dhexeeyaa $" + lo + " iyo $" + hi + ".");
+        const split = settle(md, price);
+        await env.DB.batch([
+          env.DB.prepare("UPDATE mandates SET state = 'SOLD', deal_price = ?, split = ?, updated_at = ? WHERE id = ?").bind(price, JSON.stringify(split), t, md.id),
+          log("sold", price, String(b.buyer || "").slice(0, 80) || null)
+        ]);
+        return json({ ok: true, split });
+      }
+      if (act === "cancel") {
+        if (!(mine || staff)) return err("Milkiilaha oo keliya.", 403);
+        if (!["OPEN", "ASSIGNED", "LISTED"].includes(md.state)) return err("Wax lagu heshiiyay lama joojin karo — la xidhiidh Garsoore.");
+        await env.DB.batch([
+          env.DB.prepare("UPDATE mandates SET state = 'CANCELLED', updated_at = ? WHERE id = ?").bind(t, md.id),
+          log("cancelled", null, String(b.why || "").slice(0, 200) || null)
+        ]);
+        return json({ ok: true });
+      }
+      if (!staff) return err("Shaqaalaha Garsoore oo keliya.", 403);     // settle: money actually moved
+      if (md.state !== "SOLD") return err("Mandate-kan weli lama iibin.");
+      await env.DB.batch([
+        env.DB.prepare("UPDATE mandates SET state = 'SETTLED', updated_at = ? WHERE id = ?").bind(t, md.id),
+        log("settled", md.deal_price, "Lacagta waa la qaybiyay")
+      ]);
+      return json({ ok: true });
+    }
+
     /* ---------------------------------------------------------------- staff */
     if (!path.startsWith("/ops/")) return err("Not found", 404);
     if (!staff) return err("Shaqaalaha Garsoore oo keliya.", 403);
@@ -377,6 +555,18 @@ export async function handleApi(req, env, url) {
         const total = Math.round(+b.total); if (!(total > 0)) return err("Ku qor qiimo sax ah.");
         await env.DB.prepare("UPDATE quotes SET status = 'quoted', total = ?, eta_days = ?, staff_note = ?, quoted_at = ? WHERE id = ? AND status = 'pending'").bind(total, Math.max(1, Math.round(+b.etaDays || 20)), String(b.note || "").slice(0, 300), t, m[1]).run();
       } else await env.DB.prepare("UPDATE quotes SET status = 'declined', staff_note = ?, quoted_at = ? WHERE id = ? AND status = 'pending'").bind(String(b.note || "Alaabtan ma keeni karno.").slice(0, 300), t, m[1]).run();
+      return json({ ok: true });
+    }
+    if (path === "/ops/agents" && M === "GET") {
+      const ag = (await env.DB.prepare("SELECT a.*, u.phone u_phone FROM agents a JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 200").all()).results;
+      const md = (await env.DB.prepare("SELECT m.*, a.name a_name, u.name u_name FROM mandates m LEFT JOIN agents a ON a.id = m.agent_id JOIN users u ON u.id = m.user_id WHERE m.state IN ('OPEN','ASSIGNED','LISTED','NEGOTIATING','SOLD') ORDER BY m.created_at ASC LIMIT 200").all()).results;
+      return json({ agents: ag.map(x => ({ id: x.id, name: x.name, phone: "+" + x.u_phone, cats: J(x.cats), cities: J(x.cities), capacity: x.capacity, status: x.status, createdAt: x.created_at })),
+        mandates: md.map(mandateOut) });
+    }
+    if ((m = path.match(/^\/ops\/agents\/(AG-[A-Z0-9]+)$/)) && M === "POST") {
+      const b = await body(req), st = ["approved", "paused", "blocked", "pending"].includes(b.status) ? b.status : null;
+      if (!st) return err("Xaalad aan sax ahayn.");
+      await env.DB.prepare("UPDATE agents SET status = ?, note = ? WHERE id = ?").bind(st, String(b.note || "").slice(0, 200), m[1]).run();
       return json({ ok: true });
     }
     if (path === "/ops/stats" && M === "GET") {

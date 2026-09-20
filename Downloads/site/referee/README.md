@@ -138,12 +138,20 @@ Sorghum       par Grade 1 · Feed −4.00 / Grade 2 −1.50 / White food +3.00  
   **Simulate reviewer** on *My activity* to clear them.
 - Set your name (top-right) to post listings under it and to appear as a party on deals.
 
-## Garsoore core catalogue (~1,000 SKUs)
-- `data/catalog.csv` is the source of truth — one row per variant, rows sharing a `sku` are one product.
-  Columns: `sku, cat, brand, model, model_no, variant, color, color_hex, cost_cny, kg, moq, source_platform, source_url, supplier, cost_verified, blurb_so`.
+## Garsoore core catalogue (real supplier listings)
+- `data/catalog.csv` is the source of truth — one row per variant, rows sharing a `sku` are one product. Every row is a
+  **real listing**: the supplier's product URL, company name, photo, published price range (FOB, USD), minimum order and
+  unit, weight and key specs, plus the capture date. `cost_cny` = the *upper* end of the supplier's range × 7.2 (conservative).
+- `python tools/harvest-mic.py` builds it from public Made-in-China.com product pages: ~80 searches for what Somali buyers
+  need (solar, generators, appliances, furniture, building, electronics, phones, clothing, vehicles). Filters drop
+  accessories, bait prices, per-watt/per-metre listings, one-listing-many-sizes price ranges and minimum orders > 100.
+  Pages are cached in `data/harvest-cache/` (gitignored); `--offline` rebuilds from the cache. It also writes
+  `data/suppliers.json` (the real supplier directory shown on the business China page).
+- Every harvested row is `cost_verified=check`. **A person confirms price + freight weight with the supplier, then sets
+  `yes`.** With `REQUIRE_VERIFIED=1` (launch) only `yes` rows sell at a fixed price; the rest go through a staff quote.
 - `python tools/import-catalog.py` validates the CSV and writes `assets/catalog-data.js` (bad rows are reported and skipped).
-- `python tools/gen-catalog.py` created the *starter* list (999 products, placeholder costs). It overwrites the CSV — run it once only.
-- Links for items outside the range become quote requests (`RF.quotes`), priced by staff at `business/quotes.html`.
+- Domestic sellers are added as rows with `source_platform=domestic` once they have signed up — never invented.
+- Links for items outside the range become quote requests (`RF.quotes`), priced by staff in the ops console.
 
 ## Live China data (Apify)
 `server/china-proxy.js` is a Cloudflare Worker that calls Apify actors so the token never reaches the browser:

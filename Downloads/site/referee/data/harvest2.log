@@ -1,0 +1,83 @@
+SOL  Solar Panel 550W                    43 listings  -> kept 2
+SOL  Solar Panel 450W                    30 listings  -> kept 0
+SOL  Hybrid Solar Inverter 5kw           30 listings  -> kept 5
+SOL  Hybrid Solar Inverter 3kw           30 listings  -> kept 5
+SOL  Lithium Battery 48V 100Ah           30 listings  -> kept 5
+SOL  Lithium Battery 12V 100Ah           30 listings  -> kept 5
+SOL  Solar Street Light                  45 listings  -> kept 4
+SOL  Solar Home Lighting System          45 listings  -> kept 5
+SOL  Portable Power Station              38 listings  -> kept 5
+SOL  Solar Water Pump                    45 listings  -> kept 5
+SOL  MPPT Solar Charge Controller        30 listings  -> kept 5
+APL  Split Air Conditioner 12000BTU      30 listings  -> kept 5
+APL  Solar Air Conditioner               30 listings  -> kept 5
+APL  Chest Freezer                       30 listings  -> kept 5
+APL  Double Door Refrigerator            43 listings  -> kept 5
+APL  DC Solar Refrigerator               30 listings  -> kept 5
+APL  Twin Tub Washing Machine            30 listings  -> kept 0
+APL  Water Dispenser                     43 listings  -> kept 5
+APL  Rechargeable Fan                    45 listings  -> kept 0
+APL  Stand Fan 16 inch                   30 listings  -> kept 4
+APL  Ceiling Fan                         40 listings  -> kept 5
+APL  Microwave Oven                      30 listings  -> kept 0
+APL  Gas Cooker 4 Burner                 30 listings  -> kept 1
+HOM  Electric Kettle                     30 listings  -> kept 2
+HOM  Blender                             30 listings  -> kept 4
+HOM  Rice Cooker                         30 listings  -> kept 2
+HOM  Air Fryer                           30 listings  -> kept 0
+HOM  Cookware Set                        43 listings  -> kept 0
+HOM  Vacuum Flask Thermos                30 listings  -> kept 4
+HOM  Dinnerware Set                      30 listings  -> kept 1
+HOM  Electric Iron                       30 listings  -> kept 3
+HOM  Bed Sheet Set                       30 listings  -> kept 5
+HOM  Carpet Rug                          30 listings  -> kept 1
+FRN  Office Chair                        45 listings  -> kept 5
+FRN  Plastic Chair                       30 listings  -> kept 5
+FRN  Sofa Set                            30 listings  -> kept 5
+FRN  Spring Mattress                     39 listings  -> kept 5
+FRN  Metal Bed Frame                     45 listings  -> kept 5
+FRN  Office Desk                         30 listings  -> kept 5
+FRN  Steel Wardrobe                      36 listings  -> kept 5
+FRN  Dining Table Set                    44 listings  -> kept 5
+ELC  Smart LED TV 43 inch                30 listings  -> kept 4
+ELC  Smart LED TV 32 inch                30 listings  -> kept 5
+ELC  Bluetooth Speaker                   30 listings  -> kept 5
+ELC  Power Bank 20000mAh                 30 listings  -> kept 5
+ELC  TWS Wireless Earbuds                30 listings  -> kept 5
+ELC  Smart Watch                         30 listings  -> kept 5
+ELC  4G WiFi Router with SIM             30 listings  -> kept 5
+ELC  CCTV Camera Kit                     30 listings  -> kept 5
+ELC  WiFi Security Camera                30 listings  -> kept 5
+ELC  LED Bulb                            30 listings  -> kept 1
+PHN  4G Smartphone                       30 listings  -> kept 5
+PHN  Feature Phone Dual SIM              30 listings  -> kept 5
+PHN  Android Tablet 10 inch              30 listings  -> kept 5
+PHN  Fast Charger 20W                    30 listings  -> kept 5
+CMP  Laptop 15.6 inch                    30 listings  -> kept 5
+CMP  Mini PC                             45 listings  -> kept 5
+CMP  Computer Monitor 24 inch            30 listings  -> kept 5
+CMP  UPS 1kVA                            30 listings  -> kept 5
+CMP  Wireless Keyboard Mouse Combo       30 listings  -> kept 0
+BLD  Diesel Generator 10kVA              45 listings  -> kept 5
+BLD  Gasoline Generator 3kW              30 listings  -> kept 5
+BLD  Water Pump Electric                 35 listings  -> kept 5
+BLD  Plastic Water Tank 1000L            30 listings  -> kept 5
+BLD  Cordless Drill                      45 listings  -> kept 5
+BLD  Inverter Welding Machine            45 listings  -> kept 5
+BLD  Steel Security Door                 45 listings  -> kept 0
+BLD  Padlock                             30 listings  -> kept 5
+BLD  Paint Sprayer                       30 listings  -> kept 5
+VEH  Cargo Tricycle                      40 listings  -> kept 5
+VEH  Passenger Tricycle Bajaj            30 listings  -> kept 5
+VEH  Motorcycle 150cc                    30 listings  -> kept 5
+VEH  Car Battery 12V                     30 listings  -> kept 5
+VEH  Motorcycle Helmet                   43 listings  -> kept 0
+VEH  Car Tyre 195/65R15                  30 listings  -> kept 5
+VEH  Brake Pads                          45 listings  -> kept 5
+CLO  Abaya                               30 listings  -> kept 5
+CLO  Men Thobe                           30 listings  -> kept 5
+CLO  Hijab Scarf                         30 listings  -> kept 5
+CLO  Men Sandals                         30 listings  -> kept 4
+CLO  Sneakers                            30 listings  -> kept 5
+
+327 real products from 194 suppliers -> data/catalog.csv  {'SOL': 46, 'APL': 40, 'HOM': 22, 'FRN': 40, 'ELC': 45, 'PHN': 20, 'CMP': 20, 'BLD': 40, 'VEH': 30, 'CLO': 24}
