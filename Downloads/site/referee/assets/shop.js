@@ -89,35 +89,54 @@ function home(app) {
 /* ---------------------------------------------------------------- product (immersive + sticky buy bar) */
 var CUR = null;
 function productView(p, host, quoteId) {
-  var vi = 0, qty = 1;
+  var vi = 0, qty = 1, mode = null;          /* null = let price() pick the cheaper lane */
   function render() {
     /* launch mode: products whose cost nobody has checked yet are sold via a staff quote, never at a placeholder price */
     var gate = RF.api && RF.api.config && RF.api.config.requireVerified && !p.oneoff && p.verified !== true;
-    var v = p.variants[vi], pr = C.price(p, v), china = !pr.local, src = p.sources[0], isReq = (p.oneoff && !v.quoted) || gate;
+    var v = p.variants[vi], pr = C.price(p, v, mode), china = !pr.local, src = p.sources[0], isReq = (p.oneoff && !v.quoted) || gate || !!pr.quote;
+    var sl = pr.seller || C.seller(p), opts = pr.options || null;
+    /* Only offer a lane the customer could sensibly want. Air is always faster, so sea earns its place on the page
+       only by being cheaper; for a 0.5 kg phone the sea minimum makes it both slower AND dearer, and showing it would
+       be a worse page, not a more complete one. */
+    var lanes = [];
+    if (opts && opts.air) lanes.push(["air", opts.air]);
+    if (opts && opts.sea && (!opts.air || opts.sea.total < opts.air.total)) lanes.push(["sea", opts.sea]);
+    var LANE_SO = { air: ["✈ Cirka", "degdeg"], sea: ["🚢 Badda", "raqiis"] };
     host.innerHTML =
       '<div class="g-phero"><div class="g-pic">' + (p.image ? '<img src="' + e(p.image) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(\'' + p.icon + '\'))">' : p.icon) + '</div><div>' +
-        '<span class="g-pill ' + (china ? "gold" : "") + '">' + (china ? (src.channel === "web" ? "Garsoore · link ka yimid " + e(RF.sources.hostOf(p.pageUrl || "")) : "Garsoore China" + (src.channel === "mic" ? "" : " · " + chName(src.channel))) + (v.quoted ? " · qiimo rasmi" : p.oneoff ? " · dalab hal mar" : "") : "✓ " + e(src.seller) + " · " + e(src.city)) + '</span>' +
+        /* Who the customer is buying from. For procurement that is Garsoore itself — the Chinese supplier behind it is
+           an internal relationship and never appears on a consumer page. For FBG the merchant owns the goods, so the
+           merchant is named and Garsoore is credited only with the fulfilment. */
+        '<span class="g-pill ' + (sl.official ? "gold" : "") + '">' + (sl.official ? "Garsoore Official ✓" : e(sl.name) + " · Fulfilled by Garsoore") +
+          (v.quoted ? " · qiimo rasmi" : p.oneoff ? " · dalab hal mar" : "") + '</span>' +
         '<div class="g-sku">' + p.sku + (p.modelNo ? " · " + e(p.modelNo) : "") + '</div>' +
         '<h1>' + e((p.brand ? p.brand + " " : "") + p.model) + '</h1><div id="soc" class="g-soc"></div><p class="g-blurb">' + e(p.blurb) + '</p>' +
-        (p.pageUrl ? '<div class="g-eta">Il: <a href="' + e(p.pageUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link);font-weight:700">' + e(RF.sources.hostOf(p.pageUrl)) + ' ↗</a></div>' : "") +
+        (p.pageUrl && p.oneoff ? '<div class="g-eta">Il: <a href="' + e(p.pageUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link);font-weight:700">' + e(RF.sources.hostOf(p.pageUrl)) + ' ↗</a></div>' : "") +
         (p.variants.length > 1 ? '<div class="g-lbl">Nooca</div><div>' + p.variants.map(function (x, i) {
           return '<button class="g-o' + (i === vi ? " on" : "") + '" data-i="' + i + '">' + (x.hex ? '<i style="background:' + x.hex + '"></i>' : "") + e(x.label) + (x.color && x.color !== "—" ? " · " + e(x.color) : "") + '</button>';
         }).join("") + '</div>' : "") +
       '</div></div>' +
       '<div class="g-specs">' + p.specs.map(function (s) { return '<div><span>' + e(s[0]) + '</span><b>' + e(s[1]) + '</b></div>'; }).join("") + '</div>' +
       '<div class="g-trust"><div><b>Hal qiimo</b>Kharash qarsoon ma jiro</div><div><b>Lacag la xajiyo</b>Garsoore ayaa haya ilaa aad hesho</div><div><b>Celin 7 maalmood</b>Haddii aysan ahayn sidii la sheegay</div></div>' +
+      (lanes.length > 1 && !isReq ? '<div class="g-ship"><div class="g-lbl">Sidee ayaad u rabtaa?</div><div class="g-shopts">' +
+        lanes.map(function (L) {
+          var k = L[0], b = L[1];
+          return '<button class="g-shopt' + (k === pr.mode ? " on" : "") + '" data-mode="' + k + '"><b>' + LANE_SO[k][0] + '</b>' +
+            '<span>' + b.transitMin + '–' + b.transitMax + ' maalmood</span><i>' + money(b.total) + '</i></button>';
+        }).join("") + '</div></div>' : "") +
       (pr.total != null && !isReq ? '<div class="g-incl">✓ <b>' + money(pr.total) + ' waa qiimaha oo dhan</b> — ' + (china ? "alaabta, rarka Shiinaha → Muqdisho, canshuurta iyo adeegga" : "alaabta iyo adeegga") + ' way ku jiraan. Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +
       '<div class="g-buybar"><div class="g-bi">' + p.icon + '</div><div class="g-bt"><b>' + e(p.model) + (v.label && v.label !== "Standard" ? " · " + e(v.label) : "") + '</b>' +
-        '<div class="g-eta">' + (china ? "🚚 Diyaar " + eta(pr.etaDays) + " · Pickup Muqdisho" : "Diyaar maanta · " + e(src.city)) + ' · 🔒 Lacag la xajiyo</div></div>' +
+        '<div class="g-eta">' + (china ? "🚚 " + (pr.transitMin ? pr.transitMin + "–" + pr.transitMax + " maalmood" : eta(pr.etaDays)) + " · Pickup Muqdisho" : "Diyaar maanta · Muqdisho") + ' · 🔒 Lacag la xajiyo</div></div>' +
         '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' + (pr.total == null ? "Qiimo la sugayo" : (isReq ? "≈ " : "") + money(pr.total * (isReq ? 1 : qty))) + '</div>' +
         (isReq ? "" : '<div class="g-qty"><button data-dq="-1" aria-label="ka dhim">−</button><span>' + qty + '</span><button data-dq="1" aria-label="ku dar">+</button></div>' +
           '<button class="btn ghost g-add" id="addBtn">🛒 Dambiisha</button>') +
         '<button class="btn g-buy" id="buyBtn">' + (isReq ? "Codso qiimo rasmi ah" : "Hadda iibso") + '</button></div>' +
       (p.oneoff ? "" : '<div class="g-pact"><button class="chip" data-save="' + p.sku + '" data-label="1">' + (RF.saved.has(p.sku) ? "♥ La kaydiyay" : "♡ Kaydi") + '</button>' +
         '<button class="chip" id="shareBtn">↗ La wadaag</button></div>') +
-      (isReq ? '<div class="g-found" style="margin-top:12px">' + (pr.total == null ? 'Alaabtan ma ahan kuwa katalogga, qiimana lama helin. ' : 'Alaabtan ma ahan kuwa katalogga. Qiimahan waa qiyaas — ') +
+      (isReq ? '<div class="g-found" style="margin-top:12px">' + (pr.reason === "no-shippable-rate" ? 'Alaabtan weli si hubaal ah looma qiimayn karo rarka — ma rabno inaan ku siinno qiime beddelaya. ' : pr.total == null ? 'Alaabtan ma ahan kuwa katalogga, qiimana lama helin. ' : 'Alaabtan ma ahan kuwa katalogga. Qiimahan waa qiyaas — ') +
         'koox Garsoore ah ayaa hubinaysa oo kuu soo diraysa qiimo rasmi ah (saacado gudahood), kadibna waad iibsan kartaa.</div>' : "");
     [].forEach.call(host.querySelectorAll(".g-o"), function (b) { b.onclick = function () { vi = +b.dataset.i; render(); }; });
+    [].forEach.call(host.querySelectorAll("[data-mode]"), function (b) { b.onclick = function () { mode = b.dataset.mode; render(); }; });
     [].forEach.call(host.querySelectorAll("[data-dq]"), function (b) { b.onclick = function () { qty = Math.max(1, Math.min(p.stock || 99, qty + +b.dataset.dq)); render(); }; });
     if ($("addBtn")) $("addBtn").onclick = function () { RF.cart.add(p.sku, vi, qty, quoteId, quoteId ? p : null); RF.api.ev("cart", p.sku); toast("✓ " + qty + " × waa lagu daray dambiisha"); };
     if ($("shareBtn")) $("shareBtn").onclick = function () {
@@ -126,7 +145,7 @@ function productView(p, host, quoteId) {
       else window.open("https://wa.me/?text=" + encodeURIComponent(t + " " + url), "_blank", "noopener");
     };
     $("buyBtn").onclick = function () {
-      if (!isReq) return checkout([{ product: p, variant: v, price: pr, line: { qty: qty, quote: quoteId || null, fbg: p.fbg ? p.sku : null } }]);
+      if (!isReq) return checkout([{ product: p, variant: v, price: pr, line: { qty: qty, quote: quoteId || null, fbg: p.fbg ? p.sku : null, mode: pr.mode || null } }]);
       RF.backend.needUser("Gal si aan qiimaha rasmiga ah kuugu soo dirno.").then(function () { return RF.backend.requestQuote(p); }).then(function (q) {
         RF.api.ev("quote", p.sku);
         $("buyBtn").outerHTML = '<a class="btn g-buy" href="orders.html?quote=' + q.id + '">✓ La diray — eeg Dalabyadayda</a>';

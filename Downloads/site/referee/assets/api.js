@@ -71,7 +71,9 @@ function quoteBody(p) {
 var remote = {
   orders: function () { return call("GET", "/orders").then(function (j) { return j.orders; }); },
   place: function (items, st) {
-    return call("POST", "/orders", { items: items.map(function (it) { return { sku: it.product.sku, vi: it.product.variants.indexOf(it.variant), qty: it.line.qty, quote: it.line.quote || null, fbg: it.product.fbg ? it.product.sku : null }; }),
+    /* `mode` is the air/sea lane the customer chose. The server prices that lane itself and records the rate card;
+       we send the choice, never the price. */
+    return call("POST", "/orders", { items: items.map(function (it) { return { sku: it.product.sku, vi: it.product.variants.indexOf(it.variant), qty: it.line.qty, quote: it.line.quote || null, fbg: it.product.fbg ? it.product.sku : null, mode: it.line.mode || (it.price && it.price.mode) || null }; }),
       delivery: st.delivery, address: st.address, pay: st.pay, payPhone: st.payPhone, promo: st.discCode || "", useCredit: !!st.useCredit, sid: sid() });
   },
   paid: function (ids, txn) { return call("POST", "/orders/paid", { ids: ids, txn: txn, sid: sid() }); },

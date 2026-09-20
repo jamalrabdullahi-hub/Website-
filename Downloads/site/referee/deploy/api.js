@@ -7,6 +7,7 @@
      - An order completes only when staff enter the customer's 6-digit pickup code (staff never see the code).
 */
 import { CATALOG } from "./catalog.gen.js";
+import { RATES } from "./rates.gen.js";
 
 /* ---- economics (internal). Change here, redeploy. */
 export const ECON = {
@@ -138,6 +139,9 @@ function orderOut(r, staff) {
   const o = {
     id: r.id, basket: r.basket, sku: r.sku, quoteId: r.quote_id, title: r.title, icon: r.icon, variant: r.variant, qty: r.qty, unit: r.unit,
     discount: r.discount, creditUsed: r.credit_used, fee: r.fee, total: r.total, flow: r.flow, state: r.state, etaDays: r.eta_days,
+    /* the lane the customer chose and the window they were promised. The rate card id stays out of the customer
+       payload — it is an internal contract reference, and staff read it from the console. */
+    shipMode: r.ship_mode || null, transitMin: r.transit_min || null, transitMax: r.transit_max || null,
     pickup: r.pickup, pay: r.pay, payTxn: r.pay_txn, escrow: r.escrow, history: J(r.history) || [], dispute: J(r.dispute), review: J(r.review),
     cancelReason: r.cancel_reason, createdAt: r.created_at, completedAt: (J(r.history) || []).filter(h => h.state === "COMPLETED").map(h => h.at)[0] || null
   };
@@ -248,8 +252,18 @@ async function priceItems(env, user, items) {
     if (v.total == null) throw new Error("Alaabtan qiimo rasmi ah weli ma leh — codso qiimo.");
     // launch switch: never sell at a placeholder cost. Unverified products go through a staff quote instead.
     if (env.REQUIRE_VERIFIED === "1" && !p.verified) throw new Error("Qiimaha alaabtan waa la hubinayaa — codso qiimo rasmi ah.");
+    /* The customer picks air or sea; the server prices that lane from its own copy of the catalogue and records which
+       rate card produced the number. A lane the browser asks for that this product does not have is refused rather
+       than silently swapped, because a silent swap is how somebody pays for air and waits six weeks. */
+    const want = it.mode === "air" || it.mode === "sea" ? it.mode : null;
+    const lane = v.lanes && (v.lanes[want || v.mode] || null);
+    if (want && v.lanes && !v.lanes[want]) throw new Error("Habkan rarka alaabtan looma heli karo.");
+    const unit = lane ? lane.total : v.total;
     out.push({ sku: it.sku, vsku: v.vsku, title: p.title, icon: p.icon, variant: [v.label, v.color].filter(x => x && x !== "—" && x !== "Standard").join(" · "),
-      qty, unit: v.total, etaDays: v.local ? 0 : v.etaDays, flow: v.local ? "local" : "china", cogs: v.cogs, seller: p.seller });
+      qty, unit, etaDays: v.local ? 0 : (lane ? lane.transitMax : v.etaDays), flow: v.local ? "local" : "china",
+      cogs: lane ? lane.cogs : v.cogs, seller: p.seller,
+      shipMode: v.local ? null : (lane ? (want || v.mode) : null), rateCardId: lane ? lane.rateCardId : null,
+      shipCost: lane ? lane.cost : null, transitMin: lane ? lane.transitMin : null, transitMax: lane ? lane.transitMax : null });
   }
   return out;
 }
@@ -283,7 +297,10 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
-    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
+    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES,
+      /* the lanes a customer may choose, and nothing about who flies or sails them */
+      shipping: { lanes: RATES.cards.filter(c => c.status !== "expired").map(c => ({ mode: c.mode, transitMin: c.transitMinDays, transitMax: c.transitMaxDays })),
+        facility: "Garsoore China Facility · Guangzhou" }, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
     if (path === "/me" && M === "GET") return json({ user: pubUser(user) });
 
     /* ---- auth: phone + PIN (SMS/WhatsApp OTP is a launch item once a provider is contracted) */
@@ -395,10 +412,11 @@ export async function handleApi(req, env, url) {
         const o = { id: rid("GRS-", 7), code: String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000)) };
         if (it.fbgId) stmts.push(env.DB.prepare("UPDATE fbg_inventory SET qty_available = qty_available - ?, qty_reserved = qty_reserved + ?, updated_at = ? WHERE id = ? AND qty_available >= ?")
           .bind(it.qty, it.qty, t, it.fbgId, it.qty));
-        stmts.push(env.DB.prepare(`INSERT INTO orders (id,user_id,basket,sku,vsku,quote_id,title,icon,variant,qty,unit,discount,credit_used,fee,total,flow,state,eta_days,pickup,address,pay,pay_phone,escrow,code,econ,history,created_at,updated_at,fbg_id)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(o.id, user.id, basket, it.sku, it.vsku, it.quoteId || null, it.title, it.icon, it.variant, it.qty, it.unit, disc, credit, f, total,
+        stmts.push(env.DB.prepare(`INSERT INTO orders (id,user_id,basket,sku,vsku,quote_id,title,icon,variant,qty,unit,discount,credit_used,fee,total,flow,state,eta_days,pickup,address,pay,pay_phone,escrow,code,econ,history,created_at,updated_at,fbg_id,ship_mode,rate_card_id,ship_cost,transit_min,transit_max)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(o.id, user.id, basket, it.sku, it.vsku, it.quoteId || null, it.title, it.icon, it.variant, it.qty, it.unit, disc, credit, f, total,
           it.flow, total > 0 ? "AWAITING_PAYMENT" : "PLACED", it.etaDays, delivery ? "Gaarsiin guriga" : "Xarunta Garsoore · Km4, Muqdisho", delivery ? address : null, b.pay, payPhone,
-          total > 0 ? "none" : "held", o.code, JSON.stringify(econ), JSON.stringify([{ state: total > 0 ? "AWAITING_PAYMENT" : "PLACED", at: t }]), t, t, it.fbgId || null));
+          total > 0 ? "none" : "held", o.code, JSON.stringify(econ), JSON.stringify([{ state: total > 0 ? "AWAITING_PAYMENT" : "PLACED", at: t }]), t, t, it.fbgId || null,
+          it.shipMode || null, it.rateCardId || null, it.shipCost != null ? it.shipCost * it.qty : null, it.transitMin || null, it.transitMax || null));
         orders.push(o.id);
       });
       if (creditTotal) stmts.push(env.DB.prepare("UPDATE users SET credit = credit - ? WHERE id = ? AND credit >= ?").bind(creditTotal, user.id, creditTotal));

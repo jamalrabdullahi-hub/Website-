@@ -27,25 +27,82 @@ var P = [];
 /* core catalogue generated from data/catalog.csv by tools/import-catalog.py */
 if (window.RF_CATALOG_DATA) P = P.concat(window.RF_CATALOG_DATA);
 
-/* ---------------------------------------------------------------- pricing (internal) */
+/* ---------------------------------------------------------------- pricing (internal)
+   International freight is NOT a rule of thumb here. It comes from RF.shipping, which reads the contracted rate cards
+   in data/rate-cards.json, and it returns the id of the card that produced the number so an order can be honoured at
+   that rate for life. Everything else (China-side collection, consolidation, duty, Garsoore's margin) is a Garsoore
+   cost and stays in this file. */
 var FX = 7.2;             // CNY per USD
-var RULES = { cnFreight: 0.04, consolidation: 3, airPerKg: 7.5, seaPerKg: 1.1, duty: 0.05, margin: 0.10 };
+var RULES = { cnFreight: 0.04, consolidation: 3, duty: 0.05, margin: 0.10 };
 function isChina(p) { return p.sources.some(function (s) { return s.channel !== "domestic"; }); }
-function breakdown(costCny, kg) {
-  var goods = costCny / FX, cn = goods * RULES.cnFreight, freight = kg > 20 ? kg * RULES.seaPerKg : Math.max(kg, 0.5) * RULES.airPerKg;
-  var duty = (goods + freight) * RULES.duty, sub = goods + cn + RULES.consolidation + freight + duty;
+
+/* landed cost for one lane. Returns null when the lane cannot be priced — the caller then offers a quote instead of
+   inventing a number, which is the whole point of the exercise. */
+function breakdown(costCny, kg, cat, mode, qty, at) {
+  var S = RF.shipping;
+  var goods = (costCny / FX) * (qty || 1), cn = goods * RULES.cnFreight;
+  var ship = S && S.quote({ kg: kg, cat: cat, qty: qty || 1, mode: mode || "air", at: at });
+  if (!ship || !ship.ok) return null;
+  var duty = (goods + ship.cost) * RULES.duty, sub = goods + cn + RULES.consolidation + ship.cost + duty;
   var margin = sub * RULES.margin;
-  return { goods: goods, chinaFreight: cn, consolidation: RULES.consolidation, intlFreight: freight, duty: duty, margin: margin,
-           total: Math.ceil(sub + margin), etaDays: kg > 20 ? 38 : 20 };
+  return { goods: goods, chinaFreight: cn, consolidation: RULES.consolidation, intlFreight: ship.cost, duty: duty, margin: margin,
+           total: Math.ceil(sub + margin), etaDays: ship.transitMax, transitMin: ship.transitMin, transitMax: ship.transitMax,
+           mode: ship.mode, rateCardId: ship.rateCardId, rateCardStatus: ship.rateCardStatus,
+           chargeable: ship.chargeable, chargeUnit: ship.unit, chargeBasis: ship.basis, estimatedSize: ship.estimatedSize };
+}
+
+/* ---------------------------------------------------------------- who the customer is buying from
+   Two models, and they must never be collapsed into one another:
+
+     Garsoore Official   Garsoore is the seller of record. Nothing is bought until the customer buys: their payment
+                         funds a purchase order to an approved supplier, which ships to the Garsoore China facility.
+                         Garsoore holds no stock. The supplier is an internal procurement relationship and the
+                         customer never sees its name.
+     Fulfilled by Garsoore  A third-party merchant is the seller and owns the goods. Garsoore only runs the
+                         fulfilment: receiving, storage, pick and pack, delivery, tracking, returns, settlement.
+                         Here the merchant's name IS the answer to "who am I buying from", so it is shown. */
+function seller(p) {
+  if (p && p.fbg) {
+    var src = (p.sources && p.sources[0]) || {}, name = String(src.seller || "").replace(/^FBG\s*·\s*/, "") || "Iibiye";
+    return { name: name, official: false, fulfilled: true, badge: "Fulfilled by Garsoore", verified: true };
+  }
+  return { name: "Garsoore Official", official: true, fulfilled: false, badge: "Garsoore Official", verified: true };
+}
+
+/* ---------------------------------------------------------------- eligibility for instant buy
+   A product does not become instantly buyable because somebody found a supplier for it. It needs a canonical SKU, a
+   known purchase price, a known packed weight, and a lane that today's rate card can actually price. Anything short of
+   that says "Request a quote" — price certainty is the product, and pretending every item is predictable is how the
+   surprise-shipping-bill problem starts. */
+function eligible(p, v) {
+  if (!p || !v) return { ok: false, reason: "no-variant" };
+  if (v.price != null) return { ok: true, reason: "fixed-price" };          // FBG stock or an accepted quote
+  if (!(v.cost > 0)) return { ok: false, reason: "no-purchase-price" };
+  if (!(p.kg > 0)) return { ok: false, reason: "no-packed-weight" };
+  if (!RF.shipping || !RF.shipping.options({ kg: p.kg, cat: p.cat, qty: 1 })) return { ok: false, reason: "no-shippable-rate" };
+  return { ok: true, reason: "ok" };
 }
 function chName(c) { return (RF.sources && RF.sources.ADAPTERS[c]) ? RF.sources.ADAPTERS[c].name.split(" ")[0].replace(".com", "") : ({ jd: "JD", "1688": "1688" }[c] || c); }
 RF.chName = chName;
-function price(p, v) {
-  if (v.price != null && v.quoted) return { total: v.price, etaDays: v.etaDays || 20, local: false, quoted: true };
-  if (v.price != null) return { total: v.price, etaDays: 0, local: true };
-  if (!(v.cost > 0)) return { total: null, etaDays: 20, local: false, unknown: true };   // no reliable cost yet -> staff must quote
-  var b = breakdown(v.cost, p.kg);
-  return { total: b.total, etaDays: b.etaDays, local: false };
+/* price() answers both lanes at once, because the customer's whole decision is "how fast, how much". `mode` picks the
+   headline; the default is whichever lane is cheaper, which for a heavy item is sea and for a phone is air. */
+function price(p, v, mode) {
+  if (v.price != null && v.quoted) return { total: v.price, etaDays: v.etaDays || 20, local: false, quoted: true, seller: seller(p) };
+  if (v.price != null) return { total: v.price, etaDays: 0, local: true, seller: seller(p) };
+  if (!(v.cost > 0)) return { total: null, etaDays: 20, local: false, unknown: true, quote: true, reason: "no-purchase-price", seller: seller(p) };
+
+  var opts = {}, any = false;
+  ["air", "sea"].forEach(function (m) {
+    var b = breakdown(v.cost, p.kg, p.cat, m, 1);
+    if (b) { opts[m] = b; any = true; }
+  });
+  if (!any) return { total: null, etaDays: 0, local: false, unknown: true, quote: true, reason: "no-shippable-rate", seller: seller(p) };
+
+  var pick = mode && opts[mode] ? mode
+    : (opts.air && opts.sea ? (opts.sea.total < opts.air.total ? "sea" : "air") : (opts.air ? "air" : "sea"));
+  var b = opts[pick];
+  return { total: b.total, etaDays: b.etaDays, transitMin: b.transitMin, transitMax: b.transitMax, local: false,
+    mode: pick, options: opts, rateCardId: b.rateCardId, rateCardStatus: b.rateCardStatus, seller: seller(p) };
 }
 
 /* exact identity: never merge on names */
@@ -55,14 +112,16 @@ function sameVariant(a, b) {
 }
 
 function card(p) {
-  var v = p.variants[0], pr = price(p, v), src = p.sources[0];
+  var v = p.variants[0], pr = price(p, v), sl = pr.seller;
   return { sku: p.sku, icon: p.icon, image: p.image || "", title: (p.brand ? p.brand + " " : "") + p.model + (v.label && v.label !== "Standard" ? " · " + v.label : ""),
-    total: pr.total, etaDays: pr.etaDays, china: !pr.local,
-    where: pr.local ? (src.seller + " · " + src.city) : "Shiinaha" };
+    total: pr.total, etaDays: pr.etaDays, china: !pr.local, quote: !!pr.quote,
+    seller: sl, where: sl.official ? "Garsoore Official" : sl.name,
+    options: pr.options || null, mode: pr.mode || null };
 }
 
 RF.catalog = {
   CATS: CATS, products: P, isChina: isChina, price: price, sameVariant: sameVariant, card: card, _breakdown: breakdown,
+  seller: seller, eligible: eligible, _rules: RULES, _fx: FX,
   get: function (sku) { return P.filter(function (p) { return p.sku === sku; })[0]; },
   search: function (q, opts) {
     opts = opts || {}; q = (q || "").toLowerCase().trim();

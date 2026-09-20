@@ -14,7 +14,7 @@ var call = null, app = null, view = "money";
 var NAV = [
   ["money", "💰", "Lacagta"], ["accounts", "👥", "Akoonnada"], ["business", "🏢", "Ganacsiyada"],
   ["buy", "🛒", "Iibsiga"], ["fbg", "📦", "FBG"], ["agents", "🤝", "Wakiillada"], ["catalogue", "🏷", "Katalogga"],
-  ["ops", "⚙", "Hawlgalka"], ["log", "📜", "Diiwaanka"]
+  ["shipping", "🛩", "Rarka"], ["ops", "⚙", "Hawlgalka"], ["log", "📜", "Diiwaanka"]
 ];
 var ROLE_SO = { consumer: "Macmiil", business: "Ganacsi", agent: "Wakiil", staff: "Shaqaale", admin: "Maamule" };
 var STATE_SO = { AWAITING_PAYMENT: "Sugaya lacag", PAYMENT_REVIEW: "Hubinta lacagta", PLACED: "La bixiyay", CONFIRMED: "La xaqiijiyay", SOURCING: "Laga iibsanayo", IN_TRANSIT: "Socda", ARRIVED: "Yimid", READY: "Diyaar", COMPLETED: "Dhammaystiran", CANCELLED: "La joojiyay", EXPIRED: "Dhacay" };
@@ -90,8 +90,50 @@ function render() {
   location.hash = view;
   [].forEach.call(app.querySelectorAll(".cs-side nav a"), function (a) { a.classList.toggle("on", a.dataset.v === view); });
   panel('<div class="cs-boot">⏳</div>');
-  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, ops: ops, log: log }[view] || money_)();
+  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, ops: ops, log: log }[view] || money_)();
 }
+
+/* ---------------------------------------------------------------- shipping: the contracts behind every price
+   Every customer-facing shipping number on the site comes from one of these cards. If a card is not signed, the shop
+   is quoting a rate nobody has agreed to honour, and that is the single largest un-hedged risk in the business — so
+   it is stated at the top of the page in plain words rather than buried in a field. */
+function shipping() {
+  var S = RF.shipping;
+  if (!S) { head("Rarka"); return panel('<div class="cs-empty">Mishiinka rarka lama helin.</div>'); }
+  var cards = S.cards(), unsigned = S.unsigned();
+  head("Rarka · qandaraasyada", '<span class="cs-note">' + cards.length + ' kaadh</span>');
+  panel(
+    (unsigned.length
+      ? '<div class="cs-warn"><b>⚠ ' + unsigned.length + ' kaadh oo aan la saxiixin</b>' +
+        '<div>Qiimayaasha rarka ee macaamiisha la tusayo waxay ka yimaadaan kaadhadhkan. Ilaa qandaraas la saxiixo, ' +
+        'Garsoore ma haysto heshiis lagu qasbayo qiimahaas — khatartu waa tan ugu weyn ee ganacsiga. ' +
+        e(unsigned.join(" · ")) + '</div></div>'
+      : '<div class="cs-ok"><b>✓ Dhammaan kaadhadhka waa la saxiixay</b></div>') +
+    cards.map(function (c) {
+      var tiers = (c.tiers || []).map(function (t) { return t.from + "+ → $" + t.rate + "/" + c.unit; }).join(" · ");
+      return '<div class="cs-card"><div class="cs-cardh"><b>' + e(c.id) + '</b>' +
+        '<span class="g-pill ' + (c.status === "contracted" ? "" : "gold") + '">' + (c.status === "contracted" ? "✓ La saxiixay" : "⚠ Aan la saxiixin") + '</span></div>' +
+        '<div class="cs-kv">' +
+          kv("Habka", c.mode === "air" ? "Cirka" : "Badda") +
+          kv("Laga", c.origin) + kv("Loo", c.destination) +
+          kv("Waqtiga", c.transitMinDays + "–" + c.transitMaxDays + " maalmood") +
+          kv("Qiimaha", tiers) +
+          kv("Ugu yar", "$" + c.minimumCharge + " (ugu yaraan " + c.minimumBillable + " " + c.unit + ")") +
+          (c.volumetricDivisor ? kv("Qaybiyaha mugga", String(c.volumetricDivisor)) : "") +
+          (c.weightCapPerCbm ? kv("Miisaanka/CBM", c.weightCapPerCbm + " kg") : "") +
+          kv("Mudada", c.effectiveFrom + " → " + (c.effectiveUntil || "—")) +
+          kv("Awoodda", c.capacityPerWeek + " " + c.capacityUnit + "/toddobaad") +
+          kv("Ogeysiis beddelka", (c.rateChangeNoticeDays || "—") + " maalmood") +
+          kv("Qandaraaska", c.providerReference || "—") +
+          kv("Ku jira", (c.includedSurcharges || []).join(", ")) +
+          kv("Ka baxsan", (c.excludedSurcharges || []).join(", ")) +
+          kv("Xaalado gaar ah", (c.exceptionalEvents || []).join(", ")) +
+        '</div>' + (c.notes ? '<div class="cs-note2">' + e(c.notes) + '</div>' : "") + '</div>';
+    }).join("") +
+    '<div class="cs-note2" style="margin-top:14px">Dalab la iibiyay wuxuu sii hayaa kaadhka qiimeeyay (<code>rate_card_id</code>) — ' +
+    'beddelka qiimaha wuxuu saameeyaa oo keliya dalabyada cusub.</div>');
+}
+function kv(k, v) { return '<div><span>' + e(k) + '</span><b>' + e(v || "—") + '</b></div>'; }
 
 /* ---------------------------------------------------------------- money: is the business making any? */
 function money_() {

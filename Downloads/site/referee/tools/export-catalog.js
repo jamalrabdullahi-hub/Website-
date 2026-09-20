@@ -7,7 +7,7 @@ const root = path.join(__dirname, "..");
 const ctx = { window: {}, console };
 ctx.window.window = ctx.window;
 vm.createContext(ctx);
-for (const f of ["assets/catalog-data.js", "assets/catalog.js"]) {
+for (const f of ["assets/rate-cards.js", "assets/shipping.js", "assets/catalog-data.js", "assets/catalog.js"]) {
   vm.runInContext(fs.readFileSync(path.join(root, f), "utf8"), ctx, { filename: f });
 }
 const C = ctx.window.RF.catalog;
@@ -18,14 +18,31 @@ for (const p of C.products) {
   out[p.sku] = {
     title: ((p.brand ? p.brand + " " : "") + p.model).trim(), icon: p.icon, cat: p.cat, kg: p.kg || 0,
     verified: p.verified === true,   // cost checked by a person (data/catalog.csv cost_verified=yes)
-    china: C.isChina(p), seller: src.seller || "", city: src.city || "", channel: src.channel || "", ref: src.ref || "", url: src.url || "",
+    china: C.isChina(p), fbg: !!p.fbg,
+    /* what the CUSTOMER is told: "Garsoore Official" for procurement, the merchant's name for FBG. The supplier below
+       is the internal procurement relationship and is never sent to a consumer page. */
+    sellerLabel: C.seller(p).badge, official: C.seller(p).official,
+    seller: src.seller || "", city: src.city || "", channel: src.channel || "", ref: src.ref || "", url: src.url || "",
     variants: p.variants.map(v => {
       const pr = C.price(p, v);
-      if (pr.total == null) { unknown++; return { vsku: v.vsku, label: v.label || "", color: v.color || "", total: null }; }
+      if (pr.total == null) {
+        unknown++;
+        return { vsku: v.vsku, label: v.label || "", color: v.color || "", total: null, quote: true, reason: pr.reason || "unknown" };
+      }
       priced++;
-      // cost of goods for margin reporting: China = landed cost before Garsoore margin; domestic = seller payout (commission is applied in the API)
-      const cogs = pr.local ? null : Math.round((C._breakdown(v.cost, p.kg).total - C._breakdown(v.cost, p.kg).margin) * 100) / 100;
-      return { vsku: v.vsku, label: v.label || "", color: v.color || "", total: pr.total, etaDays: pr.etaDays, local: !!pr.local, cogs, cny: v.cost || null };
+      /* Both lanes are exported with the rate-card id that priced each one. The API re-prices an order from this table
+         and stores the card id on the order, so the customer is charged the rate that was live when they bought. */
+      const lanes = {};
+      if (pr.options) for (const m of Object.keys(pr.options)) {
+        const b = pr.options[m];
+        lanes[m] = { total: b.total, cost: Math.round(b.intlFreight * 100) / 100, transitMin: b.transitMin, transitMax: b.transitMax,
+          rateCardId: b.rateCardId, rateCardStatus: b.rateCardStatus, chargeable: b.chargeable, unit: b.chargeUnit,
+          basis: b.chargeBasis, estimatedSize: !!b.estimatedSize,
+          cogs: Math.round((b.total - b.margin) * 100) / 100 };
+      }
+      const cogs = pr.local ? null : (lanes[pr.mode] ? lanes[pr.mode].cogs : null);
+      return { vsku: v.vsku, label: v.label || "", color: v.color || "", total: pr.total, etaDays: pr.etaDays, local: !!pr.local,
+        mode: pr.mode || null, lanes: Object.keys(lanes).length ? lanes : null, cogs, cny: v.cost || null };
     })
   };
 }

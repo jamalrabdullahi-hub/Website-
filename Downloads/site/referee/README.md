@@ -171,6 +171,46 @@ Paste any product link (or a WeChat/Taobao share text) into the home search box 
 - Demo mode: title comes from the link's own wording, price stays unknown (nothing is invented).
 - Live mode: `/item` (Apify) first, then the Worker's `/link` page reader (Open Graph + schema.org JSON-LD; SSRF-guarded, honest bot user-agent), then a quote request. Non-CNY page prices are never used as our cost.
 
+## The two selling models — never collapse them (`RF.catalog.seller`)
+A consumer product is sold under exactly one of these. They differ in **who owns the goods**, which decides who the customer is buying from, who carries the inventory risk, and what Garsoore is paid for.
+
+| | **Garsoore Official Procurement** | **Fulfilled by Garsoore (FBG)** |
+|---|---|---|
+| Seller of record | **Garsoore Official** | The third-party merchant, named |
+| Who owns the goods | Nobody until the customer buys | The merchant, until it sells |
+| Does Garsoore hold stock? | **No** — never buys ahead | No — it is the merchant's stock |
+| When is it bought? | **After** the customer pays | Already bought, already in the warehouse |
+| Garsoore earns | Procurement margin + service | Fulfilment fees + commission |
+| Customer sees supplier? | **Never** — internal relationship | Yes, the merchant is the seller |
+
+**Garsoore Official Procurement** is a made-to-order chain: customer pays → funds confirmed → approved supplier selected → purchase order raised → supplier ships to the Garsoore China facility → received, scanned, matched to the PO, verified, weighed → consolidated → shipped → arrives. Garsoore is the seller of record the whole way; the Chinese distributor behind it is an internal procurement relationship and its name never reaches a consumer page. Implemented in `procurement` (`deploy/schema-4.sql`) and surfaced to staff only.
+
+**FBG** is fulfilment for somebody else's inventory (`deploy/schema-3.sql`). The merchant owns it, sets the price and carries the risk; Garsoore receives, stores, picks, packs, delivers, tracks, handles eligible returns and settles. Here the merchant's name *is* the honest answer to "who am I buying from", so it is shown, with Garsoore credited for the fulfilment.
+
+`RF.catalog.seller(p)` is the single place that decides which label a product carries, and `sellerLabel` / `official` are exported to the server so no page can invent a different answer.
+
+## China facility
+The consolidation and receiving point is **Guangzhou, Guangdong**. It is infrastructure, not a seller: it receives from approved distributors, wholesalers, manufacturers and procurement partners, then receives → scans → matches the PO → verifies the SKU → inspects for obvious damage → photographs when needed → records actual weight and dimensions → assigns a shipment → consolidates → hands cargo to the contracted logistics provider. The customer sees the words **Garsoore China Facility** and nothing about the warehouse company behind it.
+
+## Shipping: contracted rate cards, never spot quotes (`assets/shipping.js`, `data/rate-cards.json`)
+**The rule: if Garsoore shows a customer a shipping price, Garsoore already knows how that shipment moves and which contracted rate produced the number.** No market averages, no guessing, and no "shipping went up 40%" after the fact.
+
+- `data/rate-cards.json` is the only source of shipping numbers. `tools/gen-rates.py` generates `assets/rate-cards.js` (browser) and `deploy/rates.gen.js` (Worker) from it, so the shop, the price export and the API cannot disagree.
+- A card carries origin, destination, mode, currency, validity window, minimum charge, minimum billable quantity, rate tiers, volumetric divisor, included and excluded surcharges, defined exceptional events, transit window, weekly capacity, rate-change notice period, claims window and provider reference.
+- **Air:** `chargeable = max(actual_kg, volume_cm³ / contracted_divisor)`, rounded up to the contracted step, then the minimum charge applies.
+- **Sea:** `chargeable = max(CBM, kg / weightCapPerCbm)` — the revenue-tonne rule — then minimum billable volume and minimum charge.
+- `status` is load-bearing: `draft` means **nothing is signed yet** and the numbers are internal planning figures. The admin console's **Rarka** page says so at the top in plain words, because quoting a rate you have no contract to honour is the largest un-hedged risk in the business.
+- **A sold order keeps its rate.** Migration 8 stores `ship_mode`, `rate_card_id`, `ship_cost`, `transit_min`, `transit_max` on the order. Rate changes affect the next card, never an order already placed; Garsoore absorbs ordinary movement.
+
+### Packed dimensions are estimated, and say so
+All 421 catalogue rows have a weight; none has measured packed dimensions. Volume is estimated from weight using a per-category packed density (`packedDensity` in the rate cards), flagged `estimated` everywhere it is used. Air break-even at divisor 6000 is 167 kg/CBM, so bulky categories (furniture 110, clothing 120) correctly price as volumetric-dominant. When the facility weighs and measures the real carton, Garsoore absorbs the difference — the customer's locked price does not move.
+
+### Eligibility for instant buy (`RF.catalog.eligible`)
+A product is not instantly buyable because somebody found a supplier. It needs a canonical SKU, a known purchase price, a known packed weight, and a lane today's rate card can actually price. Anything short of that renders **Codso qiimo rasmi ah** (request a quote) instead of a number. Price certainty is the product.
+
+### What the customer sees
+Two buttons and a window: `✈ Cirka 7–14 maalmood $581` / `🚢 Badda 25–45 maalmood $218`. A lane appears only if a customer could sensibly want it — air is always faster, so sea earns its place only by being cheaper, which is why a 0.5 kg phone shows air alone. No carrier, vessel, airline, port, transshipment, BAF, LCL/FCL, HS code or chargeable-weight arithmetic reaches a consumer page.
+
 ## Which marketplace belongs to which shop (`RF.sources.SURFACES`)
 The two shops buy from different halves of China and the UI says so.
 

@@ -8,6 +8,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--china", default="", help="proxy endpoint to bake into the built config.js")
 a = ap.parse_args()
 
+# contracted shipping rates first: the catalogue prices are computed from them
+subprocess.check_call(["python", os.path.join("tools", "gen-rates.py")])
 # server-side prices for the API (deploy/catalog.gen.js, bundled into the Worker) — same price() as the browser
 subprocess.check_call(["node", os.path.join("tools", "export-catalog.js")])
 

@@ -1,0 +1,114 @@
+{
+  "_doc": [
+    "Garsoore contracted shipping rate cards. This file is the ONLY place a customer-facing shipping price may come from.",
+    "",
+    "STATUS IS LOAD-BEARING. 'contracted' means a signed agreement exists with a logistics provider and the numbers below",
+    "are the numbers in that agreement. 'draft' means Garsoore has NOT signed anything yet and these are internal planning",
+    "figures. A draft card still prices the shop (the alternative is no shop), but the admin console shows it as unsigned,",
+    "because quoting a customer a price you have no contract to honour is exactly the surprise this architecture exists",
+    "to prevent. Flip status to 'contracted' and fill providerReference only when a real agreement is in hand.",
+    "",
+    "An order stores the id of the card that priced it. That card's rates are then honoured for that order for its whole",
+    "life, even after the card expires or is superseded. Rate changes affect the NEXT card, never a sold order.",
+    "",
+    "Tiers are read as: the rate for the highest 'from' that the chargeable quantity reaches.",
+    "All money is USD. All weights are kg, all volumes CBM, all dimensions cm."
+  ],
+
+  "cards": [
+    {
+      "id": "GARSOORE-CN-SOM-AIR-V1",
+      "status": "draft",
+      "mode": "air",
+      "origin": "Guangzhou, Guangdong, CN",
+      "originFacility": "Garsoore China Facility",
+      "destination": "Mogadishu, SO",
+      "currency": "USD",
+      "unit": "kg",
+      "effectiveFrom": "2026-10-01",
+      "effectiveUntil": "2026-12-31",
+
+      "volumetricDivisor": 6000,
+      "roundingUnit": 0.5,
+      "minimumCharge": 12,
+      "minimumBillable": 0.5,
+      "tiers": [
+        { "from": 0,   "rate": 8.4 },
+        { "from": 45,  "rate": 7.2 },
+        { "from": 100, "rate": 6.5 },
+        { "from": 300, "rate": 5.9 }
+      ],
+
+      "transitMinDays": 7,
+      "transitMaxDays": 14,
+
+      "includedSurcharges": ["fuel", "security screening", "origin handling", "export clearance", "airport transfer"],
+      "excludedSurcharges": ["Somali import duty and taxes", "destination customs clearance", "dangerous goods handling", "lithium battery certification", "storage beyond free period"],
+      "exceptionalEvents": ["airspace closure", "declared force majeure", "government-mandated fuel levy above 25%"],
+
+      "capacityPerWeek": 2000,
+      "capacityUnit": "kg",
+      "rateChangeNoticeDays": 30,
+      "claimsWindowDays": 14,
+      "providerReference": null,
+
+      "notes": "Divisor 6000 is the IATA default and MUST be replaced with the contracted divisor on signature — a provider using 5000 raises the cost of every bulky item by 20%."
+    },
+
+    {
+      "id": "GARSOORE-CN-SOM-SEA-V1",
+      "status": "draft",
+      "mode": "sea",
+      "origin": "Guangzhou, Guangdong, CN",
+      "originFacility": "Garsoore China Facility",
+      "destination": "Mogadishu, SO",
+      "currency": "USD",
+      "unit": "cbm",
+      "effectiveFrom": "2026-10-01",
+      "effectiveUntil": "2026-12-31",
+
+      "volumetricDivisor": null,
+      "roundingUnit": 0.01,
+      "minimumCharge": 45,
+      "minimumBillable": 0.25,
+      "weightCapPerCbm": 500,
+      "tiers": [
+        { "from": 0,  "rate": 165 },
+        { "from": 3,  "rate": 148 },
+        { "from": 10, "rate": 132 },
+        { "from": 25, "rate": 121 }
+      ],
+
+      "transitMinDays": 25,
+      "transitMaxDays": 45,
+
+      "includedSurcharges": ["origin terminal handling", "export clearance", "bunker adjustment", "destination terminal handling", "port dues"],
+      "excludedSurcharges": ["Somali import duty and taxes", "destination customs clearance", "demurrage after free days", "dangerous goods handling", "inland delivery beyond Mogadishu"],
+      "exceptionalEvents": ["port closure", "declared force majeure", "war-risk surcharge imposed by underwriters", "canal transit suspension"],
+
+      "capacityPerWeek": 40,
+      "capacityUnit": "cbm",
+      "rateChangeNoticeDays": 45,
+      "claimsWindowDays": 21,
+      "providerReference": null,
+
+      "notes": "weightCapPerCbm guards the revenue-tonne rule: cargo denser than this is charged on weight/1000 as CBM-equivalent, which is what every LCL contract does."
+    }
+  ],
+
+  "packedDensity": {
+    "_doc": [
+      "Packed density (kg per CBM) per category, used to ESTIMATE cartoned volume when a product's real packed",
+      "dimensions are not yet known. Every one of the 421 catalogue rows has a weight; none has measured dimensions.",
+      "This is the declared bridge, and it is marked as an estimate everywhere it is used.",
+      "",
+      "Air break-even at divisor 6000 is 167 kg/CBM: anything below that is volumetric-dominant and costs more to fly",
+      "than its weight suggests. The estimate is deliberately conservative (dense items are not over-estimated) so the",
+      "engine does not under-quote and hand the customer a surprise later. Garsoore absorbs the difference when the",
+      "facility weighs and measures the real carton; the customer's locked price does not move."
+    ],
+    "PHN": 180, "ELC": 200, "CMP": 180, "HOM": 170, "APL": 150,
+    "FRN": 110, "SOL": 250, "BLD": 350, "VEH": 300, "CLO": 120,
+    "_default": 175
+  }
+}
