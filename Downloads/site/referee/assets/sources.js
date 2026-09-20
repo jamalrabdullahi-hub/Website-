@@ -59,6 +59,9 @@ var A = {
   jd:      { name: "JD.com", zh: "京东", retail: true,  re: /(?:item\.(?:m\.)?jd\.com\/(?:product\/)?|jd\.com\/.*?sku=)(\d{5,})/i, url: function (id) { return "https://item.jd.com/" + id + ".html"; } },
   "1688":  { name: "1688.com", zh: "阿里巴巴1688", retail: false, re: /1688\.com\/offer\/(\d{5,})/i, url: function (id) { return "https://detail.1688.com/offer/" + id + ".html"; } },
   taobao:  { name: "Taobao / Tmall", zh: "淘宝/天猫", retail: true, re: /(?:taobao|tmall)\.com\/.*?[?&]id=(\d{5,})/i, url: function (id) { return "https://item.taobao.com/item.htm?id=" + id; } },
+  /* SHEIN — retail fashion, sold by the piece. The goods id is the -p-NNNNNN segment of any regional host
+     (us.shein.com, m.shein.com, www.shein.com/ar, …), so the region is dropped and the id kept. */
+  shein:   { name: "SHEIN", zh: "希音", retail: true, re: /shein\.com\/.*?-p-(\d{5,})/i, url: function (id) { return "https://us.shein.com/-p-" + id + ".html"; } },
   pdd:     { name: "Pinduoduo", zh: "拼多多", retail: true, re: /(?:yangkeduo|pinduoduo)\.com\/.*?goods_id=(\d{5,})/i, url: function (id) { return "https://mobile.yangkeduo.com/goods.html?goods_id=" + id; } },
   alibaba: { name: "Alibaba.com", zh: "阿里巴巴国际站", retail: false, re: /alibaba\.com\/product-detail\/[^?#]*?_(\d{6,})\.html/i, url: function (id) { return "https://www.alibaba.com/product-detail/_" + id + ".html"; } },
   /* Made-in-China.com — source of the real core catalogue (tools/harvest-mic.py). The full product URL is the reference
@@ -78,7 +81,7 @@ var A = {
    committing to a 1688 carton is exactly what a trader should do — but it says plainly that retail pricing applies.
    "web" (any other product page) is allowed on both: a link is a link. */
 var SURFACES = {
-  consumer: { platforms: ["jd", "taobao", "pdd"],       kind: "retail",    so: "Tafaariiq", en: "Retail" },
+  consumer: { platforms: ["jd", "taobao", "pdd", "shein"], kind: "retail", so: "Tafaariiq", en: "Retail" },
   business: { platforms: ["1688", "alibaba", "mic"],    kind: "wholesale", so: "Jumlad",    en: "Wholesale" }
 };
 function surfaceOf(platform) {
