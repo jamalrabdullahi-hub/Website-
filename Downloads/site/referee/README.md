@@ -203,6 +203,16 @@ business.buurwen.com (session cookie on `.buurwen.com`). Database: Cloudflare D1
 **Read next:** [docs/LAUNCH.md](docs/LAUNCH.md) (what blocks a profitable launch, unit economics) ·
 [docs/DOCTRINE.md](docs/DOCTRINE.md) (UX doctrine — the psychology rules every screen follows).
 
+## Console (admin.<domain>)
+The admin console is its own site on `admin.buurwen.com` (→ `admin/index.html`, `assets/console.js` + `console.css`),
+not a page inside either shop: sidebar sections for money, accounts, businesses, FBG, agents, catalogue, daily operations
+and the audit log. `business.<domain>/admin.html` now redirects there.
+- Only the **admin** role gets past the gate; everyone else sees a sign-out prompt.
+- `vars.ADMIN_HOST` pins `/api/admin/*` to that hostname, so the admin endpoints answer nowhere else.
+- The console is served with `X-Robots-Tag: noindex, nofollow`.
+- For a second lock, put Cloudflare Access (Zero Trust) in front of `admin.<domain>` in the dashboard — the app needs no change.
+- Moving to the real domain later: add `admin.garsoore.com` to `routes` and set `ADMIN_HOST` to it.
+
 ## Accounts & admin panel
 Roles on `users.role`: **consumer · business · agent · staff · admin** (staff and admin both reach the ops console;
 only admin reaches `business.<domain>/admin.html`). Business accounts carry a profile in `businesses`:

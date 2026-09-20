@@ -21,6 +21,7 @@ for f in glob.glob("*.html"):
     shutil.copy(f, OUT)
 shutil.copytree("assets", os.path.join(OUT, "assets"))
 shutil.copytree("business", os.path.join(OUT, "business"))
+shutil.copytree("admin", os.path.join(OUT, "admin"))          # the console, served on admin.<domain>
 
 if a.china:
     cfg = os.path.join(OUT, "assets", "config.js")
@@ -42,7 +43,7 @@ stamp = "%s · %s · %s" % (commit, ver, datetime.datetime.now().strftime("%Y-%m
 cfg = os.path.join(OUT, "assets", "config.js")
 open(cfg, "a", encoding="utf-8").write("\nwindow.GARSOORE_CONFIG.build = %s;\n" % json.dumps(stamp))
 ref = re.compile(r'((?:src|href)="(?:\.\./)?assets/[^"?]+\.(?:js|css))"')
-pages = glob.glob(os.path.join(OUT, "*.html")) + glob.glob(os.path.join(OUT, "business", "*.html"))
+pages = glob.glob(os.path.join(OUT, "*.html")) + glob.glob(os.path.join(OUT, "business", "*.html")) + glob.glob(os.path.join(OUT, "admin", "*.html"))
 for f in pages:
     t = open(f, encoding="utf-8").read()
     open(f, "w", encoding="utf-8").write(ref.sub(lambda m: m.group(1) + "?v=" + ver + '"', t))

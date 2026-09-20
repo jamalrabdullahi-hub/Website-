@@ -80,7 +80,7 @@ async function pinOk(pin, stored) {
 
 function cookieDomain(host) {
   if (/^(localhost|127\.|\[)/.test(host) || /(workers|pages)\.dev$/.test(host)) return "";
-  return "; Domain=." + host.replace(/^(www|business)\./, "");      // one login for buurwen.com + business.buurwen.com
+  return "; Domain=." + host.replace(/^(www|business|admin)\./, "");      // one login across buurwen.com, business. and admin.
 }
 function sessionCookie(url, token, maxAge) {
   return "gs=" + token + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + maxAge + (url.protocol === "https:" ? "; Secure" : "") + cookieDomain(url.hostname);
@@ -230,7 +230,7 @@ export async function handleApi(req, env, url) {
     const origin = req.headers.get("origin");
     if (origin) {
       let oh = ""; try { oh = new URL(origin).hostname; } catch { return err("Bad origin", 403); }
-      const apex = url.hostname.replace(/^(www|business)\./, "");
+      const apex = url.hostname.replace(/^(www|business|admin)\./, "");
       if (!(oh === url.hostname || oh === apex || oh.endsWith("." + apex))) return err("Bad origin", 403);
     }
   }
@@ -454,6 +454,8 @@ export async function handleApi(req, env, url) {
     /* ---------------------------------------------------------------- admin panel (role 'admin' only) */
     if (path.startsWith("/admin/")) {
       if (user.role !== "admin") return err("Maamulaha oo keliya.", 403);
+      /* the console lives on its own hostname; when ADMIN_HOST is set these endpoints answer nowhere else */
+      if (env.ADMIN_HOST && url.hostname !== env.ADMIN_HOST && !/^(localhost|127\.0\.0\.1)$/.test(url.hostname)) return err("Console-ka oo keliya.", 403);
       const alog = (action, target, detail) => env.DB.prepare("INSERT INTO admin_log (at, who, who_name, action, target, detail) VALUES (?,?,?,?,?,?)")
         .bind(now(), user.id, user.name, action, target || null, detail || null);
 

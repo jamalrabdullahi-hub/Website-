@@ -219,7 +219,7 @@ function chrome() {
     var nav = document.querySelector("header.site .nav"), has = nav && nav.querySelector(".opslink");
     var isStaff = u && (u.role === "staff" || u.role === "admin");
     if (isStaff && nav && !has) nav.insertAdjacentHTML("beforeend", '<a class="opslink' + (window.SHOP === "ops" || window.SHOP === "quotes" ? " on" : "") + '" href="' + (biz ? "" : BP) + 'ops.html">⚙ Hawlgalka</a>' +
-      (u.role === "admin" ? '<a class="opslink' + (window.SHOP === "admin" ? " on" : "") + '" href="' + (biz ? "" : BP) + 'admin.html">🛡 Maamulka</a>' : ""));
+      (u.role === "admin" ? '<a class="opslink" target="_blank" rel="noopener" href="' + (real ? location.protocol + "//admin." + root + "/" : "../admin/index.html") + '">🛡 Console ↗</a>' : ""));
     if (!isStaff && has) [].forEach.call(nav.querySelectorAll(".opslink"), function (x) { x.remove(); });
     if (u && u.mustChangePin && RF.pinGate) RF.pinGate();
   });

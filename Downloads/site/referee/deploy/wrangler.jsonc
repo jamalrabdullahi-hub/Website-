@@ -20,6 +20,8 @@
     "MERCHANT_ZAAD": "",
     "MERCHANT_SAHAL": "",
     "MERCHANT_PREMIER": "",
+    // the console's hostname: /api/admin/* answers only there
+    "ADMIN_HOST": "admin.buurwen.com",
     // FBG: the real Garsoore China receiving address. {suite} is replaced with the importer's suite code.
     "FBG_CHINA_ADDRESS": "",
     // "1" at launch: products without a human-checked cost (cost_verified=yes) can only be bought via a staff quote
@@ -28,6 +30,7 @@
   "routes": [
     { "pattern": "buurwen.com", "custom_domain": true },
     { "pattern": "www.buurwen.com", "custom_domain": true },
-    { "pattern": "business.buurwen.com", "custom_domain": true }
+    { "pattern": "business.buurwen.com", "custom_domain": true },
+    { "pattern": "admin.buurwen.com", "custom_domain": true }
   ]
 }

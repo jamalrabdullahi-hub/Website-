@@ -16,9 +16,19 @@ export default {
 
     const local = /^(localhost|127\.0\.0\.1)$/.test(host);
     const biz = host.startsWith("business.");
-    const apex = host.replace(/^(www|business)\./, "");
+    const isAdmin = host.startsWith("admin.") || (local && p.startsWith("/admin/"));
+    const apex = host.replace(/^(www|business|admin)\./, "");
 
     if (host.startsWith("www.")) return Response.redirect(`https://${apex}${p}${url.search}`, 301);
+
+    /* admin.<domain> serves only the console (its own folder). Shared /assets/ still come from the root. */
+    if (isAdmin && !p.startsWith("/assets/")) {
+      url.pathname = local ? norm(p) : "/admin" + norm(p === "/" ? "/index.html" : p);
+      const res = await env.ASSETS.fetch(new Request(url.toString(), req));
+      return new Response(res.body, { status: res.status, headers: { ...Object.fromEntries(res.headers), "X-Robots-Tag": "noindex, nofollow" } });
+    }
+    /* the console moved off the business site */
+    if (biz && (p === "/admin" || p === "/admin.html")) return Response.redirect(`https://admin.${apex}/`, 301);
 
     if (!local && !biz && (p === "/business" || p.startsWith("/business/"))) {
       const rest = p.slice("/business".length) || "/";
