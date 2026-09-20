@@ -6,7 +6,7 @@
        reference; staff match it against the merchant statement, then the money is "held" (escrow) until pickup.
      - An order completes only when staff enter the customer's 6-digit pickup code (staff never see the code).
 */
-import { CATALOG } from "./catalog.gen.js";
+import { CATALOG, PRICING } from "./catalog.gen.js";
 import { RATES } from "./rates.gen.js";
 
 /* ---- economics (internal). Change here, redeploy. */
@@ -196,6 +196,54 @@ export function rateCardFor(mode, at) {
   const pool = live.length ? live : RATES.cards.filter(c => c.mode === mode && c.status !== "expired");
   return pool.sort((a, b) => a.effectiveFrom < b.effectiveFrom ? 1 : -1)[0] || null;
 }
+/* chargeable BEFORE minimum and rounding — the basis a basket shares its freight out by */
+function rawUnits(mode, kg, cbm, card) {
+  if (mode === "air") return Math.max(kg, card.volumetricDivisor > 0 ? (cbm * 1e6) / card.volumetricDivisor : 0);
+  return Math.max(cbm, card.weightCapPerCbm > 0 ? kg / card.weightCapPerCbm : 0);
+}
+function packedCbm(kg, cat) { const d = RATES.packedDensity || {}; return kg / (d[cat] || d._default || 175); }
+
+/* One line's landed price given its share of the shipment. Mirrors lineTotal() in assets/catalog.js and uses the
+   same exported constants, so the cart and the order cannot disagree. */
+function lineLanded(costCny, qty, freight) {
+  const R = PRICING.rules, goods = (costCny / PRICING.fx) * Math.max(1, qty), cn = goods * R.cnFreight;
+  const duty = (goods + freight) * R.duty;
+  const sub = goods + cn + R.consolidation + freight + duty;
+  const margin = sub * R.margin;
+  return { total: Math.ceil(sub + margin), margin, goods, freight };
+}
+
+/* Freight for a whole basket: one shipment per lane, shared out by each line's chargeable quantity. */
+function basketFreight(lines, at) {
+  const groups = {}, shares = {};
+  lines.forEach((l, i) => {
+    const mode = l.mode === "sea" ? "sea" : "air", kg = (l.kg || 0) * Math.max(1, l.qty || 1);
+    (groups[mode] = groups[mode] || { idx: [], kg: 0, cbm: 0 });
+    const cbm = packedCbm(kg, l.cat);
+    groups[mode].idx.push({ i, kg, cbm });
+    groups[mode].kg += kg; groups[mode].cbm += cbm;
+  });
+  const out = { groups: {}, shares };
+  for (const mode of Object.keys(groups)) {
+    const g = groups[mode], q = shipCost(mode, g.kg, g.cbm, at);
+    if (!q) continue;
+    const card = RATES.cards.find(c => c.id === q.rateCardId);
+    const units = g.idx.map(x => Math.max(rawUnits(mode, x.kg, x.cbm, card), 1e-9));
+    const totalUnits = units.reduce((a, b) => a + b, 0) || 1;
+    let allocated = 0, biggest = 0;
+    units.forEach((u, k) => { if (u > units[biggest]) biggest = k; });
+    g.idx.forEach((x, k) => {
+      const share = Math.round(q.cost * units[k] / totalUnits * 100) / 100;
+      shares[x.i] = { mode, freight: share };
+      allocated += share;
+    });
+    const drift = Math.round((q.cost - allocated) * 100) / 100;
+    if (drift !== 0) shares[g.idx[biggest].i].freight = Math.round((shares[g.idx[biggest].i].freight + drift) * 100) / 100;
+    out.groups[mode] = q;
+  }
+  return out;
+}
+
 export function shipCost(mode, kg, cbm, at, cardId) {
   const card = cardId ? RATES.cards.find(c => c.id === cardId) : rateCardFor(mode, at);
   if (!card) return null;
@@ -209,7 +257,8 @@ export function shipCost(mode, kg, cbm, at, cardId) {
   let rate = card.tiers[0].rate;
   card.tiers.forEach(t => { if (chargeable >= t.from) rate = t.rate; });
   const cost = Math.max(rate * chargeable, card.minimumCharge || 0);
-  return { cost: Math.round(cost * 100) / 100, chargeable: Math.round(chargeable * 1000) / 1000, rate, unit: card.unit, rateCardId: card.id };
+  return { cost: Math.round(cost * 100) / 100, chargeable: Math.round(chargeable * 1000) / 1000, rate, unit: card.unit,
+    rateCardId: card.id, rateCardStatus: card.status, transitMin: card.transitMinDays, transitMax: card.transitMaxDays };
 }
 const procOut = r => ({ id: r.id, orderId: r.order_id, sku: r.sku, title: r.title, qty: r.qty, platform: r.platform,
   sourceUrl: r.source_url, supplier: r.supplier, targetCny: r.target_cny, paidCny: r.paid_cny, tracking: r.tracking,
@@ -263,7 +312,7 @@ async function priceItems(env, user, items) {
     if (it.quote) {
       const q = await env.DB.prepare("SELECT * FROM quotes WHERE id = ? AND status = 'quoted' AND (user_id = ? OR user_id IS NULL)").bind(String(it.quote), user.id).first();
       if (!q) throw new Error("Qiimahan rasmiga ah lama helin ama wuu dhacay.");
-      out.push({ sku: "GRS-Q-" + q.id.slice(2), vsku: q.id, quoteId: q.id, title: q.title, icon: q.icon || "📦", variant: "", qty, unit: q.total, etaDays: q.eta_days || 20, flow: "china", cogs: null, quoted: true });
+      out.push({ sku: "GRS-Q-" + q.id.slice(2), vsku: q.id, quoteId: q.id, title: q.title, icon: q.icon || "📦", variant: "", qty, unit: q.total, lineTotal: q.total * qty, etaDays: q.eta_days || 20, flow: "china", cogs: null, quoted: true });
       continue;
     }
     if (it.fbg) {                      // someone else's stock, held in the Garsoore warehouse (FBG)
@@ -272,7 +321,7 @@ async function priceItems(env, user, items) {
       if (iv.qty_available < qty) throw new Error("Kaydka: " + iv.qty_available + " ayaa hadhay.");
       if (iv.user_id === user.id) throw new Error("Alaabtaada adigu ma iibsan kartid.");
       out.push({ sku: iv.id, vsku: null, fbgId: iv.id, ownerId: iv.user_id, title: iv.title, icon: iv.icon || "📦", variant: "",
-        qty, unit: iv.price, etaDays: 0, flow: "local", cogs: null, seller: "FBG" });
+        qty, unit: iv.price, lineTotal: iv.price * qty, etaDays: 0, flow: "local", cogs: null, seller: "FBG" });
       continue;
     }
     const p = CATALOG[it.sku], v = p && p.variants[Math.floor(+it.vi || 0)];
@@ -280,19 +329,42 @@ async function priceItems(env, user, items) {
     if (v.total == null) throw new Error("Alaabtan qiimo rasmi ah weli ma leh — codso qiimo.");
     // launch switch: never sell at a placeholder cost. Unverified products go through a staff quote instead.
     if (env.REQUIRE_VERIFIED === "1" && !p.verified) throw new Error("Qiimaha alaabtan waa la hubinayaa — codso qiimo rasmi ah.");
-    /* The customer picks air or sea; the server prices that lane from its own copy of the catalogue and records which
-       rate card produced the number. A lane the browser asks for that this product does not have is refused rather
-       than silently swapped, because a silent swap is how somebody pays for air and waits six weeks. */
+    /* The customer picks air or sea; a lane this product does not have is refused rather than silently swapped,
+       because a silent swap is how somebody pays for air and waits six weeks. Pricing itself waits until the whole
+       basket is known: freight is charged once per shipment, not once per line. */
     const want = it.mode === "air" || it.mode === "sea" ? it.mode : null;
-    const lane = v.lanes && (v.lanes[want || v.mode] || null);
     if (want && v.lanes && !v.lanes[want]) throw new Error("Habkan rarka alaabtan looma heli karo.");
-    const unit = lane ? lane.total : v.total;
+    const mode = want || v.mode || null;
     out.push({ sku: it.sku, vsku: v.vsku, title: p.title, icon: p.icon, variant: [v.label, v.color].filter(x => x && x !== "—" && x !== "Standard").join(" · "),
-      qty, unit, etaDays: v.local ? 0 : (lane ? lane.transitMax : v.etaDays), flow: v.local ? "local" : "china",
-      cogs: lane ? lane.cogs : v.cogs, seller: p.seller,
-      shipMode: v.local ? null : (lane ? (want || v.mode) : null), rateCardId: lane ? lane.rateCardId : null,
-      shipCost: lane ? lane.cost : null, transitMin: lane ? lane.transitMin : null, transitMax: lane ? lane.transitMax : null });
+      qty, unit: v.total, lineTotal: null, etaDays: v.local ? 0 : v.etaDays, flow: v.local ? "local" : "china",
+      cogs: v.cogs, seller: p.seller,
+      shipMode: v.local ? null : mode, rateCardId: null, shipCost: null, transitMin: null, transitMax: null,
+      _cny: v.cny, _kg: p.kg, _cat: p.cat, _local: !!v.local });
   }
+
+  /* ---- one shipment per lane, priced once, shared out. This is what makes ten light things affordable: the minimum
+     charge is paid by the basket, not by every line in it. */
+  const ship = [];
+  out.forEach((o, i) => { if (!o._local && o.shipMode && o._cny > 0 && o._kg > 0) ship.push({ i, kg: o._kg, cat: o._cat, qty: o.qty, mode: o.shipMode }); });
+  if (ship.length) {
+    const bf = basketFreight(ship.map(x => ({ kg: x.kg, cat: x.cat, qty: x.qty, mode: x.mode })));
+    ship.forEach((x, k) => {
+      const sh = bf.shares[k], o = out[x.i];
+      if (!sh) throw new Error("Rarka alaabtan lama qiimayn karo — codso qiimo.");
+      const g = bf.groups[sh.mode], L = lineLanded(o._cny, o.qty, sh.freight);
+      o.lineTotal = L.total;
+      o.unit = Math.round(L.total / o.qty * 100) / 100;
+      o.cogs = Math.round((L.total - L.margin) / o.qty * 100) / 100;
+      o.shipCost = sh.freight;
+      o.rateCardId = g.rateCardId;
+      o.transitMin = g.transitMin || null; o.transitMax = g.transitMax || null;
+      o.etaDays = g.transitMax || o.etaDays || 20;
+    });
+  }
+  out.forEach(o => {
+    if (o.lineTotal == null) o.lineTotal = o.unit * o.qty;         // domestic / fixed-price lines
+    delete o._cny; delete o._kg; delete o._cat; delete o._local;
+  });
   return out;
 }
 async function promoRate(env, user, code) {
@@ -418,7 +490,7 @@ export async function handleApi(req, env, url) {
       const delivery = !!b.delivery, address = String(b.address || "").trim().slice(0, 200);
       if (delivery && address.length < 4) return err("Ku qor halka alaabta la keenayo.");
       let items; try { items = await priceItems(env, user, b.items); } catch (x) { return err(x.message); }
-      const sub = items.reduce((s, i) => s + i.unit * i.qty, 0);
+      const sub = items.reduce((s, i) => s + (i.lineTotal != null ? i.lineTotal : i.unit * i.qty), 0);
       let pct = 0, cap = Infinity;
       if (b.promo) { const p = await promoRate(env, user, b.promo); if (!p) return err("Koodhkan ma shaqaynayo."); if (p.error) return err(p.error); pct = p.pct; cap = p.cap; }
       let discLeft = Math.min(Math.round(sub * pct), cap);
@@ -427,7 +499,7 @@ export async function handleApi(req, env, url) {
       const creditTotal = creditLeft;
       const basket = items.length > 1 ? rid("B-", 6) : null, t = now(), stmts = [], orders = [];
       items.forEach((it, k) => {
-        const gross = it.unit * it.qty;
+        const gross = it.lineTotal != null ? it.lineTotal : it.unit * it.qty;
         const disc = k === items.length - 1 ? discLeft : Math.min(discLeft, Math.round(gross * pct)); discLeft -= disc;
         const f = k === 0 ? fee : 0;
         const credit = Math.min(creditLeft, gross - disc + f); creditLeft -= credit;
@@ -444,7 +516,8 @@ export async function handleApi(req, env, url) {
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(o.id, user.id, basket, it.sku, it.vsku, it.quoteId || null, it.title, it.icon, it.variant, it.qty, it.unit, disc, credit, f, total,
           it.flow, total > 0 ? "AWAITING_PAYMENT" : "PLACED", it.etaDays, delivery ? "Gaarsiin guriga" : "Xarunta Garsoore · Km4, Muqdisho", delivery ? address : null, b.pay, payPhone,
           total > 0 ? "none" : "held", o.code, JSON.stringify(econ), JSON.stringify([{ state: total > 0 ? "AWAITING_PAYMENT" : "PLACED", at: t }]), t, t, it.fbgId || null,
-          it.shipMode || null, it.rateCardId || null, it.shipCost != null ? it.shipCost * it.qty : null, it.transitMin || null, it.transitMax || null));
+          /* shipCost is this LINE's whole share of the shipment, not a per-unit figure, so it is stored as-is */
+          it.shipMode || null, it.rateCardId || null, it.shipCost != null ? it.shipCost : null, it.transitMin || null, it.transitMax || null));
         orders.push(o.id);
       });
       if (creditTotal) stmts.push(env.DB.prepare("UPDATE users SET credit = credit - ? WHERE id = ? AND credit >= ?").bind(creditTotal, user.id, creditTotal));

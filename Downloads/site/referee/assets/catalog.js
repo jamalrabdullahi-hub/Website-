@@ -51,6 +51,62 @@ function breakdown(costCny, kg, cat, mode, qty, at) {
            chargeable: ship.chargeable, chargeUnit: ship.unit, chargeBasis: ship.basis, estimatedSize: ship.estimatedSize };
 }
 
+/* ---------------------------------------------------------------- one line's landed price, given its freight
+   Kept separate from breakdown() because in a basket the freight is not this line's own — it is this line's SHARE of
+   one shipment. Consolidation is charged once per line rather than per unit: the facility handles a SKU once, whether
+   the carton holds one shirt or ten, and charging it per unit was quietly taxing bulk buyers. */
+function lineTotal(costCny, qty, freight) {
+  qty = Math.max(1, qty || 1);
+  var goods = (costCny / FX) * qty, cn = goods * RULES.cnFreight;
+  var duty = (goods + freight) * RULES.duty;
+  var sub = goods + cn + RULES.consolidation + freight + duty;
+  var margin = sub * RULES.margin;
+  return { total: Math.ceil(sub + margin), goods: goods, chinaFreight: cn, consolidation: RULES.consolidation,
+           intlFreight: freight, duty: duty, margin: margin };
+}
+
+/* ---------------------------------------------------------------- price a whole basket as one shipment
+   `entries` are [{ product, variant, qty, mode }]. Everything going by the same lane is one consignment: the freight
+   is worked out once for the combined weight and volume, then shared out by each line's chargeable quantity. This is
+   why ten light things cost far less per thing than one — the minimum charge is paid once, not ten times.
+
+   The server runs the identical calculation over the same rate cards, and the order is priced from that, so what the
+   cart shows and what is charged cannot drift apart. */
+function basketPrice(entries, at) {
+  var ship = [], meta = [];
+  (entries || []).forEach(function (en, i) {
+    var p = en.product, v = en.variant, qty = Math.max(1, en.qty || 1);
+    if (!p || !v) { meta[i] = { skip: true }; return; }
+    if (v.price != null) { meta[i] = { fixed: true, qty: qty, unit: v.price, quoted: !!v.quoted, etaDays: v.quoted ? (v.etaDays || 20) : 0 }; return; }
+    if (!(v.cost > 0)) { meta[i] = { quote: true, reason: "no-purchase-price" }; return; }
+    var mode = en.mode === "sea" || en.mode === "air" ? en.mode : (price(p, v).mode || "air");
+    meta[i] = { cny: v.cost, qty: qty, mode: mode, kg: p.kg, cat: p.cat };
+    ship.push({ idx: i, kg: p.kg, cat: p.cat, qty: qty, mode: mode });
+  });
+
+  var b = ship.length && RF.shipping ? RF.shipping.basket(ship.map(function (x) { return x; }), at) : { groups: {}, shares: {}, ok: true };
+  var byIdx = {};
+  ship.forEach(function (x, k) { byIdx[x.idx] = b.shares[k]; });
+
+  var lines = (entries || []).map(function (en, i) {
+    var m = meta[i];
+    if (!m || m.skip) return null;
+    if (m.quote) return { quote: true, reason: m.reason, total: null, seller: seller(en.product) };
+    if (m.fixed) return { total: m.unit * m.qty, unit: m.unit, qty: m.qty, local: !m.quoted, quoted: m.quoted,
+      etaDays: m.etaDays, freight: 0, seller: seller(en.product) };
+    var sh = byIdx[i];
+    if (!sh) return { quote: true, reason: "no-shippable-rate", total: null, seller: seller(en.product) };
+    var g = b.groups[sh.mode], L = lineTotal(m.cny, m.qty, sh.freight);
+    return { total: L.total, unit: Math.round(L.total / m.qty * 100) / 100, qty: m.qty, mode: sh.mode,
+      freight: sh.freight, estimatedSize: sh.estimated, local: false,
+      transitMin: g.transitMin, transitMax: g.transitMax, etaDays: g.transitMax,
+      rateCardId: g.rateCardId, breakdown: L, seller: seller(en.product) };
+  });
+
+  var total = lines.reduce(function (a, l) { return a + (l && l.total != null ? l.total : 0); }, 0);
+  return { lines: lines, groups: b.groups, total: total, ok: b.ok !== false };
+}
+
 /* ---------------------------------------------------------------- who the customer is buying from
    Two models, and they must never be collapsed into one another:
 
@@ -121,7 +177,7 @@ function card(p) {
 
 RF.catalog = {
   CATS: CATS, products: P, isChina: isChina, price: price, sameVariant: sameVariant, card: card, _breakdown: breakdown,
-  seller: seller, eligible: eligible, _rules: RULES, _fx: FX,
+  seller: seller, eligible: eligible, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
   get: function (sku) { return P.filter(function (p) { return p.sku === sku; })[0]; },
   search: function (q, opts) {
     opts = opts || {}; q = (q || "").toLowerCase().trim();

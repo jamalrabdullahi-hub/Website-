@@ -95,6 +95,10 @@ function productView(p, host, quoteId) {
     var gate = RF.api && RF.api.config && RF.api.config.requireVerified && !p.oneoff && p.verified !== true;
     var v = p.variants[vi], pr = C.price(p, v, mode), china = !pr.local, src = p.sources[0], isReq = (p.oneoff && !v.quoted) || gate || !!pr.quote;
     var sl = pr.seller || C.seller(p), opts = pr.options || null;
+    /* Freight is charged per shipment, so three of something is not three times the price of one. The buy bar prices
+       the quantity on screen exactly as the cart will, or the two would disagree the moment somebody typed "3". */
+    var bp = (!isReq && !pr.quote && pr.total != null) ? C.basketPrice([{ product: p, variant: v, qty: qty, mode: pr.mode }]).lines[0] : null;
+    var lineTotal = bp && bp.total != null ? bp.total : (pr.total != null ? pr.total * qty : null);
     /* Only offer a lane the customer could sensibly want. Air is always faster, so sea earns its place on the page
        only by being cheaper; for a 0.5 kg phone the sea minimum makes it both slower AND dearer, and showing it would
        be a worse page, not a more complete one. */
@@ -124,10 +128,14 @@ function productView(p, host, quoteId) {
           return '<button class="g-shopt' + (k === pr.mode ? " on" : "") + '" data-mode="' + k + '"><b>' + LANE_SO[k][0] + '</b>' +
             '<span>' + b.transitMin + '–' + b.transitMax + ' maalmood</span><i>' + money(b.total) + '</i></button>';
         }).join("") + '</div></div>' : "") +
+      /* say why one costs what it does, once, exactly where the single-shipment minimum bites */
+      (bp && bp.freight >= 10 && qty === 1 ?
+        '<div class="g-bulk">📦 Rarku hal shixnad ayuu ku baxaa — haddii aad laba ama ka badan iibsato, mid kastaa wuu raqiisanayaa. ' +
+        'Tusaale: 3 xabbo = ' + money(Math.round(C.basketPrice([{ product: p, variant: v, qty: 3, mode: pr.mode }]).lines[0].total / 3)) + ' midkii.</div>' : "") +
       (pr.total != null && !isReq ? '<div class="g-incl">✓ <b>' + money(pr.total) + ' waa qiimaha oo dhan</b> — ' + (china ? "alaabta, rarka Shiinaha → Muqdisho, canshuurta iyo adeegga" : "alaabta iyo adeegga") + ' way ku jiraan. Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +
       '<div class="g-buybar"><div class="g-bi">' + p.icon + '</div><div class="g-bt"><b>' + e(p.model) + (v.label && v.label !== "Standard" ? " · " + e(v.label) : "") + '</b>' +
         '<div class="g-eta">' + (china ? "🚚 " + (pr.transitMin ? pr.transitMin + "–" + pr.transitMax + " maalmood" : eta(pr.etaDays)) + " · Pickup Muqdisho" : "Diyaar maanta · Muqdisho") + ' · 🔒 Lacag la xajiyo</div></div>' +
-        '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' + (pr.total == null ? "Qiimo la sugayo" : (isReq ? "≈ " : "") + money(pr.total * (isReq ? 1 : qty))) + '</div>' +
+        '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' + (pr.total == null ? "Qiimo la sugayo" : isReq ? "≈ " + money(pr.total) : money(lineTotal)) + '</div>' +
         (isReq ? "" : '<div class="g-qty"><button data-dq="-1" aria-label="ka dhim">−</button><span>' + qty + '</span><button data-dq="1" aria-label="ku dar">+</button></div>' +
           '<button class="btn ghost g-add" id="addBtn">🛒 Dambiisha</button>') +
         '<button class="btn g-buy" id="buyBtn">' + (isReq ? "Codso qiimo rasmi ah" : "Hadda iibso") + '</button></div>' +
@@ -296,20 +304,38 @@ function payStep(r) {
 function cart(app) {
   function draw() {
     var items = RF.cart.resolve(), saved = RF.saved.list().map(C.get).filter(Boolean);
-    var sub = items.reduce(function (s, it) { return s + it.price.total * it.line.qty; }, 0);
+    /* One basket is one shipment. Freight is worked out across everything travelling the same way, so the per-item
+       price falls as the basket grows — and the customer watches it fall. */
+    var bk = C.basketPrice(items.map(function (it) { return { product: it.product, variant: it.variant, qty: it.line.qty, mode: it.line.mode }; }));
+    items.forEach(function (it, i) { if (bk.lines[i]) it.price = bk.lines[i]; });
+    var sub = bk.total;
+    /* what the same basket would cost if every line paid freight on its own — the saving consolidation creates */
+    var alone = items.reduce(function (n, it) {
+      var one = C.basketPrice([{ product: it.product, variant: it.variant, qty: it.line.qty, mode: it.line.mode }]);
+      return n + (one.lines[0] && one.lines[0].total != null ? one.lines[0].total : 0);
+    }, 0);
+    var saving = Math.max(0, alone - sub);
     app.innerHTML = '<div class="wrap"><div class="g-sec" style="margin-top:34px"><h1>Dambiisha</h1><span class="g-eta">' + RF.cart.count() + ' shay</span></div>' +
       (items.length ? '<div class="g-cart"><div>' + items.map(function (it) { var p = it.product, v = it.variant;
           return '<div class="g-order g-cl"><div class="g-ohead"><a class="g-th" href="product.html?' + (it.line.quote ? "quote=" + it.line.quote : "sku=" + p.sku) + '">' + p.icon + '</a><div style="flex:1"><b>' + e((p.brand ? p.brand + " " : "") + p.model) + '</b>' +
-            '<div class="g-eta">' + e([v.label, v.color].filter(function (x) { return x && x !== "—"; }).join(" · ")) + ' · ' + (it.price.local ? "Diyaar maanta" : "Diyaar " + eta(it.price.etaDays)) + ' · ' + money(it.price.total) + ' midkii</div></div>' +
+            '<div class="g-eta">' + e([v.label, v.color].filter(function (x) { return x && x !== "—"; }).join(" · ")) + ' · ' + (it.price.local ? "Diyaar maanta" : "Diyaar " + eta(it.price.etaDays)) + ' · ' + money(it.price.unit) + ' midkii' +
+              (it.price.freight ? ' · rar ' + money(it.price.freight) : "") + '</div></div>' +
             '<div class="g-qty"><button data-q="' + it.i + '" data-d="-1">−</button><span>' + it.line.qty + '</span><button data-q="' + it.i + '" data-d="1">+</button></div>' +
-            '<div class="g-price sm">' + money(it.price.total * it.line.qty) + '</div><button class="g-x" data-rm="' + it.i + '" aria-label="Ka saar">×</button></div>' +
+            '<div class="g-price sm">' + money(it.price.total) + '</div><button class="g-x" data-rm="' + it.i + '" aria-label="Ka saar">×</button></div>' +
             /* the lane the customer picked, still changeable here — and the price moves in front of them */
-            (it.price.options && it.price.mode ? '<div class="g-clane">' + ["air", "sea"].filter(function (m) { return it.price.options[m]; }).map(function (m) {
-              var b = it.price.options[m];
+            (it.price.mode ? '<div class="g-clane">' + ["air", "sea"].map(function (m) {
+              /* each option is priced with the REST of the basket held still, so the number on the chip is the number
+                 the customer will actually pay if they tap it */
+              var alt = C.basketPrice(items.map(function (o, k) { return { product: o.product, variant: o.variant, qty: o.line.qty, mode: k === it.i ? m : o.line.mode }; }));
+              var L = alt.lines[it.i]; if (!L || L.total == null || !L.mode) return "";
               return '<button class="chip' + (m === it.price.mode ? " on" : "") + '" data-lane="' + it.i + '" data-lm="' + m + '">' +
-                (m === "air" ? "✈ Cirka" : "🚢 Badda") + ' · ' + b.transitMin + '–' + b.transitMax + 'm · ' + money(b.total) + '</button>';
+                (m === "air" ? "✈ Cirka" : "🚢 Badda") + ' · ' + L.transitMin + '–' + L.transitMax + 'm · ' + money(L.total) + '</button>';
             }).join("") + '</div>' : "") + '</div>'; }).join("") + '</div>' +
-          '<aside class="g-order g-cside"><div class="g-sum"><div><span>Alaabta</span><b>' + money(sub) + '</b></div><div><span>Ka qaadasho Km4</span><b>Bilaash</b></div><div><span>Gaarsiin guriga</span><b>' + (sub >= DELIV.free ? "Bilaash" : "$" + DELIV.fee) + '</b></div></div>' +
+          '<aside class="g-order g-cside"><div class="g-sum"><div><span>Alaabta (rar iyo canshuur ku jira)</span><b>' + money(sub) + '</b></div>' +
+            (saving > 0 ? '<div class="save"><span>✓ Isku-darid</span><b>−' + money(saving) + '</b></div>' : "") +
+            '<div><span>Ka qaadasho Km4</span><b>Bilaash</b></div><div><span>Gaarsiin guriga</span><b>' + (sub >= DELIV.free ? "Bilaash" : "$" + DELIV.fee) + '</b></div></div>' +
+            (saving > 0 ? '<div class="g-goal ok">✓ Waxaad badbaadisay ' + money(saving) + ' — alaabtaadu hal shixnad ayay wada saaran tahay</div>'
+              : items.length === 1 && !items[0].price.local ? '<div class="g-goal">Ku dar shay kale — rarku hal mar ayuu bixinayaa, sidaa darteed midkiiba wuu raqiisanayaa</div>' : "") +
             (sub < DELIV.free ? '<div class="g-goal"><div><i style="width:' + Math.round(100 * sub / DELIV.free) + '%"></i></div>Ku dar ' + money(DELIV.free - sub) + ' → gaarsiin guriga bilaash</div>' : '<div class="g-goal ok">✓ Gaarsiin guriga waa bilaash</div>') +
             '<div class="g-tot"><span>Wadarta</span><b>' + money(sub) + '</b></div><button class="btn g-buy full" id="coBtn">U gudub lacag bixinta</button>' +
             '<div class="g-escrow">🔒 Lacagta waa la xajiyaa ilaa aad hesho.</div></aside></div>'

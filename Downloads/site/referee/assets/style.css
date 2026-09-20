@@ -854,3 +854,10 @@ footer.site b{color:var(--fg);font-weight:650}
 .g-clane{display:flex;gap:7px;flex-wrap:wrap;padding:0 0 2px 52px}
 .g-clane .chip{cursor:pointer;font-size:12px}
 @media (max-width:560px){ .g-clane{padding-left:0} }
+
+/* consolidation saving in the cart summary */
+.g-sum .save span,.g-sum .save b{color:var(--up)}
+.g-sum .save b{font-weight:800}
+
+/* "cheaper if you buy more" - stated once, where the single-shipment minimum bites */
+.g-bulk{margin:14px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);font-size:13.5px;color:var(--muted);line-height:1.65}

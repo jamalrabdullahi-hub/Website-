@@ -205,6 +205,22 @@ The consolidation and receiving point is **Guangzhou, Guangdong**. It is infrast
 ### Packed dimensions are estimated, and say so
 All 421 catalogue rows have a weight; none has measured packed dimensions. Volume is estimated from weight using a per-category packed density (`packedDensity` in the rate cards), flagged `estimated` everywhere it is used. Air break-even at divisor 6000 is 167 kg/CBM, so bulky categories (furniture 110, clothing 120) correctly price as volumetric-dominant. When the facility weighs and measures the real carton, Garsoore absorbs the difference — the customer's locked price does not move.
 
+### Basket freight: one basket is one shipment (`RF.shipping.basket`, `RF.catalog.basketPrice`)
+Freight is charged **per shipment, not per line**. Charging the minimum on every line made cheap light goods unsellable: a $6 SHEIN top carried the $12 air minimum and retailed at $23.79, and ten of them would have quoted ten × $12 = $120 of freight against a real consolidated cost of $37.80.
+
+- Lines travelling the same lane form one consignment; freight is priced once for the combined weight and volume, then shared out in proportion to each line's **chargeable** quantity (not actual weight, or dense cargo subsidises bulky cargo). Rounding remainder goes to the largest line so the shares always sum to the freight actually paid.
+- Different lanes are different shipments and priced separately — an air line and a sea line in one basket do not pool.
+- Consolidation is charged once per **line**, not per unit: the facility handles a SKU once whether the carton holds one shirt or ten.
+- The product page prices the quantity on screen exactly as the cart will, so the two cannot disagree the moment somebody types "3". A single light item shows one line explaining that buying more is cheaper, with the three-unit price.
+- The cart shows each lane's price computed with the rest of the basket held still, so the number on the chip is the number you pay if you tap it, plus the consolidation saving.
+- **The server runs the identical calculation** (`basketFreight` / `lineLanded` in `deploy/api.js`) over the same rate cards and the same constants, which `tools/export-catalog.js` exports as `PRICING` rather than duplicating. Verified: a 3+2+1 basket priced $208 in the cart and $208 on the server, with freight shares summing exactly to the $46.20 shipment cost.
+
+| Same garment | Freight | Each |
+|---|---|---|
+| ×1 | $12.00 *(minimum)* | $38.00 |
+| ×3 | $21.00 | $29.67 |
+| ×10 | $71.40 | $28.90 |
+
 ### Eligibility for instant buy (`RF.catalog.eligible`)
 A product is not instantly buyable because somebody found a supplier. It needs a canonical SKU, a known purchase price, a known packed weight, and a lane today's rate card can actually price. Anything short of that renders **Codso qiimo rasmi ah** (request a quote) instead of a number. Price certainty is the product.
 
