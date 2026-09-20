@@ -189,6 +189,7 @@ function chrome() {
       '</nav>' +
       '<span class="spacer"></span>' +
       '<button class="btn ghost" id="whoBtn"></button>' +
+      (biz && RF.mode ? '<button class="btn ghost modebtn" id="modeBtn"></button>' : "") +
       '<button class="btn ghost langbtn" id="langBtn" title="Language"></button>' +
       (biz || !RF.cart ? "" : '<a class="btn ghost cartbtn' + (sp === "cart" ? " on" : "") + '" href="cart.html" aria-label="Dambiisha">🛒<span id="cartN"></span></a>') +
       '<div class="surfsw" role="navigation" aria-label="Garsoore ⇄ Ganacsi">' +
@@ -209,6 +210,13 @@ function chrome() {
     '<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>');
 
   refreshWho();
+  if (biz && RF.mode && document.getElementById("modeBtn")) {
+    /* two faces of the business site: Fudud asks a few questions, Xirfadle gives every lever */
+    var mb = document.getElementById("modeBtn"), pro = RF.mode.get() === "pro";
+    mb.textContent = pro ? "Fudud" : "Xirfadle";
+    mb.title = pro ? "Habka fudud" : "Habka xirfadlaha";
+    mb.onclick = function () { RF.mode.set(pro ? "simple" : "pro"); };
+  }
   /* Somali is the interface language; this switches the rendered text to English and remembers the choice */
   if (RF.i18n) {
     var lb = document.getElementById("langBtn"), en = RF.i18n.lang() === "en";
@@ -1522,6 +1530,12 @@ function openLoadMatch(shipmentId) {
 document.addEventListener("DOMContentLoaded", function () {
   ensureSeed();
   chrome();
+  /* Fudud mode: the business boards are replaced by one task launcher (the shop + staff pages are untouched) */
+  if (window.SURFACE === "business" && RF.mode && RF.mode.simple() && RF.simpleUI &&
+      ["b2b", "exchange", "logi", "tenders", "activity"].indexOf(window.BOARD) >= 0) {
+    RF.simpleUI(document.getElementById("app"), null);
+    return;
+  }
   if (window.BOARD === "activity") activityPage();
   else if (window.BOARD === "exchange") exchangePage();
   else if (window.BOARD === "b2b") b2bPage();

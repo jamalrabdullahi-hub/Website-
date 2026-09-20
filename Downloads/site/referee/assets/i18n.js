@@ -186,7 +186,63 @@ var DICT = {
   "Tirada": "Quantity", "Magaalada": "City", "Muddada (maalmo)": "Duration (days)",
   "Nooca mandate-ka": "Mandate type", "Dir mandate-ka": "Send the mandate",
   "Laba nooc oo mandate ah": "Two kinds of mandate", "Tusaale": "Example",
-  "Waxa wakiilku samayn karo": "What the agent may do", "Waxa uusan samayn karin": "What the agent may not do"
+  "Waxa wakiilku samayn karo": "What the agent may do", "Waxa uusan samayn karin": "What the agent may not do",
+  /* Fudud (simple) business mode */
+  "Maxaad rabtaa inaan kuu qabanno?": "What would you like us to do?",
+  "Dooro shaqada. Su'aalo yar ayaan ku weydiinaynaa \u2014 inteeda kale annaga ayaa qabanayna.":
+    "Pick the job. We ask a few questions \u2014 we handle the rest.",
+  "Shiinaha wax iga keen": "Source something from China",
+  "Ku dheji link ama sharax waxa aad rabto. Waxaan kuu soo dirnaa hal qiimo \u2014 rar, canshuur iyo adeeg oo ku jira.":
+    "Paste a link or describe what you want. You get one price \u2014 freight, duty and service included.",
+  "Waan iibsaday \u2014 ii qaabil oo ii keen": "I already bought \u2014 receive and ship it for me",
+  "Hel cinwaan Shiinaha oo kaliya adiga. Waan qaabilnaa, isku darnaa oo Muqdisho keennaa. Alaabtu adigaa iska leh.":
+    "Get a China address that is yours alone. We receive, consolidate and deliver to Mogadishu. The goods stay yours.",
+  "Alaab baan haystaa \u2014 ii iibi": "I have goods \u2014 sell them for me",
+  "Wakiil la hubiyay ayaa suuqa u geynaya. Waxaad dooranaysaa: dhaqso, ama faa'iido badan.":
+    "A verified agent takes it to market. You choose: speed, or more margin.",
+  "Kaydkayga ku iib Garsoore": "Sell my stock on Garsoore",
+  "Alaabta bakhaarkeena ku jirta ku dhig suuqa Garsoore.com \u2014 macmiilku maanta ayuu qaadan karaa.":
+    "Put the stock in our warehouse on Garsoore.com \u2014 a customer can collect it today.",
+  "Dalabyadayda iyo qiimayaasha": "My orders and prices",
+  "Waxa socda, waxa la bixiyay, iyo codsiyada qiimaha ee lagu soo celiyay.":
+    "What is moving, what was paid, and the prices sent back to you.",
+  "Bilow": "Start", "Hel cinwaanka": "Get the address", "Dooro": "Choose", "Eeg kaydka": "See the stock", "Fur": "Open",
+  "Ma doonaysaa qalab dhammaystiran \u2014 mandate-yo, kharashka la keenay, xisaabaad, rar?":
+    "Want the full toolkit \u2014 mandates, landed cost, ledgers, freight?",
+  "U beddel Xirfadle": "Switch to Pro", "Fudud": "Simple", "Xirfadle": "Pro",
+  "Ku laabo shaqooyinka": "Back to the jobs",
+  "\ud83c\udde8\ud83c\uddf3 Shiinaha wax iga keen": "\ud83c\udde8\ud83c\uddf3 Source something from China",
+  "Ku dheji link (1688, JD, Taobao, Alibaba\u2026) ama sharax alaabta": "Paste a link (1688, JD, Taobao, Alibaba\u2026) or describe the goods",
+  "Magaalada aad rabto in lagu keeno": "City for delivery",
+  "Hal qiimo ayaa kuu imanaya (alaab + rar + canshuur + adeeg). Waxba ma bixinaysid ilaa aad aqbasho.":
+    "You get one price (goods + freight + duty + service). You pay nothing until you accept it.",
+  "\ud83d\udce6 Hel cinwaankaaga Shiinaha": "\ud83d\udce6 Get your China address",
+  "\ud83d\udce6 Cinwaankaaga Shiinaha": "\ud83d\udce6 Your China address",
+  "Wax kharash ah ma bixinaysid ilaa aad alaab soo dirto.": "You pay nothing until you send goods.",
+  "sanduuqii \u2014 qaabilaad": "per carton \u2014 receiving", "bad (cir": "sea (air",
+  "kayd bilaash": "free storage", "haddii aan kuu iibinno": "if we sell it for you",
+  "Koodhkaaga": "Your code", "Cinwaanka": "The address",
+  "Markaad wax iibsato, halkan noo sheeg si aan u aqoonsanno markay timaaddo:":
+    "When you buy something, tell us here so we can identify it on arrival:",
+  "Markay timaaddo, maxaad rabtaa?": "When it arrives, what do you want?",
+  "Ku iib Garsoore": "Sell it on Garsoore", "Ii keen, aniga ayaa qaadanaya": "Send it to me, I'll collect it",
+  "Wakiil ha iibiyo": "Let an agent sell it", "Kaydi shixnadda": "Save the shipment",
+  "Waad beddeli kartaa go'aankaaga ilaa alaabtu ka baxdo Shiinaha.": "You can change your mind until the goods leave China.",
+  "\ud83e\udd1d Wakiil ha ii iibiyo": "\ud83e\udd1d Let an agent sell for me",
+  "Waa maxay alaabta?": "What are the goods?", "Maxaad doorbidaysaa?": "Which do you prefer?",
+  "Qiimaha ugu yar ee aad aqbali karto ($)": "The lowest price you will accept ($)",
+  "Dir wakiillada": "Send it to the agents",
+  "Farqiga waxaa lagu qaybiyaa hab cad \u2014 mar kasta waad arki kartaa.": "The spread is split openly \u2014 you can always see it.",
+  "\ud83c\udff7 Kaydkaaga \u2014 ku dhig suuqa": "\ud83c\udff7 Your stock \u2014 put it on sale",
+  "\ud83c\udff7 Kaydkayga": "\ud83c\udff7 My stock", "Dhig suuqa": "Put on sale", "Beddel": "Change",
+  "\ud83d\udccb Waxa socda": "\ud83d\udccb What is moving",
+  "Weli waxba ma socdaan.": "Nothing is moving yet.",
+  "Gal si aan shaqadaada u bilowno.": "Sign in so we can start your job.",
+  "Gal si aad u sii wadato.": "Sign in to continue.",
+  "Codsigaagii waa la diray": "Your request has been sent",
+  "Waa la kaydiyay": "Saved", "Waa la diray wakiillada": "Sent to the agents",
+  "Mandate-yadayda": "My mandates", "diyaar": "available"
+
 
 };
 

@@ -252,3 +252,14 @@ console sidebar) switches the rendered text to English and remembers the choice 
 and handles phrases carrying numbers through a small pattern list. Anything without a translation stays in Somali, so a
 missing entry costs a word rather than a screen. Supplier product titles are never translated. To add a phrase, put the
 exact Somali string as the key in `DICT` (or add a regex to `PATTERNS` when it carries a number).
+
+## Business modes — Fudud / Xirfadle (`assets/simple.js`)
+The business site has two faces, switched by a button in its header (`localStorage garsoore.bizmode`, default **Fudud**).
+- **Fudud (simple)** — one task launcher: source from China · receive & ship my purchase (FBG) · let an agent sell for me ·
+  put my stock on sale · what's moving. Each job is a short guided card (3–4 fields, plain Somali, defaults chosen) that
+  calls the same API as the pro screens. Fees, prices and the escrow promise are always shown — simple never means hidden.
+- **Xirfadle (pro)** — the full surfaces: B2B board, mandate board with caps and spread splits, FBG inbound/consignments/
+  ledger, landed cost per unit, tiers, freight. In pro mode `business/index.html`, `agents.html`, `fbg.html` and
+  `china.html` render as before.
+Both write the same records, so a mandate created in Fudud shows up in full detail in Xirfadle. Staff and admin tools
+(`ops.html`, the console) are always the pro versions.
