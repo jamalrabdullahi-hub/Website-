@@ -244,3 +244,11 @@ Import → consolidate → store → sell, with the importer owning the goods th
    sale and charges the commission. Cancelling returns the units to stock.
 Fees live in `deploy/api.js → FBG`. Storage (`storagePerCbmDay` after `freeStorageDays`) is defined but **not yet charged
 automatically** — add it before launch. Garsoore never finances the stock: the importer pays for the goods and owns them.
+
+## Language (`assets/i18n.js`)
+Somali is the interface language and the source of truth in the code. The **EN / SO** button in the header (and in the
+console sidebar) switches the rendered text to English and remembers the choice (`localStorage garsoore.lang`, or
+`?lang=en`). The layer translates text nodes plus `placeholder` / `title` / `aria-label`, re-runs on every re-render,
+and handles phrases carrying numbers through a small pattern list. Anything without a translation stays in Somali, so a
+missing entry costs a word rather than a screen. Supplier product titles are never translated. To add a phrase, put the
+exact Somali string as the key in `DICT` (or add a regex to `PATTERNS` when it carries a number).

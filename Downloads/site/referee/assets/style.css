@@ -652,6 +652,7 @@ footer.site b{color:var(--fg);font-weight:650}
   /* row 1: logo · switch · cart · account (icon-sized)   row 2: nav */
   #postBtn{display:none}
   .cartbtn{order:3;padding:7px 9px}
+  .langbtn{order:5;padding:7px 8px}
   #whoBtn{order:4;padding:7px 9px;max-width:40px;overflow:hidden;white-space:nowrap;font-size:14px}
   #whoBtn:not(.in){font-size:12.5px;max-width:none}
 }
@@ -720,3 +721,7 @@ footer.site b{color:var(--fg);font-weight:650}
 .fb-led>div{grid-template-columns:90px 150px 90px 110px 1fr}
 .fb-led .neg{color:var(--down);font-weight:700}.fb-led .pos{color:var(--up);font-weight:700}
 @media (max-width:760px){ .fb-addr{grid-template-columns:1fr} }
+
+/* language switch — Somali is the default, English is one tap away */
+.langbtn{padding:7px 10px;font-size:12px;font-weight:800;letter-spacing:.04em}
+@media (max-width:560px){ .langbtn{padding:7px 8px} }

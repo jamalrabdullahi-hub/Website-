@@ -189,6 +189,7 @@ function chrome() {
       '</nav>' +
       '<span class="spacer"></span>' +
       '<button class="btn ghost" id="whoBtn"></button>' +
+      '<button class="btn ghost langbtn" id="langBtn" title="Language"></button>' +
       (biz || !RF.cart ? "" : '<a class="btn ghost cartbtn' + (sp === "cart" ? " on" : "") + '" href="cart.html" aria-label="Dambiisha">🛒<span id="cartN"></span></a>') +
       '<div class="surfsw" role="navigation" aria-label="Garsoore ⇄ Ganacsi">' +
         '<a data-switch="consumer" class="' + (biz ? "" : "on") + '" href="' + (biz ? other : thisHome) + '"' + (biz ? "" : ' aria-current="page"') + '>Garsoore</a>' +
@@ -208,6 +209,13 @@ function chrome() {
     '<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>');
 
   refreshWho();
+  /* Somali is the interface language; this switches the rendered text to English and remembers the choice */
+  if (RF.i18n) {
+    var lb = document.getElementById("langBtn"), en = RF.i18n.lang() === "en";
+    lb.textContent = en ? "SO" : "EN";
+    lb.title = en ? "Af Soomaali" : "English";
+    lb.onclick = function () { RF.i18n.set(en ? "so" : "en"); };
+  }
   if (RF.cart && document.getElementById("cartN")) {
     RF.cart.onchange = function () { var n = RF.cart.count(), el = document.getElementById("cartN"); el.textContent = n || ""; el.className = n ? "n" : ""; };
     RF.cart.onchange();

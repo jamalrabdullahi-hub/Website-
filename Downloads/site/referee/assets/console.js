@@ -44,12 +44,17 @@ function shell() {
     '<aside class="cs-side"><div class="cs-brand">▦ <b>Console</b></div>' +
       '<nav>' + NAV.map(function (n) { return '<a href="#' + n[0] + '" data-v="' + n[0] + '"><i>' + n[1] + '</i>' + n[2] + '<em id="cs-n-' + n[0] + '"></em></a>'; }).join("") + '</nav>' +
       '<div class="cs-me"><b>' + e(RF.api.user.name) + '</b><span>' + e(RF.api.user.phone) + '</span>' +
-        '<a href="#" id="csOut">Ka bax</a><a href="https://' + location.hostname.replace(/^admin\./, "") + '" target="_blank" rel="noopener">Suuqa ↗</a>' +
+        '<a href="#" id="csLang"></a><a href="#" id="csOut">Ka bax</a><a href="https://' + location.hostname.replace(/^admin\./, "") + '" target="_blank" rel="noopener">Suuqa ↗</a>' +
         '<a href="https://' + location.hostname.replace(/^admin\./, "business.") + '" target="_blank" rel="noopener">Ganacsi ↗</a></div>' +
       '<div class="cs-build">' + (window.GARSOORE_CONFIG && GARSOORE_CONFIG.build ? e(GARSOORE_CONFIG.build) : "") + '</div></aside>' +
     '<main class="cs-main"><header class="cs-top"><h1 id="csTitle"></h1><div id="csTools"></div>' +
       '<button class="btn ghost" id="csRefresh">↻</button></header><div id="csBody"><div class="cs-boot">⏳</div></div></main>';
   $("csOut").onclick = function (ev) { ev.preventDefault(); RF.api.logout().then(function () { location.reload(); }); };
+  if (RF.i18n) {
+    var en = RF.i18n.lang() === "en";
+    $("csLang").textContent = en ? "Af Soomaali" : "English";
+    $("csLang").onclick = function (ev) { ev.preventDefault(); RF.i18n.set(en ? "so" : "en"); };
+  }
   $("csRefresh").onclick = function () { render(); };
   app.querySelector(".cs-side nav").onclick = function (ev) { var a = ev.target.closest("a"); if (!a) return; view = a.dataset.v; render(); };
   window.onhashchange = function () { var v = location.hash.slice(1); if (v) { view = v; render(); } };
