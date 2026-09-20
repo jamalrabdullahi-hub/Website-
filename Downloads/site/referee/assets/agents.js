@@ -26,11 +26,7 @@ function split(mode, side, floor, price, sellerPct) {
 RF.agentsUI = function (app, tab) {
   if (!RF.api || !RF.api.remote) { app.innerHTML = '<div class="wrap g-empty">Wakiilladu waxay u baahan yihiin server-ka (API).</div>'; return; }
   A = (RF.api.config && RF.api.config.agent) || { capLiquidity: 15, capMargin: 40, platformPct: 10, sellerPctMin: 25, sellerPctMax: 80, defaultDays: 14 };
-  if (!RF.api.user) {
-    app.innerHTML = '<div class="wrap g-empty">Gal si aad u isticmaasho wakiillada Garsoore. <button class="btn" id="agIn">Gal</button></div>';
-    $("agIn").onclick = function () { RF.authUI.open("Wakiillada Garsoore").then(function () { RF.agentsUI(app, tab); }).catch(function () {}); };
-    return;
-  }
+  var out = !RF.api.user;                 /* signed out: the explainer is public, the boards are not */
   var call = RF.api.call;
   app.innerHTML = '<div class="wrap"><section class="g-chero biz"><span class="g-tagw">GARSOORE WAKIIL</span><h1>Wakiil kaa iibiya — ama kuu soo iibiya.</h1>' +
     '<p>Dhig <b>mandate</b>: waxa aad haysato iyo qiimaha ugu yar ee aad aqbali karto. Wakiil la hubiyay ayaa suuqa geynaya, gorgortan kula galaya iibsadayaasha, rarka iyo wareejinta qabanaya. Faa\'iidada wakiilku waa <b>farqiga</b> u dhexeeya qiimahaaga iyo qiimaha uu gaadhsiiyo — sidaa darteed way kuu shaqeeyaan.</p>' +
@@ -39,6 +35,13 @@ RF.agentsUI = function (app, tab) {
     '<button class="btn gold" id="agNew">+ Mandate cusub</button></section>' +
     '<div class="g-seg ops-tabs" id="agTabs">' + TABS.map(function (t) { return '<span data-t="' + t[0] + '"' + (t[0] === tab ? ' class="on"' : "") + '>' + t[1] + '</span>'; }).join("") + '</div>' +
     '<div id="agBody" style="margin-top:16px"><div class="g-empty sm">⏳</div></div></div>';
+  if (out) {
+    $("agBody").innerHTML = howHTML() + '<div class="g-empty" style="margin-top:16px">Gal si aad mandate u dhigto ama wakiil u noqoto. <button class="btn" id="agIn">Gal</button></div>';
+    $("agNew").onclick = $("agIn").onclick = function () { RF.authUI.open("Wakiillada Garsoore").then(function () { RF.agentsUI(app, tab); }).catch(function () {}); };
+    [].forEach.call(document.querySelectorAll("#agTabs span"), function (x) { x.classList.toggle("on", x.dataset.t === "how"); });
+    document.getElementById("agTabs").onclick = function (ev) { var t = ev.target.closest("span"); if (t && t.dataset.t !== "how") RF.authUI.open("Wakiillada Garsoore").then(function () { RF.agentsUI(app, t.dataset.t); }).catch(function () {}); };
+    return;
+  }
   $("agTabs").onclick = function (ev) { var t = ev.target.closest("span"); if (!t) return; history.replaceState(null, "", "?tab=" + t.dataset.t); RF.agentsUI(app, t.dataset.t); };
   $("agNew").onclick = function () { newMandate(function () { RF.agentsUI(app, "mine"); }); };
   var body = $("agBody");
