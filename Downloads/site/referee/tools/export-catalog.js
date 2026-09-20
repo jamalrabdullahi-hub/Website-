@@ -18,14 +18,14 @@ for (const p of C.products) {
   out[p.sku] = {
     title: ((p.brand ? p.brand + " " : "") + p.model).trim(), icon: p.icon, cat: p.cat, kg: p.kg || 0,
     verified: p.verified === true,   // cost checked by a person (data/catalog.csv cost_verified=yes)
-    china: C.isChina(p), seller: src.seller || "", city: src.city || "", channel: src.channel || "", ref: src.ref || "",
+    china: C.isChina(p), seller: src.seller || "", city: src.city || "", channel: src.channel || "", ref: src.ref || "", url: src.url || "",
     variants: p.variants.map(v => {
       const pr = C.price(p, v);
       if (pr.total == null) { unknown++; return { vsku: v.vsku, label: v.label || "", color: v.color || "", total: null }; }
       priced++;
       // cost of goods for margin reporting: China = landed cost before Garsoore margin; domestic = seller payout (commission is applied in the API)
       const cogs = pr.local ? null : Math.round((C._breakdown(v.cost, p.kg).total - C._breakdown(v.cost, p.kg).margin) * 100) / 100;
-      return { vsku: v.vsku, label: v.label || "", color: v.color || "", total: pr.total, etaDays: pr.etaDays, local: !!pr.local, cogs };
+      return { vsku: v.vsku, label: v.label || "", color: v.color || "", total: pr.total, etaDays: pr.etaDays, local: !!pr.local, cogs, cny: v.cost || null };
     })
   };
 }

@@ -13,7 +13,7 @@ var call = null, app = null, view = "money";
 
 var NAV = [
   ["money", "💰", "Lacagta"], ["accounts", "👥", "Akoonnada"], ["business", "🏢", "Ganacsiyada"],
-  ["fbg", "📦", "FBG"], ["agents", "🤝", "Wakiillada"], ["catalogue", "🏷", "Katalogga"],
+  ["buy", "🛒", "Iibsiga"], ["fbg", "📦", "FBG"], ["agents", "🤝", "Wakiillada"], ["catalogue", "🏷", "Katalogga"],
   ["ops", "⚙", "Hawlgalka"], ["log", "📜", "Diiwaanka"]
 ];
 var ROLE_SO = { consumer: "Macmiil", business: "Ganacsi", agent: "Wakiil", staff: "Shaqaale", admin: "Maamule" };
@@ -61,6 +61,7 @@ function badges() {
   Promise.all([call("GET", "/ops/stats?days=365"), call("GET", "/admin/overview")]).then(function (a) {
     var s = a[0], o = a[1], b = s.byState || {};
     set("money", (b.PAYMENT_REVIEW || 0) + (s.refundDue ? 1 : 0) + s.openDisputes);
+    set("buy", (b.PLACED || 0) + (b.SOURCING || 0));
     set("business", o.pending.b); set("agents", o.pending.a); set("ops", (b.READY || 0) + s.pendingQuotes);
   }).catch(function () {});
   function set(k, n) { var el = $("cs-n-" + k); if (el) el.textContent = n || ""; }
@@ -84,7 +85,7 @@ function render() {
   location.hash = view;
   [].forEach.call(app.querySelectorAll(".cs-side nav a"), function (a) { a.classList.toggle("on", a.dataset.v === view); });
   panel('<div class="cs-boot">⏳</div>');
-  ({ money: money_, accounts: accounts, business: business, fbg: fbg, agents: agents, catalogue: catalogue, ops: ops, log: log }[view] || money_)();
+  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, ops: ops, log: log }[view] || money_)();
 }
 
 /* ---------------------------------------------------------------- money: is the business making any? */
@@ -192,6 +193,13 @@ function business() {
     act("[data-pause]", function (b) { var n = prompt("Sababta:"); if (n === null) return null; return call("POST", "/admin/businesses/" + b.dataset.pause, { status: "paused", note: n }); });
     act("[data-com]", function (b) { var v = prompt("Komishanka (%):", "8"); if (v === null) return null; return call("POST", "/admin/businesses/" + b.dataset.com, { commission: +v }); });
   }).catch(fail);
+}
+
+/* ---------------------------------------------------------------- buying queue */
+function buy() {
+  head("Iibsiga Shiinaha");
+  panel('<div id="buyBox"><div class="cs-boot">⏳</div></div>');
+  RF.procUI($("buyBox"), call, render);
 }
 
 /* ---------------------------------------------------------------- FBG: China facility + warehouse */

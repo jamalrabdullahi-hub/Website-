@@ -141,6 +141,12 @@ function chinaAddress(env, suite) {
     ? String(env.FBG_CHINA_ADDRESS).replace("{suite}", suite)
     : "(dev) Cinwaanka bakhaarka Shiinaha weli lama dejin — ha dirin alaab. Kood: " + suite;
 }
+const FX = 7.2;                       // CNY per USD — the rate the catalogue prices were built with
+const procOut = r => ({ id: r.id, orderId: r.order_id, sku: r.sku, title: r.title, qty: r.qty, platform: r.platform,
+  sourceUrl: r.source_url, supplier: r.supplier, targetCny: r.target_cny, paidCny: r.paid_cny, tracking: r.tracking,
+  cartons: r.cartons, kg: r.kg, cbm: r.cbm, consignment: r.consignment, state: r.state, note: r.note,
+  history: J(r.history) || [], createdAt: r.created_at, customer: r.u_name ? { name: r.u_name, phone: "+" + r.u_phone } : null,
+  orderState: r.o_state, orderTotal: r.o_total });
 const inboundOut = r => ({ id: r.id, supplier: r.supplier, platform: r.platform, tracking: r.tracking, title: r.title,
   qtyExpected: r.qty_expected, qtyReceived: r.qty_received, value: r.value_usd, disposition: r.disposition, state: r.state,
   cartons: r.cartons, kg: r.kg, cbm: r.cbm, photos: J(r.photos) || [], problem: r.problem, consignment: r.consignment,
@@ -649,6 +655,52 @@ export async function handleApi(req, env, url) {
       }
       return err("Ficil aan la aqoon.");
     }
+    /* ---------------------------------------------------------------- procurement (staff / buying agent)
+       Every paid China order lands here as a purchase task. Nobody can buy on 1688/JD through an API from outside
+       China, so the job is made one-click instead: the task carries the exact link, quantity, the most that may be
+       paid, and the reference code for the carton. After that the goods drive the order forward by themselves. */
+    if (path.startsWith("/ops/procurement")) {
+      if (!staff) return err("Shaqaalaha Garsoore oo keliya.", 403);
+      if (path === "/ops/procurement" && M === "GET") {
+        const rows = (await env.DB.prepare(`SELECT p.*, o.state o_state, o.total o_total, u.name u_name, u.phone u_phone
+          FROM procurement p JOIN orders o ON o.id = p.order_id JOIN users u ON u.id = p.user_id
+          WHERE p.state NOT IN ('ARRIVED','CANCELLED') ORDER BY p.created_at ASC LIMIT 200`).all()).results;
+        return json({ tasks: rows.map(procOut), address: chinaAddress(env, "<PO>"), fx: FX });
+      }
+      if ((m = path.match(/^\/ops\/procurement\/(PO-[A-Z0-9]+)\/(ordered|received|cancel|note)$/)) && M === "POST") {
+        const p = await env.DB.prepare("SELECT * FROM procurement WHERE id = ?").bind(m[1]).first();
+        if (!p) return err("Lama helin.", 404);
+        const b = await body(req), t = now(), h = J(p.history) || [], act = m[2];
+        const push = st => { h.push({ state: st, at: t, by: user.name }); return JSON.stringify(h); };
+        if (act === "ordered") {
+          const paid = +b.paidCny;
+          if (!(paid > 0)) return err("Ku qor lacagta aad bixisay (¥).");
+          await env.DB.batch([
+            env.DB.prepare("UPDATE procurement SET state = 'ORDERED', paid_cny = ?, tracking = ?, supplier = ?, history = ?, updated_at = ? WHERE id = ?")
+              .bind(paid, String(b.tracking || "").slice(0, 60), String(b.supplier || "").slice(0, 120), push("ORDERED"), t, p.id),
+            env.DB.prepare("UPDATE orders SET state = CASE WHEN state = 'PLACED' THEN 'SOURCING' ELSE state END, history = json_insert(history, '$[#]', json(?)), updated_at = ? WHERE id = ? AND state = 'PLACED'")
+              .bind(JSON.stringify({ state: "SOURCING", at: t, by: user.name }), t, p.order_id)
+          ]);
+          const over = p.target_cny ? +(paid - p.target_cny).toFixed(2) : 0;
+          return json({ ok: true, overTarget: over > 0 ? over : 0, targetCny: p.target_cny });
+        }
+        if (act === "received") {                      // the parcel reached the China facility
+          const kg = +b.kg;
+          if (!(kg > 0)) return err("Ku qor miisaanka (kg).");
+          await env.DB.prepare("UPDATE procurement SET state = 'IN_CHINA', cartons = ?, kg = ?, cbm = ?, history = ?, updated_at = ? WHERE id = ?")
+            .bind(Math.max(1, Math.round(+b.cartons || 1)), kg, +b.cbm || 0, push("IN_CHINA"), t, p.id).run();
+          return json({ ok: true });
+        }
+        if (act === "note") {
+          await env.DB.prepare("UPDATE procurement SET note = ?, updated_at = ? WHERE id = ?").bind(String(b.note || "").slice(0, 300), t, p.id).run();
+          return json({ ok: true });
+        }
+        await env.DB.prepare("UPDATE procurement SET state = 'CANCELLED', note = ?, history = ?, updated_at = ? WHERE id = ?").bind(String(b.note || "").slice(0, 300), push("CANCELLED"), t, p.id).run();
+        return json({ ok: true, hint: "Dalabka macmiilka waa in la joojiyaa oo lacagta la celiyaa." });
+      }
+      return err("Not found", 404);
+    }
+
     /* ---- staff: the China facility and the Somali warehouse */
     if (path.startsWith("/ops/fbg")) {
       if (!staff) return err("Shaqaalaha Garsoore oo keliya.", 403);
@@ -657,7 +709,9 @@ export async function handleApi(req, env, url) {
           LEFT JOIN fbg_accounts a ON a.user_id = f.user_id WHERE f.state NOT IN ('CLOSED') ORDER BY f.created_at ASC LIMIT 200`).all()).results;
         const cons = (await env.DB.prepare("SELECT * FROM fbg_consignments WHERE state != 'ARRIVED' ORDER BY created_at DESC LIMIT 50").all()).results;
         const rel = (await env.DB.prepare("SELECT i.*, u.name u_name FROM fbg_inventory i JOIN users u ON u.id = i.user_id WHERE i.disposition = 'release' LIMIT 50").all()).results;
-        return json({ inbound: inb.map(x => Object.assign(inboundOut(x), { owner: x.u_name, phone: "+" + x.u_phone, suite: x.suite })),
+        const po = (await env.DB.prepare("SELECT p.*, u.name u_name, u.phone u_phone FROM procurement p JOIN users u ON u.id = p.user_id WHERE p.state IN ('ORDERED','IN_CHINA','CONSOLIDATED') ORDER BY p.created_at ASC LIMIT 200").all()).results;
+        return json({ purchases: po.map(procOut),
+          inbound: inb.map(x => Object.assign(inboundOut(x), { owner: x.u_name, phone: "+" + x.u_phone, suite: x.suite })),
           consignments: cons.map(c => ({ id: c.id, mode: c.mode, awb: c.awb, kg: c.kg, cbm: c.cbm, cost: c.cost_usd, state: c.state, eta: c.eta })),
           releases: rel.map(x => Object.assign(invOut(x), { owner: x.u_name })), fees: FBG });
       }
@@ -691,28 +745,36 @@ export async function handleApi(req, env, url) {
         const b = await body(req), ids = (Array.isArray(b.ids) ? b.ids : []).slice(0, 100).map(String);
         if (!ids.length) return err("Dooro alaabta la isku darayo.");
         const mode = b.mode === "air" ? "air" : "sea", t = now(), cid = rid("CN-", 6);
-        const rows = (await env.DB.prepare(`SELECT * FROM fbg_inbound WHERE id IN (${ids.map(() => "?").join(",")}) AND state IN ('RECEIVED','INSPECTED')`).bind(...ids).all()).results;
-        if (!rows.length) return err("Alaabtan lama isku dari karo (waa in la helo oo la hubiyo).");
-        const kg = rows.reduce((s, r) => s + (r.kg || 0), 0), cbm = rows.reduce((s, r) => s + (r.cbm || 0), 0);
-        const stmts = [env.DB.prepare("INSERT INTO fbg_consignments (id, mode, kg, cbm, state, created_at, updated_at) VALUES (?,?,?,?, 'OPEN', ?, ?)").bind(cid, mode, +kg.toFixed(2), +cbm.toFixed(3), t, t)];
+        const inIds = ids.filter(x => x.startsWith("IN-")), poIds = ids.filter(x => x.startsWith("PO-"));
+        const rows = inIds.length ? (await env.DB.prepare(`SELECT * FROM fbg_inbound WHERE id IN (${inIds.map(() => "?").join(",")}) AND state IN ('RECEIVED','INSPECTED')`).bind(...inIds).all()).results : [];
+        const pos = poIds.length ? (await env.DB.prepare(`SELECT * FROM procurement WHERE id IN (${poIds.map(() => "?").join(",")}) AND state = 'IN_CHINA'`).bind(...poIds).all()).results : [];
+        if (!rows.length && !pos.length) return err("Alaabtan lama isku dari karo (waa in la helo marka hore).");
+        const kg = rows.concat(pos).reduce((s, r) => s + (r.kg || 0), 0), cbm = rows.concat(pos).reduce((s, r) => s + (r.cbm || 0), 0);
+        const kind = rows.length && pos.length ? "mixed" : rows.length ? "fbg" : "own";
+        const stmts = [env.DB.prepare("INSERT INTO fbg_consignments (id, mode, kg, cbm, state, kind, created_at, updated_at) VALUES (?,?,?,?, 'OPEN', ?, ?, ?)").bind(cid, mode, +kg.toFixed(2), +cbm.toFixed(3), kind, t, t)];
         rows.forEach(r => {
           const h = J(r.history) || []; h.push({ state: "CONSOLIDATED", at: t, by: user.name });
           stmts.push(env.DB.prepare("UPDATE fbg_inbound SET state = 'CONSOLIDATED', consignment = ?, history = ?, updated_at = ? WHERE id = ?").bind(cid, JSON.stringify(h), t, r.id));
         });
+        pos.forEach(r => {
+          const h = J(r.history) || []; h.push({ state: "CONSOLIDATED", at: t, by: user.name });
+          stmts.push(env.DB.prepare("UPDATE procurement SET state = 'CONSOLIDATED', consignment = ?, history = ?, updated_at = ? WHERE id = ?").bind(cid, JSON.stringify(h), t, r.id));
+        });
         await env.DB.batch(stmts);
-        return json({ ok: true, id: cid, kg: +kg.toFixed(2), cbm: +cbm.toFixed(3), items: rows.length });
+        return json({ ok: true, id: cid, kg: +kg.toFixed(2), cbm: +cbm.toFixed(3), items: rows.length + pos.length });
       }
       if ((m = path.match(/^\/ops\/fbg\/consignments\/(CN-[A-Z0-9]+)\/(ship|arrive)$/)) && M === "POST") {
         const cn = await env.DB.prepare("SELECT * FROM fbg_consignments WHERE id = ?").bind(m[1]).first();
         if (!cn) return err("Lama helin.", 404);
         const b = await body(req), t = now();
         const rows = (await env.DB.prepare("SELECT * FROM fbg_inbound WHERE consignment = ?").bind(cn.id).all()).results;
+        const pos = (await env.DB.prepare("SELECT * FROM procurement WHERE consignment = ?").bind(cn.id).all()).results;
         if (m[2] === "ship") {
           if (cn.state !== "OPEN") return err("Horey ayaa loo diray.");
           const cost = +b.cost > 0 ? +b.cost : (cn.kg || 0) * (cn.mode === "air" ? FBG.airPerKg : FBG.seaPerKg);
           const stmts = [env.DB.prepare("UPDATE fbg_consignments SET state = 'SHIPPED', awb = ?, cost_usd = ?, eta = ?, updated_at = ? WHERE id = ?")
             .bind(String(b.awb || "").slice(0, 40), +cost.toFixed(2), String(b.eta || "").slice(0, 30), t, cn.id)];
-          const totalKg = rows.reduce((s, r) => s + (r.kg || 0), 0) || 1;
+          const totalKg = rows.concat(pos).reduce((s, r) => s + (r.kg || 0), 0) || 1;
           rows.forEach(r => {                                   // freight is shared out by weight
             const share = +(cost * (r.kg || 0) / totalKg).toFixed(2), h = J(r.history) || [];
             h.push({ state: "SHIPPED", at: t, by: user.name });
@@ -720,8 +782,21 @@ export async function handleApi(req, env, url) {
               env.DB.prepare("INSERT INTO fbg_ledger (id,user_id,at,kind,amount,ref,note) VALUES (?,?,?, 'freight', ?, ?, ?)")
                 .bind(rid("LG-", 6), r.user_id, t, -share, r.id, cn.mode + " " + (r.kg || 0) + " kg · " + cn.id));
           });
+          for (const r of pos) {                                 // our own goods: the freight share lands on the order
+            const share = +(cost * (r.kg || 0) / totalKg).toFixed(2), h = J(r.history) || [];
+            h.push({ state: "SHIPPED", at: t, by: user.name });
+            const ord = await env.DB.prepare("SELECT econ, history FROM orders WHERE id = ?").bind(r.order_id).first();
+            const econ = (ord && J(ord.econ)) || {};
+            econ.freightActual = share;
+            econ.goodsActual = r.paid_cny ? +(r.paid_cny / FX).toFixed(2) : null;
+            if (econ.goodsActual != null) econ.grossActual = +((econ.revenue || 0) + (econ.cogs || 0) - econ.goodsActual - share - (econ.deliveryCost || 0) - (econ.payFee || 0)).toFixed(2);
+            const oh = (ord && J(ord.history)) || []; oh.push({ state: "IN_TRANSIT", at: t, by: user.name });
+            stmts.push(env.DB.prepare("UPDATE procurement SET state = 'SHIPPED', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, r.id),
+              env.DB.prepare("UPDATE orders SET state = CASE WHEN state IN ('PLACED','SOURCING') THEN 'IN_TRANSIT' ELSE state END, econ = ?, history = ?, updated_at = ? WHERE id = ?")
+                .bind(JSON.stringify(econ), JSON.stringify(oh), t, r.order_id));
+          }
           await env.DB.batch(stmts);
-          return json({ ok: true, cost: +cost.toFixed(2) });
+          return json({ ok: true, cost: +cost.toFixed(2), items: rows.length + pos.length });
         }
         /* arrived in Mogadishu: the goods become inventory the owner can sell, keep or hand to an agent */
         const stmts = [env.DB.prepare("UPDATE fbg_consignments SET state = 'ARRIVED', updated_at = ? WHERE id = ?").bind(t, cn.id)];
@@ -739,8 +814,16 @@ export async function handleApi(req, env, url) {
               VALUES (?,?,?,?,?, '📦', ?,?,?, 'stored', 'Km4', ?, ?)`).bind(rid("IV-", 6), r.user_id, r.id, r.title, null, qty, qty, landed, t, t));
           }
         }
+        for (const r of pos) {
+          const h = J(r.history) || []; h.push({ state: "ARRIVED", at: t, by: user.name });
+          const ord = await env.DB.prepare("SELECT history FROM orders WHERE id = ?").bind(r.order_id).first();
+          const oh = (ord && J(ord.history)) || []; oh.push({ state: "ARRIVED", at: t, by: user.name });
+          stmts.push(env.DB.prepare("UPDATE procurement SET state = 'ARRIVED', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, r.id),
+            env.DB.prepare("UPDATE orders SET state = CASE WHEN state IN ('PLACED','SOURCING','IN_TRANSIT') THEN 'ARRIVED' ELSE state END, history = ?, updated_at = ? WHERE id = ?")
+              .bind(JSON.stringify(oh), t, r.order_id));
+        }
         await env.DB.batch(stmts);
-        return json({ ok: true, items: rows.length });
+        return json({ ok: true, items: rows.length + pos.length });
       }
       if ((m = path.match(/^\/ops\/fbg\/inventory\/(IV-[A-Z0-9]+)\/(released|adjust)$/)) && M === "POST") {
         const iv = await env.DB.prepare("SELECT * FROM fbg_inventory WHERE id = ?").bind(m[1]).first();
@@ -933,7 +1016,20 @@ export async function handleApi(req, env, url) {
       const b = await body(req), t = now(), h = J(o.history) || [], by = user.name;
       if (m[2] === "verify") {
         if (o.state !== "PAYMENT_REVIEW") return err("Dalabkan ma sugayo hubinta lacagta.");
-        if (b.ok) { h.push({ state: "PLACED", at: t, by }); await env.DB.prepare("UPDATE orders SET state = 'PLACED', escrow = 'held', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id).run(); }
+        if (b.ok) {
+          h.push({ state: "PLACED", at: t, by });
+          const stmts = [env.DB.prepare("UPDATE orders SET state = 'PLACED', escrow = 'held', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id)];
+          /* a paid China order becomes a purchase task for the buying agent (FBG stock and local goods need none) */
+          if (o.flow === "china" && !o.fbg_id) {
+            const cat = CATALOG[o.sku], v = cat && cat.variants.filter(x => x.vsku === o.vsku)[0];
+            const done = await env.DB.prepare("SELECT 1 FROM procurement WHERE order_id = ?").bind(o.id).first();
+            if (!done) stmts.push(env.DB.prepare(`INSERT INTO procurement (id,order_id,user_id,sku,vsku,title,qty,platform,source_url,supplier,target_cny,state,history,created_at,updated_at)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?, 'QUEUED', ?, ?, ?)`).bind(rid("PO-", 6), o.id, o.user_id, o.sku, o.vsku, o.title, o.qty,
+              cat ? cat.channel : (o.quote_id ? "quote" : "web"), cat ? cat.url || "" : "", cat ? cat.seller : "",
+              v && v.cny ? +(v.cny * o.qty).toFixed(2) : null, JSON.stringify([{ state: "QUEUED", at: t, by }]), t, t));
+          }
+          await env.DB.batch(stmts);
+        }
         else { h.push({ state: "AWAITING_PAYMENT", at: t, by, note: "lacag lama helin" }); await env.DB.prepare("UPDATE orders SET state = 'AWAITING_PAYMENT', pay_txn = NULL, history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id).run(); }
         return json({ ok: true });
       }

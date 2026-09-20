@@ -157,12 +157,67 @@ RF.fbgUI = function (app) {
   }
 };
 
+/* ---------------------------------------------------------------- staff: the buying queue (paid orders -> Chinese vendors)
+   No marketplace in China lets an outside merchant order through an API, so the job is made one-click instead:
+   the exact link, the quantity, the most that may be paid, and the reference code for the carton. */
+RF.procUI = function (body, call, reload) {
+  call("GET", "/ops/procurement").then(function (j) {
+    var t = j.tasks;
+    body.innerHTML = '<p class="g-eta">Dalab kasta oo la bixiyay oo Shiinaha laga keenayo halkan ayuu ku soo baxaa. Iibso, ku qor lacagta aad bixisay iyo tracking-ga — kadib alaabta ayaa dalabka horay u wadda.</p>' +
+      '<div class="cs-note" style="margin-bottom:12px">Cinwaanka loo dirayo: <b>' + e(j.address) + '</b> — <b>tixraaca PO</b> ku qor sanduuqa.</div>' +
+      (t.length ? t.map(function (p) {
+        var over = p.paidCny && p.targetCny && p.paidCny > p.targetCny;
+        return '<div class="g-order' + (over ? " late" : "") + '"><div class="g-ohead"><div class="g-th">\u{1F6D2}</div><div style="flex:1">' +
+          '<b>' + e(p.title) + ' \u00d7' + p.qty + '</b> <span class="ad-tag">' + e(p.state) + '</span>' +
+          '<div class="g-eta">' + p.id + ' \u00b7 dalab ' + e(p.orderId) + ' \u00b7 ' + e(p.customer ? p.customer.name : "") + ' \u00b7 ' +
+            (p.sourceUrl ? '<a href="' + e(p.sourceUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link);font-weight:700">' + e(p.platform) + ' \u2197</a>' : e(p.platform || "")) + '</div>' +
+          '<div class="g-eta">Qiyaasta katalogga: <b>' + (p.targetCny ? "\u00a5" + p.targetCny : "\u2014") + '</b>' +
+            (p.paidCny ? ' \u00b7 aad bixisay <b>\u00a5' + p.paidCny + '</b>' + (over ? ' \u26a0 ka badan qiyaasta' : "") : "") +
+            (p.tracking ? ' \u00b7 ' + e(p.tracking) : "") + (p.kg ? ' \u00b7 ' + p.cartons + ' sanduuq ' + p.kg + ' kg' : "") + '</div>' +
+          (p.note ? '<div class="g-eta">\u201c' + e(p.note) + '\u201d</div>' : "") + '</div>' +
+          (p.state === "QUEUED" ? '<button class="btn" data-po="' + p.id + '">Waan iibsaday</button>' : "") +
+          (p.state === "ORDERED" ? '<button class="btn" data-prec="' + p.id + '">Waa la helay Shiinaha</button>' : "") +
+          '<button class="btn ghost" data-pnote="' + p.id + '">Qoraal</button>' +
+          (["QUEUED", "ORDERED"].indexOf(p.state) >= 0 ? '<button class="btn ghost" data-pcx="' + p.id + '">Jooji</button>' : "") + '</div></div>';
+      }).join("") : '<div class="g-empty sm">Shaqo iibsi ma jirto \u2014 dalab kasta oo la bixiyay ayaa halkan ku soo bixi doona.</div>');
+    function bind(sel, f) {
+      [].forEach.call(body.querySelectorAll(sel), function (b) {
+        b.onclick = function () { var p = f(b); if (!p) return; b.disabled = true;
+          p.then(function (r) { toast(r && r.overTarget ? "\u2713 laakiin \u00a5" + r.overTarget + " ka badan qiyaasta" : "\u2713"); reload(); })
+           .catch(function (x) { b.disabled = false; toast(x.message); }); };
+      });
+    }
+    bind("[data-po]", function (b) {
+      var paid = prompt("Immisa ayaad bixisay? (\u00a5)"); if (!paid) return null;
+      var trk = prompt("Tracking-ga iibiyuhu ku siiyay (ikhtiyaari):") || "";
+      var sup = prompt("Iibiyaha (ikhtiyaari):") || "";
+      return call("POST", "/ops/procurement/" + b.dataset.po + "/ordered", { paidCny: +paid, tracking: trk, supplier: sup });
+    });
+    bind("[data-prec]", function (b) {
+      var c = prompt("Immisa sanduuq?", "1"); if (c === null) return null;
+      var kg = prompt("Miisaanka (kg)?"); if (!kg) return null;
+      var cbm = prompt("Cabbirka (cbm, ikhtiyaari)?") || "0";
+      return call("POST", "/ops/procurement/" + b.dataset.prec + "/received", { cartons: +c, kg: +kg, cbm: +cbm });
+    });
+    bind("[data-pnote]", function (b) { var n = prompt("Qoraal:"); if (n === null) return null; return call("POST", "/ops/procurement/" + b.dataset.pnote + "/note", { note: n }); });
+    bind("[data-pcx]", function (b) { var n = prompt("Sababta joojinta (dalabka macmiilka waa in la joojiyaa oo lacagta la celiyaa):"); if (!n) return null; return call("POST", "/ops/procurement/" + b.dataset.pcx + "/cancel", { note: n }); });
+  }).catch(function (x) { body.innerHTML = '<div class="g-err">' + e(x.message) + '</div>'; });
+};
+
 /* ---------------------------------------------------------------- staff: China facility + warehouse (ops console tab) */
 RF.fbgOps = function (body, call, reload) {
   var pick = {};
   call("GET", "/ops/fbg").then(function (j) {
     F = j.fees;
     body.innerHTML = '<p class="g-eta">Xarunta Shiinaha: qaabil sanduuqyada, sawir, miisaan, kadib isku dar oo dir. Marka ay Muqdisho yimaadaan, alaabtu waxay noqonaysaa kayd milkiilaha leeyahay.</p>' +
+      (j.purchases || []).map(function (p) {
+        return '<div class="g-order"><div class="g-ohead">' +
+          (p.state === "IN_CHINA" ? '<input type="checkbox" data-pick="' + p.id + '" style="width:20px;height:20px">' : '<div class="g-th">\u{1F6D2}</div>') +
+          '<div style="flex:1"><b>' + e(p.title) + ' \u00d7' + p.qty + '</b> <span class="ad-tag">Garsoore</span> <span class="ad-tag">' + e(p.state) + '</span>' +
+          '<div class="g-eta">' + p.id + ' \u00b7 dalab ' + e(p.orderId) + ' \u00b7 ' + (p.tracking ? e(p.tracking) : "tracking ma jiro") +
+            (p.kg ? ' \u00b7 ' + p.cartons + ' sanduuq ' + p.kg + ' kg' : "") + '</div></div>' +
+          (p.state === "ORDERED" ? '<button class="btn" data-prec2="' + p.id + '">Waa la helay</button>' : "") + '</div></div>';
+      }).join("") +
       (j.inbound.length ? j.inbound.map(function (x) {
         return '<div class="g-order' + (x.state === "PROBLEM" ? " late" : "") + '"><div class="g-ohead">' +
           (["RECEIVED", "INSPECTED"].indexOf(x.state) >= 0 ? '<input type="checkbox" data-pick="' + x.id + '" style="width:20px;height:20px">' : '<div class="g-th">📦</div>') +
@@ -204,6 +259,12 @@ RF.fbgOps = function (body, call, reload) {
     bind("[data-ship]", function (b) { var awb = prompt("AWB / B/L:") || ""; var cost = prompt("Kharashka rarka ($, faaruq = xisaabi):") || ""; var eta = prompt("Goorta la filayo (tusaale 2026-10-12):") || ""; return call("POST", "/ops/fbg/consignments/" + b.dataset.ship + "/ship", { awb: awb, cost: +cost || 0, eta: eta }); });
     bind("[data-arr]", function (b) { return confirm("Ma xaqiijinaysaa inay Muqdisho timid? Alaabtu waxay noqonaysaa kayd.") ? call("POST", "/ops/fbg/consignments/" + b.dataset.arr + "/arrive", {}) : null; });
     bind("[data-rel]", function (b) { return call("POST", "/ops/fbg/inventory/" + b.dataset.rel + "/released", {}); });
+    bind("[data-prec2]", function (b) {
+      var c = prompt("Immisa sanduuq?", "1"); if (c === null) return null;
+      var kg = prompt("Miisaanka (kg)?"); if (!kg) return null;
+      return call("POST", "/ops/procurement/" + b.dataset.prec2 + "/received", { cartons: +c, kg: +kg, cbm: +(prompt("cbm (ikhtiyaari)?") || 0) });
+    });
+
     $("fbConsSea").onclick = function () { cons("sea"); };
     $("fbConsAir").onclick = function () { cons("air"); };
     function cons(mode) {

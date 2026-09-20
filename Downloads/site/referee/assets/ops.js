@@ -10,7 +10,7 @@ function money(n) { return n == null ? "—" : "$" + Number(n).toLocaleString("e
 function ago(iso) { var m = Math.round((Date.now() - Date.parse(iso)) / 6e4); return m < 60 ? m + " daq" : m < 1440 ? Math.round(m / 60) + " saac" : Math.round(m / 1440) + " maalin"; }
 function toast(m) { var t = document.createElement("div"); t.className = "toast in"; t.textContent = m; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2600); }
 var NEXT_SO = { SOURCING: "Laga iibsaday", IN_TRANSIT: "Soo socda", ARRIVED: "Yimid", CONFIRMED: "Iibiyaha xaqiijiyay", READY: "Diyaar (u sheeg macmiilka)" };
-var TABS = [["stats", "Tirakoob"], ["pay", "Lacag bixin"], ["orders", "Dalabyo"], ["pickup", "Qaadasho"], ["fbg", "FBG (Shiinaha)"], ["quotes", "Codsiyo qiimo"], ["issues", "Celin & cabasho"]];
+var TABS = [["stats", "Tirakoob"], ["pay", "Lacag bixin"], ["orders", "Dalabyo"], ["pickup", "Qaadasho"], ["buy", "Iibsiga"], ["fbg", "FBG (Shiinaha)"], ["quotes", "Codsiyo qiimo"], ["issues", "Celin & cabasho"]];
 
 RF.opsUI = function (app, tab) {
   if (!RF.api || !RF.api.remote) { app.innerHTML = '<div class="wrap g-empty">Hawlgalku wuxuu u baahan yahay server-ka (API). Ku fur bogga live-ka ah ama <code>wrangler dev</code>.</div>'; return; }
@@ -93,6 +93,8 @@ RF.opsUI = function (app, tab) {
     };
     return;
   }
+
+  if (tab === "buy") return RF.procUI(body, call, reload);
 
   if (tab === "fbg") return RF.fbgOps(body, call, reload);
 
