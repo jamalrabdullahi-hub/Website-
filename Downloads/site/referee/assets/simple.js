@@ -45,16 +45,37 @@ RF.simpleUI = function (app, job) {
       '<button class="btn ghost" id="smPro">U beddel Xirfadle</button></div></div>';
   $("smPro").onclick = function () { RF.mode.set("pro"); };
   [].forEach.call(app.querySelectorAll("[data-job]"), function (b) { b.onclick = function () { open(b.dataset.job); }; });
-  if (job) open(job);
 
+  /* Asking a business to sign in before it can even read the form is how you lose it. The forms are public; the
+     account is asked for at the moment of committing. Only the jobs that show *your own* records need one up front,
+     and they say so in the page rather than throwing a sheet over it. */
+  var MINE = {
+    fbg:    "Cinwaanka Shiinaha iyo shixnadahaagu waa kuwaaga gaarka ah — waxaan u baahannahay inaan ognaanno kii aad tahay.",
+    list:   "Kaydkaagu waa kaaga — gal si aad u aragto oo aad suuqa ugu dhigto.",
+    orders: "Dalabyada, qiimayaasha iyo mandate-yadaadu waa kuwaaga — gal si aad u aragto."
+  };
   function open(id) {
     [].forEach.call(app.querySelectorAll(".sm-job"), function (x) { x.classList.toggle("on", x.dataset.job === id); });
-    var body = $("smBody");
+    var body = $("smBody"), fn = { china: china, fbg: fbg, agent: agent, list: listStock, orders: orders }[id] || china;
     body.innerHTML = '<div class="g-empty sm">⏳</div>';
     body.scrollIntoView({ behavior: "smooth", block: "start" });
-    RF.backend.needUser("Gal si aan shaqadaada u bilowno.").then(function () {
-      ({ china: china, fbg: fbg, agent: agent, list: listStock, orders: orders }[id] || china)(body);
-    }).catch(function () { body.innerHTML = '<div class="g-empty">Gal si aad u sii wadato.</div>'; });
+    if (MINE[id] && !RF.api.user) {
+      body.innerHTML = card("🔒 Waa kaaga", '<p class="g-eta">' + MINE[id] + '</p>', "Gal ama samee akoon",
+        "Lambarkaaga taleefanka iyo PIN — daqiiqad ayay qaadanaysaa.");
+      $("smGo").onclick = function () { RF.authUI.open("Garsoore Ganacsi").then(function () { open(id); }).catch(function () {}); };
+      return;
+    }
+    fn(body);
+  }
+  if (job) open(job);              /* after MINE is set: open() reads it */
+
+  /* commit step: sign in if needed, then run. Cancelling the sheet leaves the form exactly as it was. */
+  function submit(run) {
+    busy();
+    return RF.backend.needUser("Gal si aan shaqadaada u bilowno.").then(run).catch(function (x) {
+      if (x && x.message === "cancelled") { var g = $("smGo"); if (g) { g.disabled = false; g.textContent = g.dataset.t || g.textContent; } }
+      else err((x && x.message) || "Khalad");
+    });
   }
 
   /* ---- 1. source something from China: a link or a description, priced by a person */
@@ -69,10 +90,10 @@ RF.simpleUI = function (app, job) {
       var v = $("smQ").value.trim(), qty = +$("smQty").value || 1;
       if (v.length < 4) return err("Ku qor link ama sharax alaabta.");
       var url = RF.sources && RF.sources.urlOf(v), id = url && RF.sources.identify(url);
-      busy();
-      call("POST", "/quotes", { title: (url ? "Alaab ka timid " + (id ? id.platform : "web") : v) + " × " + qty, url: url || "", platform: id ? id.platform : "web", note: "Fudud · " + $("smCity").value + " · " + v })
-        .then(function (r) { done("Codsigaagii waa la diray · " + r.id, "Koox Garsoore ah ayaa qiimaynaysa (saacado gudahood). Waxaad ka arki doontaa " + link("orders.html", "Dalabyadayda") + " — kadibna hal badhan ayaad ku iibsan kartaa."); })
-            .catch(function (x) { err(x.message); });
+      submit(function () {
+        return call("POST", "/quotes", { title: (url ? "Alaab ka timid " + (id ? id.platform : "web") : v) + " × " + qty, qty: qty, url: url || "", platform: id ? id.platform : "web", note: "Fudud · " + $("smCity").value + " · " + v })
+          .then(function (r) { done("Codsigaagii waa la diray · " + r.id, "Koox Garsoore ah ayaa qiimaynaysa (saacado gudahood). Waxaad ka arki doontaa " + link("orders.html", "Dalabyadayda") + " — kadibna hal badhan ayaad ku iibsan kartaa."); });
+      });
     };
   }
 
@@ -132,10 +153,10 @@ RF.simpleUI = function (app, job) {
       var t = $("smT").value.trim(), f = +$("smFloor").value;
       if (t.length < 3) return err("Ku qor alaabta.");
       if (!(f > 0)) return err("Ku qor qiimaha ugu yar ee aad aqbali karto.");
-      busy();
-      call("POST", "/mandates", { side: "sell", mode: mode, title: t, qty: +$("smQty").value || 1, floor: f, sellerPct: 50, city: "Muqdisho", days: 30 })
-        .then(function () { done("Waa la diray wakiillada", (mode === "liquidity" ? "Wakiillo badan ayaa arka — badanaa dhaqso ayay u qaataan." : "Faa'iido mandate-yada waqti dheer ayay qaadan karaan.") + " Ka daawo " + link("agents.html?tab=mine", "Mandate-yadayda") + "."); })
-        .catch(function (x) { err(x.message); });
+      submit(function () {
+        return call("POST", "/mandates", { side: "sell", mode: mode, title: t, qty: +$("smQty").value || 1, floor: f, sellerPct: 50, city: "Muqdisho", days: 30 })
+          .then(function () { done("Waa la diray wakiillada", (mode === "liquidity" ? "Wakiillo badan ayaa arka — badanaa dhaqso ayay u qaataan." : "Faa'iido mandate-yada waqti dheer ayay qaadan karaan.") + " Ka daawo " + link("agents.html?tab=mine", "Mandate-yadayda") + "."); });
+      });
     };
   }
 

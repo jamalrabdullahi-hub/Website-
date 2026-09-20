@@ -18,6 +18,34 @@ export const ECON = {
   refReward: 5,            // store credit to the referrer when a referred friend collects a first order
   unpaidHours: 24          // unpaid orders expire after this
 };
+/* ---- buy-for-me (Wakiil Iibsi): the customer pays Garsoore, Garsoore buys from the Chinese vendor on their behalf.
+   The goods belong to the buyer from the moment we pay the vendor; what Garsoore sells is the buying, the checking and
+   the rail. Fees are flat and published — a buyer must be able to work out the bill before they commit.
+   Basic photo inspection is free on purpose: it is what makes buying blind from a link survivable. */
+export const SERVICES = {
+  buyFeePct: 5,            // service fee on the vendor's price for placing and chasing the order
+  buyFeeMin: 3,            // ...but never less than this, because a small order costs the same effort
+  items: {
+    inspect:       { so: "Hubin muuqaal + sawiro", en: "Visual check + photos",   price: 0, note: "Bilaash" },
+    count:         { so: "Tirin iyo cabbir",       en: "Count + measure",         price: 2 },
+    test:          { so: "Tijaabo shaqayn",        en: "Powered function test",   price: 5 },
+    video:         { so: "Muuqaal furitaan",       en: "Unboxing video",          price: 4 },
+    repack:        { so: "Dib-u-xidhmo adag",      en: "Reinforced repack",       price: 3 },
+    removeInvoice: { so: "Ka saar qiimaha",        en: "Remove vendor invoice",   price: 1 },
+    qcReport:      { so: "Warbixin QC qoran",      en: "Written QC report",       price: 8 }
+  }
+};
+/* What the chosen services come to. Unknown keys are ignored rather than trusted — the browser does not set prices. */
+function serviceFee(keys) {
+  const seen = {};
+  return (Array.isArray(keys) ? keys : []).reduce((sum, k) => {
+    const it = SERVICES.items[k];
+    if (!it || seen[k]) return sum;
+    seen[k] = 1;
+    return sum + it.price;
+  }, 0);
+}
+
 /* Discounts never exceed contribution margin: first-order only, capped. */
 const PROMOS = { SOODHAWOW: { pct: 0.05, cap: 10, firstOrder: true } };
 
@@ -255,7 +283,7 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
-    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
+    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
     if (path === "/me" && M === "GET") return json({ user: pubUser(user) });
 
     /* ---- auth: phone + PIN (SMS/WhatsApp OTP is a launch item once a provider is contracted) */
@@ -423,15 +451,20 @@ export async function handleApi(req, env, url) {
     /* ---- quotes (customer) */
     if (path === "/quotes" && M === "POST") {
       const b = await body(req), q = { id: rid("Q-", 7) };
-      await env.DB.prepare("INSERT INTO quotes (id,user_id,status,title,icon,platform,ref,url,seller,kg,estimate,note,created_at) VALUES (?,?,'pending',?,?,?,?,?,?,?,?,?,?)")
+      const svc = (Array.isArray(b.services) ? b.services : []).filter(k => SERVICES.items[k]).slice(0, 12);
+      const qty = Math.max(1, Math.min(100000, Math.round(+b.qty || 1)));
+      await env.DB.prepare("INSERT INTO quotes (id,user_id,status,title,icon,platform,ref,url,seller,kg,estimate,note,created_at,services,qty,service_fee) VALUES (?,?,'pending',?,?,?,?,?,?,?,?,?,?,?,?,?)")
         .bind(q.id, user.id, String(b.title || "Alaab").slice(0, 160), String(b.icon || "📦").slice(0, 8), String(b.platform || "web").slice(0, 20), String(b.ref || "").slice(0, 80),
-          /^https?:\/\//.test(b.url || "") ? String(b.url).slice(0, 500) : "", String(b.seller || "").slice(0, 120), +b.kg || null, Number.isFinite(+b.estimate) && b.estimate != null ? Math.round(+b.estimate) : null, String(b.note || "").slice(0, 500), now()).run();
-      return json({ id: q.id });
+          /^https?:\/\//.test(b.url || "") ? String(b.url).slice(0, 500) : "", String(b.seller || "").slice(0, 120), +b.kg || null, Number.isFinite(+b.estimate) && b.estimate != null ? Math.round(+b.estimate) : null, String(b.note || "").slice(0, 500), now(),
+          JSON.stringify(svc), qty, serviceFee(svc)).run();
+      return json({ id: q.id, services: svc, serviceFee: serviceFee(svc), qty });
     }
     if (path === "/quotes" && M === "GET") {
       const r = staff && url.searchParams.get("all") ? await env.DB.prepare("SELECT q.*, u.name u_name, u.phone u_phone FROM quotes q LEFT JOIN users u ON u.id = q.user_id ORDER BY q.created_at DESC LIMIT 300").all()
         : await env.DB.prepare("SELECT * FROM quotes WHERE user_id = ? ORDER BY created_at DESC LIMIT 100").bind(user.id).all();
+      const svcOf = q => { try { return JSON.parse(q.services || "[]"); } catch { return []; } };
       return json({ quotes: r.results.map(q => ({ id: q.id, status: q.status, title: q.title, icon: q.icon, platform: q.platform, ref: q.ref, url: q.url, seller: q.seller, kg: q.kg, estimate: q.estimate,
+        services: svcOf(q), qty: q.qty || 1, serviceFee: q.service_fee || 0,
         note: q.note, total: q.total, etaDays: q.eta_days, staffNote: q.staff_note, createdAt: q.created_at, quotedAt: q.quoted_at, contact: staff && q.u_name ? q.u_name + " · +" + q.u_phone : undefined })) });
     }
 

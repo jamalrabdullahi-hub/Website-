@@ -301,13 +301,17 @@ function cart(app) {
 /* ---------------------------------------------------------------- Shop China */
 function china(app) {
   var u = qs("u"), q = qs("q"), S = RF.sources, A = S.ADAPTERS;
-  var chips = Object.keys(A).filter(function (k) { return !A[k].nosearch; }).map(function (k) { return '<span>' + A[k].name + ' <small>' + A[k].zh + '</small></span>'; }).join("");
+  /* The consumer shop buys retail: JD, Tmall/Taobao, Pinduoduo. One piece, one price, no minimum order.
+     Wholesale links belong to business.buurwen.com and are handed over there rather than refused. */
+  var RETAIL = S.platformsFor("consumer");
+  var chips = RETAIL.map(function (k) { return '<span>' + A[k].name + ' <small>' + A[k].zh + '</small></span>'; }).join("");
   app.innerHTML = '<div class="wrap"><section class="g-chero"><span class="g-tagw">GARSOORE CHINA</span><h1>Ka hel Shiinaha. Ku iibso Garsoore.</h1>' +
     '<p>Kuma baahnid akoon Shiinees, luqad, lacag bixin Shiinees ama rar. Ku dheji link — waxaad helaysaa hal qiimo iyo hal badhan.</p>' +
-    '<form class="g-paste big" id="pForm"><input id="pU" placeholder="Ku dheji link alaab kasta — JD, 1688, Taobao, Pinduoduo, Alibaba, ama bog kale…" value="' + e(u) + '"><button class="btn gold">Qiimee</button></form>' +
+    '<form class="g-paste big" id="pForm"><input id="pU" placeholder="Ku dheji link — JD, Taobao, Tmall, Pinduoduo, ama bog kale…" value="' + e(u) + '"><button class="btn gold">Qiimee</button></form>' +
     '<div class="g-src">' + chips + '</div>' +
-    '<div class="g-src"><a href="?u=https://item.jd.com/100071383535.html">Tijaabi: laptop JD</a><a href="?u=https://detail.1688.com/offer/712288934512.html">Tijaabi: AC 1688</a>' +
+    '<div class="g-src"><a href="?u=https://item.jd.com/100071383535.html">Tijaabi: laptop JD</a>' +
       '<a href="?u=https://item.taobao.com/item.htm?id=693311240517">Tijaabi: Taobao</a><a href="?u=https://mobile.yangkeduo.com/goods.html?goods_id=512233441">Tijaabi: Pinduoduo</a></div>' +
+    '<div class="g-eta" style="margin-top:8px">Jumlad ma raadinaysaa (1688, Alibaba, warshad)? <a href="' + e(S.crossLink("", "business")) + '" style="color:var(--link);font-weight:700">Garsoore Ganacsi →</a></div>' +
     '<ol class="g-how"><li><b>Ku dheji</b>link ama raadi</li><li><b>Hel qiimo</b>hal wadar, kharash qarsoon ma jiro</li><li><b>Iibso</b>EVC · ZAAD · Sahal</li><li><b>Ka qaado</b>Muqdisho ~20 maalmood</li></ol></section>' +
     '<div id="res"></div>' +
     '<div class="g-sec"><h2>Ka raadi dhammaan suuqyada Shiinaha</h2><form class="g-search sm" id="sForm"><input id="sQ" placeholder="kettle, charger, CCTV… ama link" value="' + e(q) + '"><button class="btn">Raadi</button></form></div>' +
@@ -317,7 +321,7 @@ function china(app) {
     location.href = lu ? "?u=" + encodeURIComponent(lu) : "?q=" + encodeURIComponent(v) + "#grid"; };
   var cat = C.search(q, { china: true });
   var total = cat.length; cat = (q ? cat : C.mixed(cat)).slice(0, 40);
-  S.search(total >= 8 ? "\u0000" : q, {}, function (offers) {
+  S.search(total >= 8 ? "\u0000" : q, { platforms: RETAIL }, function (offers) {
     // one card per item: cheapest platform wins, so the consumer never compares marketplaces
     var best = {};
     offers.forEach(function (o) { var k = o.title; if (!best[k] || o.tiers[0].cost < best[k].tiers[0].cost) best[k] = o; });
@@ -327,6 +331,14 @@ function china(app) {
       : '<div class="g-empty">Wax lama helin — isku day inaad link ku dhejiso.</div>';
   });
   if (u) {
+    var pid = S.identify(u);
+    if (pid && !S.allowedOn("consumer", pid.platform)) {
+      /* a wholesale link on the retail shop: the buyer is not wrong, they are on the wrong site */
+      $("res").innerHTML = '<div class="g-found">' + e(A[pid.platform].name) + ' waa suuq jumlad ah — waxaa lagu iibiyaa tiro badan (MOQ), lagumana iibin karo hal xabbo.' +
+        '<div style="margin-top:10px"><a class="btn gold" href="' + e(S.crossLink(u, "business")) + '">U gudub Garsoore Ganacsi →</a>' +
+        '<div class="g-eta" style="margin-top:8px">Link-gaagu wuu ku socdaa — dib uma dhejin doontid.</div></div></div>';
+      return;
+    }
     $("res").innerHTML = '<div class="g-found">⏳ Waa la raadinayaa…</div>';
     RF.china.resolveAsync(u, function (r) {
       if (r.error) {
@@ -439,13 +451,47 @@ function drawOrders(app, all, quotes) {
 /* ---------------------------------------------------------------- business: China procurement (business.garsoore.com/china.html) */
 function bizChina(app) {
   var S = RF.sources, A = S.ADAPTERS, q = qs("q"), u = qs("u"), plat = qs("p") || "";
-  var plats = plat ? [plat] : ["1688", "alibaba", "jd", "taobao", "pdd"];
+  /* Business buys wholesale by default — 1688, Alibaba, Made-in-China — but a trader ordering one retail sample
+     before committing to a carton is doing the right thing, so retail stays reachable behind its own filter. */
+  var WHOLESALE = S.platformsFor("business"), RETAIL = S.platformsFor("consumer");
+  var plats = plat ? [plat] : WHOLESALE;
   function on(k) { return plat === k ? ' style="background:rgba(255,255,255,.35)"' : ""; }
+
+  /* ---- buy-for-me service menu. The buyer pays Garsoore, Garsoore pays the vendor, and these are what we do to the
+     goods in between. The server re-prices the selection on arrival; these numbers are only what the buyer is shown. */
+  var SVC = (RF.api && RF.api.config && RF.api.config.services) || {
+    buyFeePct: 5, buyFeeMin: 3,
+    items: { inspect: { so: "Hubin muuqaal + sawiro", price: 0, note: "Bilaash" }, count: { so: "Tirin iyo cabbir", price: 2 },
+      test: { so: "Tijaabo shaqayn", price: 5 }, video: { so: "Muuqaal furitaan", price: 4 }, repack: { so: "Dib-u-xidhmo adag", price: 3 },
+      removeInvoice: { so: "Ka saar qiimaha", price: 1 }, qcReport: { so: "Warbixin QC qoran", price: 8 } }
+  };
+  var picked = { inspect: true };                        // the free visual check is on unless the buyer turns it off
+  function svcKeys() { return Object.keys(picked).filter(function (k) { return picked[k] && SVC.items[k]; }); }
+  function svcFee() { return svcKeys().reduce(function (n, k) { return n + (SVC.items[k].price || 0); }, 0); }
+  function svcHTML() {
+    return '<div class="g-svc"><div class="g-svch"><b>✓ Hubi ka hor inta aanay dhoofin</b>' +
+      '<span class="g-eta">Waxaad adigu iibsanaysaa — Garsoore ayaa iibsanaya, hubinaya, oo kuu keenaya. Dooro waxaad rabto inaan samayno.</span></div>' +
+      '<div class="g-svcgrid">' + Object.keys(SVC.items).map(function (k) {
+        var it = SVC.items[k];
+        return '<label class="g-svcit' + (picked[k] ? " on" : "") + '" data-svc="' + k + '"><input type="checkbox"' + (picked[k] ? " checked" : "") + '>' +
+          '<span>' + e(it.so || k) + '</span><b>' + (it.price ? "$" + it.price : (it.note || "Bilaash")) + '</b></label>';
+      }).join("") + '</div>' +
+      '<div class="g-svcf">Adeegyada: <b id="svcT">$' + svcFee() + '</b> · khidmadda iibsiga ' + SVC.buyFeePct + '% (ugu yaraan $' + SVC.buyFeeMin + ') · ' +
+        'lacagtaadu way xajisan tahay ilaa aan alaabta helno.</div></div>';
+  }
+  function wireSvc() {
+    [].forEach.call(document.querySelectorAll("[data-svc]"), function (el) {
+      el.onchange = function () { var k = el.dataset.svc; picked[k] = el.querySelector("input").checked;
+        el.classList.toggle("on", !!picked[k]); var t = $("svcT"); if (t) t.textContent = "$" + svcFee(); };
+    });
+  }
   app.innerHTML = '<div class="wrap"><section class="g-chero"><span class="g-tagw">GARSOORE CHINA · GANACSI</span><h1>Iibsi jumlad ah oo Shiinaha ka yimaada.</h1>' +
-    '<p>Raadi 1688, Alibaba, JD, Taobao iyo Pinduoduo hal mar. Qiimaha waa <b>la keenay Muqdisho</b> (DAP): alaab, rar Shiinaha, isku-darid, rar bad/cir, canshuur. Garsoore ayaa la xiriira iibiyaha, lacagta haya, oo tayada hubiya.</p>' +
-    '<form class="g-paste big" id="bForm"><input id="bQ" placeholder="Raadi (solar light, chairs, CCTV) ama ku dheji link alaab kasta…" value="' + e(u || q) + '"><button class="btn gold">Raadi</button></form>' +
-    '<div class="g-src"><a href="?' + (q ? "q=" + encodeURIComponent(q) : "") + '"' + on("") + '>Dhammaan</a>' +
-      Object.keys(A).filter(function (k) { return !A[k].nosearch; }).map(function (k) { return '<a href="?p=' + k + (q ? "&q=" + encodeURIComponent(q) : "") + '"' + on(k) + '>' + A[k].name + ' <small>' + A[k].zh + '</small></a>'; }).join("") + '</div></section>' +
+    '<p>Raadi <b>1688, Alibaba iyo warshadaha</b> hal mar — ama ku dheji link. Qiimaha waa <b>la keenay Muqdisho</b> (DAP): alaab, rar Shiinaha, isku-darid, rar bad/cir, canshuur. Adigaa iibsanaya; Garsoore ayaa iibsiga kuu fuliya, lacagta haya, alaabta hubiya, kuuna keena. Suuqyada tafaariiqda (JD, Taobao) waa la heli karaa haddii aad sample rabto.</p>' +
+    '<form class="g-paste big" id="bForm"><input id="bQ" placeholder="Raadi (solar light, chairs, CCTV) ama ku dheji link 1688 / Alibaba / warshad…" value="' + e(u || q) + '"><button class="btn gold">Raadi</button></form>' +
+    '<div class="g-src"><a href="?' + (q ? "q=" + encodeURIComponent(q) : "") + '"' + on("") + '>Jumlad oo dhan</a>' +
+      WHOLESALE.filter(function (k) { return !A[k].nosearch; }).concat(RETAIL).map(function (k) {
+        return '<a href="?p=' + k + (q ? "&q=" + encodeURIComponent(q) : "") + '"' + on(k) + '>' + A[k].name + ' <small>' + (RETAIL.indexOf(k) >= 0 ? "tafaariiq" : A[k].zh) + '</small></a>'; }).join("") + '</div></section>' +
+    svcHTML() +
     '<div class="g-sec"><h2>Dalabyo</h2><span class="g-eta">Qiimaha halkii unug = la keenay Muqdisho · beddel tirada si aad u aragto qiimaha jumladda</span></div>' +
     '<div id="offers"></div>' +
     '<div class="g-sec"><h2>Iibiyeyaasha Shiinaha</h2><span class="g-eta">Warshado iyo ganacsato ay Garsoore hubisay</span></div>' +
@@ -477,19 +523,22 @@ function bizChina(app) {
     });
     [].forEach.call(document.querySelectorAll("[data-rfq]"), function (b) {
       b.onclick = function () { var i = +b.dataset.rfq, qty = +document.querySelector('[data-q="' + i + '"]').value;
-        if (b.dataset.unk) { RF.backend.needUser("Gal si aan qiimaha rasmiga ah kuugu soo dirno.").then(function () { return RF.backend.requestLink({ platform: offers[i].platform, ref: offers[i].ref }, offers[i].url); }).then(function (qq) { toast("Codsigii waa la diray · " + qq.id); b.textContent = "✓ La diray"; b.disabled = true; }).catch(function (x) { if (x.message !== "cancelled") toast(x.message); }); return; }
+        if (b.dataset.unk) { RF.backend.needUser("Gal si aan qiimaha rasmiga ah kuugu soo dirno.").then(function () { return RF.backend.requestLink({ platform: offers[i].platform, ref: offers[i].ref }, offers[i].url, null, { services: svcKeys(), qty: qty }); }).then(function (qq) { toast("Codsigii waa la diray · " + qq.id); b.textContent = "✓ La diray"; b.disabled = true; }).catch(function (x) { if (x.message !== "cancelled") toast(x.message); }); return; }
         var r = S.procure(offers[i], qty); if (r.error) return toast(r.error);
         toast("RFQ waa la diray · Garsoore China: $" + r.landed.perUnit + "/unug. Eeg Hawlaha shirkadda.");
         b.textContent = "✓ La diray"; b.disabled = true; };
     });
   }
+  wireSvc();
   if (u) {
     var id = S.identify(u);
     if (!id) { $("offers").innerHTML = '<div class="g-err">Link-gan lama aqoonsan.</div>'; return; }
+    if (!S.allowedOn("business", id.platform))
+      $("offers").insertAdjacentHTML("beforebegin", '<div class="g-found">' + e(A[id.platform].name) + ' waa suuq tafaariiq ah — qiimuhu waa mid xabbo, heerar jumlad ma leh. Waan kuu iibsan karnaa (tusaale ahaan sample), laakiin qiimo jumlad ah kama heli doontid.</div>');
     S.fetchOffer(id.platform, id.ref, function (err, o) {
       if (o) return rows([o]);
       $("offers").innerHTML = '<div class="g-err">Ma helin macluumaadka link-gan hadda. <button class="btn" id="qBtn2">Codso qiimo rasmi ah</button></div>';
-      $("qBtn2").onclick = function () { RF.backend.needUser("Gal si aan qiimaha rasmiga ah kuugu soo dirno.").then(function () { return RF.backend.requestLink(id, u); }).then(function (q) { toast("Codsigii waa la diray · " + q.id); $("qBtn2").disabled = true; }).catch(function (x) { if (x.message !== "cancelled") toast(x.message); }); };
+      $("qBtn2").onclick = function () { RF.backend.needUser("Gal si aan qiimaha rasmiga ah kuugu soo dirno.").then(function () { return RF.backend.requestLink(id, u, null, { services: svcKeys() }); }).then(function (q) { toast("Codsigii waa la diray · " + q.id); $("qBtn2").disabled = true; }).catch(function (x) { if (x.message !== "cancelled") toast(x.message); }); };
     });
   } else S.search(q, { platforms: plats }, rows);
 }
@@ -527,7 +576,7 @@ RF.shopUI = function (page, h) {
     return RF.api.ready.then(function () { RF.simpleUI(app, { agents: "agent", fbg: "fbg", bizchina: "china" }[page]); });
   var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); }, admin: function (a) { RF.adminUI(a, qs("tab") || "home"); }, fbg: function (a) { RF.fbgUI(a); }, account: function (a) { RF.accountUI(a); } }[page] || home)(app); };
   /* staff pages need to know whether the API is there before drawing; shop pages draw immediately */
-  if ((page === "quotes" || page === "ops" || page === "agents" || page === "admin" || page === "fbg" || page === "account") && RF.api) RF.api.ready.then(run);
+  if ((page === "quotes" || page === "ops" || page === "agents" || page === "admin" || page === "fbg" || page === "account" || page === "bizchina") && RF.api) RF.api.ready.then(run);
   else if (RF.backend && ["home", "product", "cart", "china"].indexOf(page) >= 0)
     RF.backend.listings().then(function (l) { C.addLive(l || []); }).catch(function () {}).then(run);
   else run();

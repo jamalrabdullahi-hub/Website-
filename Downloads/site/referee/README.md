@@ -171,6 +171,44 @@ Paste any product link (or a WeChat/Taobao share text) into the home search box 
 - Demo mode: title comes from the link's own wording, price stays unknown (nothing is invented).
 - Live mode: `/item` (Apify) first, then the Worker's `/link` page reader (Open Graph + schema.org JSON-LD; SSRF-guarded, honest bot user-agent), then a quote request. Non-CNY page prices are never used as our cost.
 
+## Which marketplace belongs to which shop (`RF.sources.SURFACES`)
+The two shops buy from different halves of China and the UI says so.
+
+| Shop | Platforms | Why |
+|---|---|---|
+| `buurwen.com` | JD, Tmall/Taobao, Pinduoduo | Retail. One piece, a fixed price, a nameable brand. |
+| `business.buurwen.com` | 1688, Alibaba.com, Made-in-China | Wholesale. MOQ, tier pricing, factories. |
+
+- `surfaceOf(platform)` decides; `platformsFor(surface)` drives the chips, the platform filter and the cross-platform search. `web` (any other product page) belongs to neither and is accepted on both.
+- Paste a **wholesale** link into the consumer shop and it is *not* refused — the page says 1688 sells in bulk and offers a button to `business.buurwen.com/china.html?u=<the same link>` via `RF.sources.crossLink()`. The link travels; nobody re-pastes.
+- Paste a **retail** link into the business shop and it is accepted with a note that the price is per piece with no wholesale tiers (buying a sample before a carton is the right instinct).
+- The 421-product catalogue is unaffected. Where Garsoore *buys* stock is not the same question as which channel a shopper browses: the catalogue is Garsoore's own imported range, sold retail on the consumer shop regardless of which Chinese market it was sourced from.
+
+## Buy-for-me (`SERVICES` in `deploy/api.js`, service menu in `bizChina`)
+Superbuy-style agent buying. You paste a vendor link, Garsoore buys from the vendor, checks the goods, and forwards them. The goods are yours from the moment we pay the vendor; what Garsoore sells is the buying, the checking and the rail.
+
+| Service | Price |
+|---|---|
+| Visual check + photos | **free** |
+| Count + measure | $2 |
+| Powered function test | $5 |
+| Unboxing video | $4 |
+| Reinforced repack | $3 |
+| Remove vendor invoice | $1 |
+| Written QC report | $8 |
+
+Plus a **5% buying fee, minimum $3**, on the vendor's price.
+
+- Basic photo inspection is free on purpose: it is what makes buying blind from a link survivable, and it is the reason to use Garsoore over a friend in Guangzhou.
+- The ticked services ride along with the quote request. The **server re-prices them from its own table** (`serviceFee()`) and ignores unknown keys — the browser never sets a price.
+- Migration `schema-7.sql` adds `services`, `qty` and `service_fee` to `quotes`. Staff see the requested services on the quote row in the ops console, so the price they quote already includes them.
+
+## Browsing without an account
+The business side is readable end to end while signed out. Fudud mode used to call `needUser()` before it would render a form, which threw a sign-in sheet over `business.buurwen.com` on arrival.
+- Forms (China sourcing, agent mandate) render publicly; the account is asked for at the **moment of committing**, via `submit()`. Cancelling the sheet leaves the form exactly as typed.
+- Only the jobs that show *your own* records (FBG, your stock, your orders) gate, and they explain why inline rather than in a modal.
+- The FBG fee table renders in full while signed out — `/api/config` is public, so nobody has to hand over a phone number to learn a price.
+
 ## Deploy (development: Buurwen.com on Cloudflare Workers)
 | Address | What |
 |---|---|

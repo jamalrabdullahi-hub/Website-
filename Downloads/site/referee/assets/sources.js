@@ -66,6 +66,29 @@ var A = {
   mic:     { name: "Made-in-China", zh: "中国制造网", retail: false, nosearch: true, re: /(https?:\/\/[a-z0-9-]+\.en\.made-in-china\.com\/product\/[A-Za-z0-9]+\/[^\s?#"]+?\.html)/i, url: function (id) { return id; } },
   web:     { name: "Web", zh: "", retail: true, nosearch: true, re: /(?!)/, url: function (id) { return id; } }   // any other product link
 };
+
+/* ---------------------------------------------------------------- which marketplace belongs to which shop
+   The two sites buy from different halves of China and they should not pretend otherwise.
+
+     buurwen.com           JD, Tmall/Taobao, Pinduoduo — retail. One piece, a fixed price, a brand you can name.
+     business.buurwen.com  1688, Alibaba.com, Made-in-China — wholesale. A minimum order, tier pricing, a factory.
+
+   A person pasting a 1688 link into the consumer shop is not making a mistake, they are on the wrong site, so we carry
+   the link across rather than refusing it. The business side accepts a retail link too — buying one JD sample before
+   committing to a 1688 carton is exactly what a trader should do — but it says plainly that retail pricing applies.
+   "web" (any other product page) is allowed on both: a link is a link. */
+var SURFACES = {
+  consumer: { platforms: ["jd", "taobao", "pdd"],       kind: "retail",    so: "Tafaariiq", en: "Retail" },
+  business: { platforms: ["1688", "alibaba", "mic"],    kind: "wholesale", so: "Jumlad",    en: "Wholesale" }
+};
+function surfaceOf(platform) {
+  if (platform === "web") return null;                                   // belongs to neither, welcome on both
+  return SURFACES.business.platforms.indexOf(platform) >= 0 ? "business" : "consumer";
+}
+function platformsFor(surface) { return (SURFACES[surface] || SURFACES.consumer).platforms.slice(); }
+function allowedOn(surface, platform) { var s = surfaceOf(platform); return !s || s === surface; }
+/* Where the current page sits. business/*.html sets window.SURFACE; everything else is the consumer shop. */
+function here() { return window.SURFACE === "business" ? "business" : "consumer"; }
 /* supplier directory: the real suppliers behind the catalogue when the harvest has run, else the illustrative list above */
 if (window.RF_SUPPLIERS && window.RF_SUPPLIERS.length) VENDORS = window.RF_SUPPLIERS.map(function (v, i) {
   return { id: "V-MIC-" + (i + 1), name: v.name, zh: "", city: "", verified: false, factory: /manufactur|factory|industr|technology|co\., ltd/i.test(v.name) && false,
@@ -220,7 +243,15 @@ function procure(o, qty, buyer) {
 }
 
 RF.sources = { urlOf: urlOf, hostOf: hostOf, label: label, ADAPTERS: A, VENDORS: VENDORS, config: config, identify: identify, fetchOffer: fetchOffer, toProduct: toProduct,
-  search: search, landed: landed, tierCost: tierCost, procure: procure };
+  search: search, landed: landed, tierCost: tierCost, procure: procure,
+  SURFACES: SURFACES, surfaceOf: surfaceOf, platformsFor: platformsFor, allowedOn: allowedOn, here: here,
+  /* the other site's address for this same link, so a misplaced paste is one tap from being handled */
+  crossLink: function (url, surface) {
+    var root = (location.hostname.split(".").slice(-2).join(".") || "buurwen.com"), q = "china.html?u=" + encodeURIComponent(url);
+    if (/^(localhost|127\.|\[)/.test(location.hostname) || location.protocol === "file:")
+      return surface === "business" ? "business/" + q : "../" + q;       // local: the two shops are folders
+    return location.protocol + "//" + (surface === "business" ? "business." + root : root) + "/" + q;
+  } };
 
 /* consumer entry point keeps the same API: RF.china.resolve(url) → { mode, product } | { error } */
 RF.china = {

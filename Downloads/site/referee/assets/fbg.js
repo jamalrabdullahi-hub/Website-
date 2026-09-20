@@ -24,7 +24,16 @@ RF.fbgUI = function (app) {
       '<ol class="g-how"><li><b>Iibso</b>Shiinaha (1688, JD, warshad…)</li><li><b>U dir</b>cinwaankaaga Garsoore China</li><li><b>Waan isku darnaa</b>oo aan keenaa</li><li><b>Dooro</b>qaado, iib, ama wakiil</li></ol></section>' + extra + '</div>';
   }
   if (!RF.api.user) {
-    app.innerHTML = intro('<div class="g-empty">Gal si aad u hesho cinwaankaaga Shiinaha. <button class="btn" id="fbIn">Gal</button></div>');
+    /* Signed out you still see the whole offer and every fee. Nobody should have to hand over a phone number to find
+       out what a service costs — the account is for holding *your* goods, not for reading the price list. */
+    app.innerHTML = intro('<div class="g-order"><b>Waxa aad bixinayso</b>' +
+      '<div class="g-eta" style="margin:8px 0 12px;line-height:1.9">' +
+        '· Qaabilaad Shiinaha: <b>$' + F.receivingPerCarton + '</b> sanduuqii<br>' +
+        '· Rar: <b>$' + F.seaPerKg + '/kg</b> (bad) ama <b>$' + F.airPerKg + '/kg</b> (cir)<br>' +
+        '· Kayd: bilaash <b>' + F.freeStorageDays + ' maalmood</b>, kadib $' + F.storagePerCbmDay + '/cbm maalintii<br>' +
+        '· Diyaarinta dalab: <b>$' + F.pickPack + '</b> · komishan marka la iibiyo: <b>' + F.commissionPct + '%</b><br>' +
+        '· Alaabtu waa <b>taada</b> ilaa ay iibsanto. Garsoore ma iibsanayo alaabtaada.</div>' +
+      '<button class="btn gold" id="fbIn">Gal oo hel cinwaankaaga</button></div>');
     $("fbIn").onclick = function () { RF.authUI.open("FBG — Fulfilment by Garsoore").then(function () { RF.fbgUI(app); }).catch(function () {}); };
     return;
   }

@@ -243,6 +243,38 @@ var DICT = {
   "Waa la kaydiyay": "Saved", "Waa la diray wakiillada": "Sent to the agents",
   "Mandate-yadayda": "My mandates", "diyaar": "available",
 
+  /* the two supply channels: retail on the consumer shop, wholesale on business */
+  "Jumlad ma raadinaysaa (1688, Alibaba, warshad)?": "Buying wholesale (1688, Alibaba, factories)?",
+  "Garsoore Ganacsi \u2192": "Garsoore Business \u2192",
+  "U gudub Garsoore Ganacsi \u2192": "Take me to Garsoore Business \u2192",
+  "Link-gaagu wuu ku socdaa \u2014 dib uma dhejin doontid.": "Your link comes with you \u2014 no need to paste it again.",
+  "Ku dheji link \u2014 JD, Taobao, Tmall, Pinduoduo, ama bog kale\u2026": "Paste a link \u2014 JD, Taobao, Tmall, Pinduoduo, or any other page\u2026",
+  "Raadi (solar light, chairs, CCTV) ama ku dheji link 1688 / Alibaba / warshad\u2026": "Search (solar light, chairs, CCTV) or paste a 1688 / Alibaba / factory link\u2026",
+  "Iibsi jumlad ah oo Shiinaha ka yimaada.": "Wholesale buying, straight from China.",
+  "Jumlad oo dhan": "All wholesale", "tafaariiq": "retail",
+
+  /* buy-for-me: we buy from the vendor on your behalf and check the goods before they ship */
+  "\u2713 Hubi ka hor inta aanay dhoofin": "\u2713 Check it before it ships",
+  "Waxaad adigu iibsanaysaa \u2014 Garsoore ayaa iibsanaya, hubinaya, oo kuu keenaya. Dooro waxaad rabto inaan samayno.":
+    "You are the buyer \u2014 Garsoore places the order, checks the goods and brings them to you. Pick what you want us to do.",
+  "Hubin muuqaal + sawiro": "Visual check + photos", "Tirin iyo cabbir": "Count + measure",
+  "Tijaabo shaqayn": "Powered function test", "Muuqaal furitaan": "Unboxing video",
+  "Dib-u-xidhmo adag": "Reinforced repack", "Ka saar qiimaha": "Remove vendor invoice",
+  "Warbixin QC qoran": "Written QC report", "Bilaash": "Free",
+  "Adeegyada:": "Services:", "khidmadda iibsiga": "buying fee", "ugu yaraan": "minimum",
+  "lacagtaadu way xajisan tahay ilaa aan alaabta helno.": "your money is held until we have the goods in hand.",
+  "waa suuq jumlad ah \u2014 waxaa lagu iibiyaa tiro badan (MOQ), lagumana iibin karo hal xabbo.":
+    "is a wholesale market \u2014 it sells in bulk (MOQ) and will not sell you a single piece.",
+  "waa suuq tafaariiq ah \u2014 qiimuhu waa mid xabbo, heerar jumlad ma leh. Waan kuu iibsan karnaa (tusaale ahaan sample), laakiin qiimo jumlad ah kama heli doontid.":
+    "is a retail market \u2014 the price is per piece, with no wholesale tiers. We can still buy it for you (a sample, say), but you will not get a wholesale price.",
+
+  /* FBG price list, readable without an account */
+  "Waxa aad bixinayso": "What you pay",
+  "Gal oo hel cinwaankaaga": "Sign in and get your address",
+  "Qaabilaad Shiinaha:": "Receiving in China:", "sanduuqii": "per carton",
+  "Alaabtu waa": "The goods are", "taada": "yours", "ilaa ay iibsanto. Garsoore ma iibsanayo alaabtaada.":
+    "until they sell. Garsoore does not buy your stock.",
+
   /* account + sign-up */
   "Akoonkayga": "My account", "Gal akoonkaaga": "Sign in to your account",
   "Lambarkaaga taleefanku waa akoonkaaga. Iimayl ma jiro, eray sir ah oo la illoobo ma jiro — lambarkaaga iyo PIN kaliya.":

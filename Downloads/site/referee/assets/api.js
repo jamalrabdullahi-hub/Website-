@@ -58,7 +58,7 @@ var local = {
   quotes: function () { return P(RF.quotes.list()); },
   quote: function (id) { return P(RF.quotes.list().filter(function (x) { return x.id === id; })[0] || null); },
   requestQuote: function (p) { return P(RF.quotes.request(p)); },
-  requestLink: function (id, url) { return P(RF.quotes.requestLink(id, url)); },
+  requestLink: function (id, url, seen, extra) { return P(RF.quotes.requestLink(id, url, seen, extra)); },
   social: function (sku) { return P({ bought30: null, reviews: RF.orders.reviewsFor(sku) }); },
   listings: function () { return P([]); },
   promo: function (code) { var r = RF.promo.check(code); return r ? P({ pct: r, cap: 10 }) : Promise.reject(new Error("Koodhkan ma shaqaynayo.")); }
@@ -81,10 +81,12 @@ var remote = {
   quotes: function () { return call("GET", "/quotes").then(function (j) { return j.quotes; }); },
   quote: function (id) { return remote.quotes().then(function (a) { return a.filter(function (x) { return x.id === id; })[0] || null; }); },
   requestQuote: function (p) { return call("POST", "/quotes", quoteBody(p)); },
-  requestLink: function (id, url, seen) {
-    /* `seen` is whatever we could read from the source page (real title, photo, shop) — it saves staff a lookup */
+  requestLink: function (id, url, seen, extra) {
+    /* `seen` is whatever we could read from the source page (real title, photo, shop) — it saves staff a lookup.
+       `extra` carries the buy-for-me services the buyer ticked; the server re-prices them, it does not trust these. */
     return call("POST", "/quotes", { title: (seen && seen.title) || ("Alaab ka timid " + (RF.chName ? RF.chName(id.platform) : id.platform)),
       icon: "📦", platform: id.platform, ref: id.ref, url: url, seller: (seen && seen.seller) || "",
+      services: (extra && extra.services) || [], qty: (extra && extra.qty) || 1,
       note: seen && seen.image ? "Sawir: " + seen.image : "" }); },
   social: function (sku) { return call("GET", "/social?sku=" + encodeURIComponent(sku)); },
   listings: function () { return call("GET", "/listings").then(function (j) { return j.listings; }); },

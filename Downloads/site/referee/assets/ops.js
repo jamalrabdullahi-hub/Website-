@@ -114,7 +114,11 @@ RF.opsUI = function (app, tab) {
         var late = x.status === "pending" && Date.now() - Date.parse(x.createdAt) > 4 * 36e5;
         return '<div class="g-order' + (late ? " late" : "") + '"><div class="g-ohead"><div class="g-th">' + (x.icon || "📦") + '</div><div style="flex:1"><b>' + e(x.title) + '</b>' +
           '<div class="g-eta">' + x.id + ' · ' + ago(x.createdAt) + ' kahor · ' + (x.url ? '<a href="' + e(x.url) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link);font-weight:700">' + e(RF.chName ? RF.chName(x.platform) : x.platform) + ' ↗</a>' : e(x.platform)) + (x.kg ? ' · ' + x.kg + ' kg' : "") + ' · ' + e(x.contact || "") + '</div>' +
-          '<div class="g-eta">Qiyaasta nidaamka: ' + (x.estimate == null ? "aan la garanayn" : money(x.estimate)) + (x.note ? ' · “' + e(x.note) + '”' : "") + '</div></div>' +
+          '<div class="g-eta">Qiyaasta nidaamka: ' + (x.estimate == null ? "aan la garanayn" : money(x.estimate)) + (x.note ? ' · “' + e(x.note) + '”' : "") + '</div>' +
+          /* the services the buyer paid us to perform: the price you quote must already include them */
+          (x.services && x.services.length
+            ? '<div class="g-eta">🛠 ' + x.services.map(function (k) { var c = RF.api.config && RF.api.config.services; return e((c && c.items[k] && c.items[k].so) || k); }).join(" · ") +
+              ' — adeegyo ' + money(x.serviceFee || 0) + (x.qty > 1 ? ' · ' + x.qty + ' xabbo' : "") + '</div>' : "") + '</div>' +
           (x.status === "pending" ? '<div class="g-oqty"><label class="g-eta">Qiimo $</label><input type="number" min="1" value="' + (x.estimate == null ? "" : x.estimate) + '" data-t="' + x.id + '"></div>' +
             '<div class="g-oqty"><label class="g-eta">Maalmo</label><input type="number" min="1" value="20" data-d="' + x.id + '"></div>' +
             '<button class="btn" data-q="' + x.id + '">Qiimee</button><button class="btn ghost" data-x="' + x.id + '">Diid</button>' :

@@ -251,10 +251,11 @@ RF.quotes = {
     a.unshift(q); qsave(a); return q;
   },
   /* a link we could not read automatically — staff price it from scratch (no estimate) */
-  requestLink: function (id, url, contact) {
+  requestLink: function (id, url, seen, extra) {
     var a = qload(), q = { id: "Q-" + Date.now().toString(36).toUpperCase(), status: "pending", createdAt: new Date().toISOString(),
-      title: "Alaab ka timid " + (RF.chName ? RF.chName(id.platform) : id.platform), icon: "📦", platform: id.platform, ref: id.ref, url: url || "", seller: "", kg: null,
-      estimate: null, note: "", contact: contact || RF.identity && RF.identity.get() || "" };
+      title: (seen && seen.title) || "Alaab ka timid " + (RF.chName ? RF.chName(id.platform) : id.platform), icon: "📦", platform: id.platform, ref: id.ref, url: url || "", seller: (seen && seen.seller) || "", kg: null,
+      services: (extra && extra.services) || [], qty: (extra && extra.qty) || 1,
+      estimate: null, note: "", contact: RF.identity && RF.identity.get() || "" };
     a.unshift(q); qsave(a); return q;
   },
   price: function (id, total, etaDays, note) {
