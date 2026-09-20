@@ -263,3 +263,11 @@ The business site has two faces, switched by a button in its header (`localStora
   `china.html` render as before.
 Both write the same records, so a mandate created in Fudud shows up in full detail in Xirfadle. Staff and admin tools
 (`ops.html`, the console) are always the pro versions.
+
+## JD.com as a supply channel
+JD blocks its desktop pages and signs its price APIs, but the **mobile product page is readable**, so the proxy
+(`server/china-proxy.js` → `jdItem()`) fetches `item.m.jd.com/product/<id>.html` and returns the real title, shop and
+photos with **no Apify token**. JD masks the price for anonymous readers (`"jdPrice":"2??"`), so the reader returns
+`price: null` and the site routes that item through a staff quote carrying the real name and photo — it never invents
+a number. Paste any JD link into the home or Shop China box and you get a proper product page.
+With `APIFY_TOKEN` set, JD keyword search (and priced results) come back through the same endpoints.

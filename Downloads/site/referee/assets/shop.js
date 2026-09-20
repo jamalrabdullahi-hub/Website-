@@ -331,7 +331,7 @@ function china(app) {
     RF.china.resolveAsync(u, function (r) {
       if (r.error) {
         $("res").innerHTML = '<div class="g-err">' + e(r.error) + (r.canQuote ? '<div style="margin-top:10px"><button class="btn" id="qBtn">Codso qiimo rasmi ah</button></div>' : "") + '</div>';
-        if (r.canQuote) $("qBtn").onclick = function () { RF.backend.needUser("Gal si aan qiimaha rasmiga ah kuugu soo dirno.").then(function () { return RF.backend.requestLink(r.id, r.url); }).then(function (q) { RF.api.ev("quote"); location.href = "orders.html?quote=" + q.id; }).catch(function (x) { if (x.message !== "cancelled") toast(x.message); }); };
+        if (r.canQuote) $("qBtn").onclick = function () { RF.backend.needUser("Gal si aan qiimaha rasmiga ah kuugu soo dirno.").then(function () { return RF.backend.requestLink(r.id, r.url, r.seen); }).then(function (q) { RF.api.ev("quote"); location.href = "orders.html?quote=" + q.id; }).catch(function (x) { if (x.message !== "cancelled") toast(x.message); }); };
         return;
       }
       var o = r.offer, sel = o.seller;

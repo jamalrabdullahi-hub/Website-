@@ -7,7 +7,7 @@
      GET /link?url=<any http(s) product page>          generic page reader: title / image / price from the page's own data
                                                          (Open Graph tags + schema.org JSON-LD). Used for any link the actors can't do.
    Not covered by the Apify actors below (returns 501, the site then falls back to a staff-priced quote request):
-     /item for jd · pdd · alibaba,   /search for taobao · pdd · alibaba
+     /item for pdd · alibaba (JD is read directly, price needs a staff quote),   /search for taobao · pdd · alibaba
 
    Actors (verify each in the Apify console before relying on it — actor inputs change):
      1688    automation-lab/1688-scraper        input: { productUrls:[..] } | { keywords:[..], maxResults }     ~$0.001–0.004 / product
@@ -45,9 +45,17 @@ export default {
 
       let body, status = 200;
       if (url.pathname === "/item") {
-        const noTok = needApify(); if (noTok) return noTok;
         const platform = url.searchParams.get("platform"), id = url.searchParams.get("id") || "";
         if (!/^\d{5,20}$/.test(id)) return json({ error: "bad id" }, 400, cors);
+        /* JD is read straight from the mobile page — no token needed (the price still needs a person) */
+        if (platform === "jd") {
+          const jd = await jdItem(id);
+          if (!jd) return json({ error: "not found" }, 404, cors);
+          const resJd = json(jd, 200, { ...cors, "cache-control": `public, max-age=${Number(env.CACHE_SECONDS) || 21600}` });
+          await caches.default.put(cacheKey, resJd.clone());
+          return resJd;
+        }
+        const noTok = needApify(); if (noTok) return noTok;
         if (!ITEM_OK.includes(platform)) return json({ error: "unsupported", platform }, 501, cors);
         body = await getItem(platform, id, env);
         if (!body) return json({ error: "not found" }, 404, cors);
@@ -75,6 +83,39 @@ export default {
     }
   }
 };
+
+
+/* ---------------------------------------------------------------- JD without Apify
+   JD blocks its desktop pages and signs its price APIs, but the mobile product page is readable and carries the real
+   title, shop and photos. The PRICE is masked there ("jdPrice":"2??"), so we return price:null and the site routes the
+   item through a staff quote instead of inventing a number. With APIFY_TOKEN set, /item?platform=jd&full=1 can still be
+   used for a priced result. */
+const JD_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+async function jdItem(id) {
+  const r = await fetch(`https://item.m.jd.com/product/${id}.html`, {
+    headers: { "user-agent": JD_UA, "accept-language": "zh-CN,zh;q=0.9", referer: "https://m.jd.com/" },
+    cf: { cacheTtl: 3600 }
+  });
+  if (!r.ok) return null;
+  const html = (await r.text()).slice(0, 600000);
+  const pick = re => { const m = html.match(re); return m ? m[1].trim() : ""; };
+  const title = pick(/"(?:wname|skuName)"\s*:\s*"([^"]{2,160})"/) || pick(/<title>([^<]{2,160})<\/title>/).replace(/\s*【[^】]*】\s*-?\s*京东\s*$/, "");
+  if (!title) return null;
+  const shop = pick(/"shopName"\s*:\s*"([^"]{1,80})"/);
+  const imgs = [...new Set((html.match(/\/\/img\d+\.360buyimg\.com\/(?:n\d|imgzone|imagetools)\/[^"'\\\s]+?\.(?:jpg|png|webp)/g) || []))].slice(0, 5).map(u => "https:" + u);
+  const raw = pick(/"(?:jdPrice|price)"\s*:\s*"?([\d.]+)"?/);          // masked as 2?? for anonymous readers
+  const price = /^\d+(\.\d+)?$/.test(raw) && +raw > 1 ? +raw : null;
+  return {
+    platform: "jd", ref: String(id), url: `https://item.jd.com/${id}.html`,
+    title, titleZh: title, images: imgs, image: imgs[0] || "",
+    seller: { name: shop || "JD.com", city: "", verified: /自营/.test(shop || ""), factory: false },
+    moq: 1, stock: null, unit: "piece",
+    tiers: price ? [{ minQty: 1, cost: price }] : [],
+    price, currency: "CNY",
+    priceKnown: price != null,
+    note: price == null ? "JD hides the price from anonymous readers — Garsoore prices this one by hand." : ""
+  };
+}
 
 /* ---------------------------------------------------------------- Apify */
 async function apify(actor, input, env) {

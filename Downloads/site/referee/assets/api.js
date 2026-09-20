@@ -81,7 +81,11 @@ var remote = {
   quotes: function () { return call("GET", "/quotes").then(function (j) { return j.quotes; }); },
   quote: function (id) { return remote.quotes().then(function (a) { return a.filter(function (x) { return x.id === id; })[0] || null; }); },
   requestQuote: function (p) { return call("POST", "/quotes", quoteBody(p)); },
-  requestLink: function (id, url) { return call("POST", "/quotes", { title: "Alaab ka timid " + (RF.chName ? RF.chName(id.platform) : id.platform), icon: "📦", platform: id.platform, ref: id.ref, url: url }); },
+  requestLink: function (id, url, seen) {
+    /* `seen` is whatever we could read from the source page (real title, photo, shop) — it saves staff a lookup */
+    return call("POST", "/quotes", { title: (seen && seen.title) || ("Alaab ka timid " + (RF.chName ? RF.chName(id.platform) : id.platform)),
+      icon: "📦", platform: id.platform, ref: id.ref, url: url, seller: (seen && seen.seller) || "",
+      note: seen && seen.image ? "Sawir: " + seen.image : "" }); },
   social: function (sku) { return call("GET", "/social?sku=" + encodeURIComponent(sku)); },
   listings: function () { return call("GET", "/listings").then(function (j) { return j.listings; }); },
   promo: function (code) { return call("POST", "/promo", { code: code }); }

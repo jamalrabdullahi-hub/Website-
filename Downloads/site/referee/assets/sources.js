@@ -108,7 +108,11 @@ function demoWeb(url) {
 function fetchLink(url, cb) {
   fetch(config.endpoint + "/link?url=" + encodeURIComponent(url))
     .then(function (r) { if (!r.ok) throw new Error("proxy " + r.status); return r.json(); })
-    .then(function (o) { o.live = true; cb(null, o); })
+    .then(function (o) {
+      o.live = true;
+      if (!o.skus) o.skus = (o.tiers && o.tiers.length) ? [{ id: o.ref + "-STD", label: "Standard", cost: o.tiers[0].cost }] : [];
+      cb(null, o);
+    })
     .catch(function (err) { cb(err, null); });
 }
 /* sync in demo mode; async live via proxy. Live mode NEVER substitutes demo data for a real product:
@@ -140,7 +144,10 @@ function toProduct(o) {
     blurb: web ? "Alaab laga helay " + name + ". Garsoore ayaa hubinaysa oo kuu keeni doona — koox ayaa kuu soo diraysa qiimo rasmi ah."
                : "Dalab hal mar ah — Garsoore ayaa ka iibsan doona " + name + " oo kuu keeni doona.",
     specs: [["Il", name], ["Iibiye", (o.seller.verified ? "✓ " : "") + (o.seller.city || o.seller.name || "—")], ["Kayd", o.stock > 100 ? "Badan" : o.stock ? String(o.stock) : "La hubinayo"], ["Celin", "7 maalmood"]],
-    variants: o.skus.map(function (s) { return { vsku: s.id, label: s.label, cost: s.cost }; }),
+    /* a source can be readable but priceless (JD masks its price): keep the real name and photo, leave cost unknown
+       so price() returns null and the page asks for a staff quote instead of inventing a number */
+    variants: (o.skus && o.skus.length ? o.skus.map(function (s) { return { vsku: s.id, label: s.label, cost: s.cost }; })
+                                       : [{ vsku: o.ref + "-STD", label: "Standard" }]),
     sources: [{ channel: o.platform, ref: o.ref, seller: o.seller.name }], oneoff: true };
   return { mode: "oneoff", product: p, offer: o };
 }
