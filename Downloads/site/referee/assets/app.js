@@ -202,6 +202,8 @@ function chrome() {
     '<footer class="site"><div class="wrap fgrid">' +
       '<div><b>Garsoore</b> — garsooraha u dhexeeya iibsadaha iyo iibiyaha. Prototype · xogtu waxay ku jirtaa browser-kaaga. ' +
         '<a href="#" id="resetBtn" style="text-decoration:underline">Dib u deji xogta</a>' + (window.GARSOORE_CONFIG && GARSOORE_CONFIG.build ? ' <span style="opacity:.6">· build ' + GARSOORE_CONFIG.build + '</span>' : '') + '</div>' +
+      '<div class="fnav"><a href="' + (biz ? "../" : "") + 'help.html">Caawimo</a><a href="' + (biz ? "../" : "") + 'terms.html">Shuruudaha</a>' +
+        '<a href="' + (biz ? "../" : "") + 'returns.html">Celinta</a><a href="' + (biz ? "../" : "") + 'privacy.html">Asturnaanta</a></div>' +
       '<div>' + (biz ? '<a href="' + other + '">← Garsoore ' + (real ? "(" + root + ")" : "") + '</a>' : '<a href="' + other + '">Ganacsi ' + (real ? "(business." + root + ")" : "") + ' →</a>') + '</div>' +
     '</div></footer>' +
     '<div class="scrim" id="scrim"></div>' +
@@ -210,6 +212,7 @@ function chrome() {
     '<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>');
 
   refreshWho();
+  if (RF.bell) RF.bell.mount(document.querySelector("header.site .bar"));
   if (biz && RF.mode && document.getElementById("modeBtn")) {
     /* two faces of the business site: Fudud asks a few questions, Xirfadle gives every lever */
     var mb = document.getElementById("modeBtn"), pro = RF.mode.get() === "pro";
@@ -1532,6 +1535,7 @@ document.addEventListener("DOMContentLoaded", function () {
     RF.simpleUI(document.getElementById("app"), null);
     return;
   }
+  if (window.STATIC) return;                       /* terms / returns / privacy / help: the words are in the HTML */
   if (window.BOARD === "activity") activityPage();
   else if (window.BOARD === "exchange") exchangePage();
   else if (window.BOARD === "b2b") b2bPage();

@@ -271,3 +271,15 @@ photos with **no Apify token**. JD masks the price for anonymous readers (`"jdPr
 `price: null` and the site routes that item through a staff quote carrying the real name and photo — it never invents
 a number. Paste any JD link into the home or Shop China box and you get a proper product page.
 With `APIFY_TOKEN` set, JD keyword search (and priced results) come back through the same endpoints.
+
+## Site essentials
+- **Content pages** — `help.html`, `terms.html`, `returns.html`, `privacy.html` (linked in every footer) and a real
+  `404.html` on both surfaces. Their words live in the HTML, written twice (`.lang-so` / `.lang-en`, toggled by
+  `assets/pages.js`) — legal sentences are not machine-translated. All four are marked as drafts pending legal review.
+- **Link previews** — `deploy/worker.js` rewrites `<head>` on product pages with real Open Graph tags (title, price,
+  photo) from the bundled catalogue, so a product shared on WhatsApp shows the item instead of the bare domain.
+- **Notifications** (`schema-6.sql`, `RF.bell` in `assets/api.js`) — the server writes a notification in the same batch
+  as the event that caused it: payment verified, order sourced / shipped / arrived / ready / collected, quote priced or
+  declined, mandate claimed or sold, FBG goods arrived, referral credit paid. A bell in the header shows the unread
+  count and marks them read when opened. There is no push provider yet, so the ops console also has **one-tap WhatsApp**
+  buttons with the right Somali message already written (payment chase, "your goods are ready", order update).

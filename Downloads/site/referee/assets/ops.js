@@ -8,6 +8,11 @@ function $(id) { return document.getElementById(id); }
 function e(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function money(n) { return n == null ? "—" : "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 }); }
 function ago(iso) { var m = Math.round((Date.now() - Date.parse(iso)) / 6e4); return m < 60 ? m + " daq" : m < 1440 ? Math.round(m / 60) + " saac" : Math.round(m / 1440) + " maalin"; }
+/* one tap to WhatsApp the customer with the right words already written */
+function wa(phone, text) {
+  var n = String(phone || "").replace(/\D/g, "");
+  return n ? '<a class="btn ghost sm" target="_blank" rel="noopener" href="https://wa.me/' + n + '?text=' + encodeURIComponent(text) + '">\ud83d\udcac WhatsApp</a>' : "";
+}
 function toast(m) { var t = document.createElement("div"); t.className = "toast in"; t.textContent = m; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2600); }
 var NEXT_SO = { SOURCING: "Laga iibsaday", IN_TRANSIT: "Soo socda", ARRIVED: "Yimid", CONFIRMED: "Iibiyaha xaqiijiyay", READY: "Diyaar (u sheeg macmiilka)" };
 var TABS = [["stats", "Tirakoob"], ["pay", "Lacag bixin"], ["orders", "Dalabyo"], ["pickup", "Qaadasho"], ["buy", "Iibsiga"], ["fbg", "FBG (Shiinaha)"], ["quotes", "Codsiyo qiimo"], ["issues", "Celin & cabasho"]];
@@ -60,7 +65,8 @@ RF.opsUI = function (app, tab) {
         return '<div class="g-order"><div class="g-ohead"><div style="flex:1"><b>' + money(tot) + ' · ' + e(o.pay) + ' · ' + e(o.payPhone ? "+" + o.payPhone : "") + '</b>' +
           '<div class="g-eta">Macaamil: <b style="color:var(--fg)">' + e(o.payTxn) + '</b> · ' + e(o.customer.name) + ' ' + e(o.customer.phone) + ' · ' + ago(o.createdAt) + ' kahor · ' + (o.basket || o.id) + '</div>' +
           '<div class="g-eta">' + g.map(function (x) { return e(x.title) + " ×" + x.qty; }).join(" · ") + '</div></div>' +
-          '<button class="btn" data-ok="' + g.map(function (x) { return x.id; }).join(",") + '">✓ La helay</button><button class="btn ghost" data-no="' + g.map(function (x) { return x.id; }).join(",") + '">✕ Lama helin</button></div></div>';
+          '<button class="btn" data-ok="' + g.map(function (x) { return x.id; }).join(",") + '">✓ La helay</button><button class="btn ghost" data-no="' + g.map(function (x) { return x.id; }).join(",") + '">✕ Lama helin</button>' +
+          wa(o.customer.phone, "Salaan " + o.customer.name + ", waa Garsoore. Lacagtaada " + money(tot) + " ee " + (o.basket || o.id) + " ma hubin karnaa? Fadlan noo soo dir lambarka macaamilka haddii aan weli helin.") + '</div></div>';
       }).join("") : '<div class="g-empty sm">Lacag sugaysa hubin ma jirto. ✓</div>');
     bind("[data-ok]", function (b) { return all(b.dataset.ok, function (id) { return call("POST", "/ops/orders/" + id + "/verify", { ok: true }); }); });
     bind("[data-no]", function (b) { return all(b.dataset.no, function (id) { return call("POST", "/ops/orders/" + id + "/verify", { ok: false }); }); });
@@ -75,7 +81,10 @@ RF.opsUI = function (app, tab) {
         '<div class="g-eta">' + o.id + ' · <b>' + o.state + '</b> · ' + ago((o.history[o.history.length - 1] || {}).at || o.createdAt) + ' xaaladdan · ' + (o.flow === "china" ? "Shiinaha" : "Gudaha" + (c.seller ? " · " + e(c.seller) : "")) + '</div>' +
         '<div class="g-eta">' + e(o.customer.name) + ' ' + e(o.customer.phone) + ' · ' + e(o.pickup) + (o.address ? " · " + e(o.address) : "") + '</div>' +
         '<div class="g-eta">' + money(o.total) + ' · faa\'iido guud ' + money(c.gross) + (c.cogs != null ? ' · kharash ' + money(c.cogs) : "") + '</div></div>' +
-        (nx && nx !== "COMPLETED" ? '<button class="btn" data-adv="' + o.id + '">→ ' + (NEXT_SO[nx] || nx) + '</button>' : '<span class="g-pill">Sugaya koodhka macmiilka</span>') + '</div></div>';
+        (nx && nx !== "COMPLETED" ? '<button class="btn" data-adv="' + o.id + '">→ ' + (NEXT_SO[nx] || nx) + '</button>' : '<span class="g-pill">Sugaya koodhka macmiilka</span>') +
+        wa(o.customer.phone, o.state === "READY"
+          ? "Salaan " + o.customer.name + ", waa Garsoore. " + o.title + " waa diyaar — waxaad ka qaadan kartaa xarunta Km4. La imow koodhkaaga 6-ta lambar."
+          : "Salaan " + o.customer.name + ", waa Garsoore. Warbixin dalabkaaga " + o.id + " (" + o.title + "): ") + '</div></div>';
     }).join("") : '<div class="g-empty sm">Dalab socda ma jiro.</div>';
     bind("[data-adv]", function (b) { return call("POST", "/ops/orders/" + b.dataset.adv + "/advance", {}); });
   }).catch(fail);

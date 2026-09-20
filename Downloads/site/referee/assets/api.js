@@ -118,6 +118,40 @@ RF.pinGate = function () {
   document.getElementById("modal").classList.add("on");
 };
 
+
+/* ---------------------------------------------------------------- notifications bell
+   Polled once per page load (and when opened). No push provider yet: this is the record people can check, and the
+   ops console can also send the same message to their WhatsApp in one tap. */
+RF.bell = {
+  mount: function (host) {
+    if (!host) return;
+    if (!api.checked) return void api.ready.then(function () { RF.bell.mount(host); });   /* health check still in flight */
+    if (!api.remote) return;
+    host.insertAdjacentHTML("beforeend", '<button class="btn ghost bellbtn" id="bellBtn" aria-label="Ogeysiisyo">\ud83d\udd14<span id="bellN"></span></button>' +
+      '<div class="bell-panel" id="bellPanel" hidden></div>');
+    var btn = document.getElementById("bellBtn"), panel = document.getElementById("bellPanel");
+    function badge(n) { var el = document.getElementById("bellN"); el.textContent = n || ""; el.className = n ? "n" : ""; }
+    function load(open) {
+      call("GET", "/notifications").then(function (j) {
+        badge(j.unread);
+        if (!open) return;
+        panel.innerHTML = j.items.length ? j.items.map(function (x) {
+          var t = new Date(x.at), ago = Math.round((Date.now() - t) / 6e4);
+          return '<a class="bell-row' + (x.read ? "" : " new") + '" href="' + (x.href || "#") + '">' +
+            '<b>' + esc(x.title) + '</b><span>' + esc(x.body || "") + '</span>' +
+            '<i>' + (ago < 60 ? ago + " daq" : ago < 1440 ? Math.round(ago / 60) + " saac" : Math.round(ago / 1440) + " maalin") + ' kahor</i></a>';
+        }).join("") : '<div class="bell-empty">Weli ogeysiis ma jiro.</div>';
+        if (j.unread) call("POST", "/notifications/read", {}).then(function () { badge(0); });
+      }).catch(function () {});
+    }
+    btn.onclick = function (ev) { ev.stopPropagation(); panel.hidden = !panel.hidden; if (!panel.hidden) load(true); };
+    document.addEventListener("click", function () { panel.hidden = true; });
+    panel.onclick = function (ev) { ev.stopPropagation(); };
+    api.onUser(function (u) { btn.hidden = !u; if (u) load(false); });
+  }
+};
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
 /* ---------------------------------------------------------------- sign-in sheet */
 RF.authUI = {
   open: function (why) {

@@ -125,6 +125,13 @@ async function expireUnpaid(env) {
 
 async function body(req) { try { return await req.json(); } catch { return {}; } }
 
+/* A notification is a fact the person would otherwise have to discover by refreshing. Returns a statement so it can
+   ride along in the same batch as the change that caused it — no notification without the event, and none lost. */
+function notify(env, userId, kind, title, bodyText, href) {
+  return env.DB.prepare("INSERT INTO notifications (id, user_id, at, kind, title, body, href) VALUES (?,?,?,?,?,?,?)")
+    .bind(rid("N-", 8), userId, now(), kind, String(title).slice(0, 120), String(bodyText || "").slice(0, 300), href || null);
+}
+
 
 /* ---- FBG (Fulfilment by Garsoore): the importer owns the goods, Garsoore is paid for the rail around them.
    Fees are charged to the importer's ledger as the goods move; the commission is taken only when something sells. */
@@ -426,6 +433,16 @@ export async function handleApi(req, env, url) {
         : await env.DB.prepare("SELECT * FROM quotes WHERE user_id = ? ORDER BY created_at DESC LIMIT 100").bind(user.id).all();
       return json({ quotes: r.results.map(q => ({ id: q.id, status: q.status, title: q.title, icon: q.icon, platform: q.platform, ref: q.ref, url: q.url, seller: q.seller, kg: q.kg, estimate: q.estimate,
         note: q.note, total: q.total, etaDays: q.eta_days, staffNote: q.staff_note, createdAt: q.created_at, quotedAt: q.quoted_at, contact: staff && q.u_name ? q.u_name + " · +" + q.u_phone : undefined })) });
+    }
+
+    if (path === "/notifications" && M === "GET") {
+      const r = await env.DB.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY at DESC LIMIT 30").bind(user.id).all();
+      const n = await env.DB.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read_at IS NULL").bind(user.id).first();
+      return json({ unread: n.c, items: r.results.map(x => ({ id: x.id, at: x.at, kind: x.kind, title: x.title, body: x.body, href: x.href, read: !!x.read_at })) });
+    }
+    if (path === "/notifications/read" && M === "POST") {
+      await env.DB.prepare("UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL").bind(now(), user.id).run();
+      return json({ ok: true });
     }
 
     /* ---------------------------------------------------------------- account: saved details */
@@ -823,6 +840,7 @@ export async function handleApi(req, env, url) {
           const led = (await env.DB.prepare("SELECT COALESCE(SUM(amount),0) s FROM fbg_ledger WHERE ref = ?").bind(r.id).first()).s;
           const landed = qty ? +(((r.value_usd || 0) + Math.abs(led)) / qty).toFixed(2) : null;   // the owner's own cost per unit
           stmts.push(env.DB.prepare("UPDATE fbg_inbound SET state = 'ARRIVED', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, r.id));
+          stmts.push(notify(env, r.user_id, "fbg", "Alaabtaadu Muqdisho ayay timid", r.title + " — hadda waad dooran kartaa: qaado, iib, ama wakiil.", "fbg.html"));
           if (r.disposition === "keep") {
             stmts.push(env.DB.prepare(`INSERT INTO fbg_inventory (id,user_id,inbound_id,title,cat,icon,qty_total,qty_available,landed_unit,disposition,location,created_at,updated_at)
               VALUES (?,?,?,?,?, '📦', ?,?,?, 'release', 'Km4', ?, ?)`).bind(rid("IV-", 6), r.user_id, r.id, r.title, null, qty, qty, landed, t, t));
@@ -957,7 +975,8 @@ export async function handleApi(req, env, url) {
         if (live.n >= me.capacity) return err("Awooddaada (" + me.capacity + " mandate) way buuxdaa.");
         await env.DB.batch([
           env.DB.prepare("UPDATE mandates SET agent_id = ?, state = 'ASSIGNED', updated_at = ? WHERE id = ? AND state = 'OPEN'").bind(me.id, t, md.id),
-          log("assigned", null, "Wakiil: " + user.name)
+          log("assigned", null, "Wakiil: " + user.name),
+          notify(env, md.user_id, "mandate", "Wakiil ayaa qaatay mandate-kaaga", md.title + " — " + user.name + " ayaa hadda suuqa u geynaya.", "agents.html?tab=mine")
         ]);
         return json({ ok: true });
       }
@@ -994,7 +1013,8 @@ export async function handleApi(req, env, url) {
         const split = settle(md, price);
         await env.DB.batch([
           env.DB.prepare("UPDATE mandates SET state = 'SOLD', deal_price = ?, split = ?, updated_at = ? WHERE id = ?").bind(price, JSON.stringify(split), t, md.id),
-          log("sold", price, String(b.buyer || "").slice(0, 80) || null)
+          log("sold", price, String(b.buyer || "").slice(0, 80) || null),
+          notify(env, md.user_id, "mandate", "Mandate-kaagii waa la iibiyay: $" + price, md.title + " — qaybtaada: $" + split.principalTotal + ". Garsoore ayaa lacagta kuu diraya.", "agents.html?tab=mine")
         ]);
         return json({ ok: true, split });
       }
@@ -1035,7 +1055,8 @@ export async function handleApi(req, env, url) {
         if (o.state !== "PAYMENT_REVIEW") return err("Dalabkan ma sugayo hubinta lacagta.");
         if (b.ok) {
           h.push({ state: "PLACED", at: t, by });
-          const stmts = [env.DB.prepare("UPDATE orders SET state = 'PLACED', escrow = 'held', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id)];
+          const stmts = [env.DB.prepare("UPDATE orders SET state = 'PLACED', escrow = 'held', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id),
+            notify(env, o.user_id, "order", "Lacagtaadu waa la hubiyay", o.title + " — Garsoore ayaa lacagta hayn doona ilaa aad alaabta qaadato.", "orders.html")];
           /* a paid China order becomes a purchase task for the buying agent (FBG stock and local goods need none) */
           if (o.flow === "china" && !o.fbg_id) {
             const cat = CATALOG[o.sku], v = cat && cat.variants.filter(x => x.vsku === o.vsku)[0];
@@ -1054,8 +1075,15 @@ export async function handleApi(req, env, url) {
         const f = FLOW[o.flow], i = f.indexOf(o.state);
         if (i < f.indexOf("PLACED") || f[i + 1] === "COMPLETED" || i < 0 || i >= f.length - 1) return err("Tallaabadan halkan lagama qaadi karo (lacag bixin = hubi; qaadasho = koodhka).");
         h.push({ state: f[i + 1], at: t, by });
-        await env.DB.prepare("UPDATE orders SET state = ?, history = ?, updated_at = ? WHERE id = ?").bind(f[i + 1], JSON.stringify(h), t, o.id).run();
-        return json({ ok: true, state: f[i + 1] });
+        const nx = f[i + 1];
+        const msg = nx === "READY" ? ["Alaabtaadu waa diyaar", o.title + " — imow xarunta Km4 oo la imow koodhkaaga 6-ta lambar. Waxaad ka arki kartaa bogga dalabyada."]
+          : nx === "ARRIVED" ? ["Alaabtaadu Muqdisho ayay timid", o.title + " — waxaan kuu soo sheegaynaa marka ay diyaar noqoto."]
+          : nx === "SOURCING" ? ["Alaabtaada waa la iibsaday", o.title + " — hadda waxay ku jirtaa habka rarka."]
+          : nx === "IN_TRANSIT" ? ["Alaabtaadu way soo socotaa", o.title + " — waan ku soo ogeysiin doonaa markay timaaddo."]
+          : nx === "CONFIRMED" ? ["Iibiyuhu wuu xaqiijiyay", o.title] : null;
+        await env.DB.batch([env.DB.prepare("UPDATE orders SET state = ?, history = ?, updated_at = ? WHERE id = ?").bind(nx, JSON.stringify(h), t, o.id)]
+          .concat(msg ? [notify(env, o.user_id, "order", msg[0], msg[1], "orders.html")] : []));
+        return json({ ok: true, state: nx });
       }
       if (m[2] === "refunded") {
         if (o.escrow !== "refund_due") return err("Lacag celin lama sugayo.");
@@ -1073,7 +1101,8 @@ export async function handleApi(req, env, url) {
       const o = await env.DB.prepare("SELECT o.*, u.referred_by, u.name u_name FROM orders o JOIN users u ON u.id = o.user_id WHERE o.code = ? AND o.state = 'READY'").bind(code).first();
       if (!o) return err("Koodhkan ma laha dalab diyaar ah.", 404);
       const t = now(), h = J(o.history) || []; h.push({ state: "COMPLETED", at: t, by: user.name });
-      const stmts = [env.DB.prepare("UPDATE orders SET state = 'COMPLETED', escrow = 'released', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id)];
+      const stmts = [env.DB.prepare("UPDATE orders SET state = 'COMPLETED', escrow = 'released', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id),
+        notify(env, o.user_id, "order", "Waad qaadatay — mahadsanid", o.title + " — haddii wax khaldan yihiin, cabasho waxaad furi kartaa 7 maalmood gudahood.", "orders.html")];
       if (o.fbg_id) {        // FBG sale: the stock was someone else's, so credit them the price less commission and pick & pack
         const iv = await env.DB.prepare("SELECT * FROM fbg_inventory WHERE id = ?").bind(o.fbg_id).first();
         if (iv) {
@@ -1088,7 +1117,11 @@ export async function handleApi(req, env, url) {
       let rewarded = false;
       if (o.referred_by) {
         const prev = await env.DB.prepare("SELECT COUNT(*) n FROM orders WHERE user_id = ? AND state = 'COMPLETED'").bind(o.user_id).first();
-        if (prev.n === 0) { stmts.push(env.DB.prepare("UPDATE users SET credit = credit + ? WHERE id = ?").bind(ECON.refReward, o.referred_by)); rewarded = true; }
+        if (prev.n === 0) {
+          stmts.push(env.DB.prepare("UPDATE users SET credit = credit + ? WHERE id = ?").bind(ECON.refReward, o.referred_by),
+            notify(env, o.referred_by, "money", "Waxaad heshay $" + ECON.refReward + " dheeraad ah", "Saaxiibkaagii aad casuuntay ayaa dalabkiisii koowaad qaatay.", "account.html"));
+          rewarded = true;
+        }
       }
       await env.DB.batch(stmts);
       return json({ ok: true, order: { id: o.id, title: o.title, qty: o.qty, customer: o.u_name }, referralPaid: rewarded });
@@ -1097,8 +1130,16 @@ export async function handleApi(req, env, url) {
       const b = await body(req), t = now();
       if (b.action === "price") {
         const total = Math.round(+b.total); if (!(total > 0)) return err("Ku qor qiimo sax ah.");
-        await env.DB.prepare("UPDATE quotes SET status = 'quoted', total = ?, eta_days = ?, staff_note = ?, quoted_at = ? WHERE id = ? AND status = 'pending'").bind(total, Math.max(1, Math.round(+b.etaDays || 20)), String(b.note || "").slice(0, 300), t, m[1]).run();
-      } else await env.DB.prepare("UPDATE quotes SET status = 'declined', staff_note = ?, quoted_at = ? WHERE id = ? AND status = 'pending'").bind(String(b.note || "Alaabtan ma keeni karno.").slice(0, 300), t, m[1]).run();
+        const q = await env.DB.prepare("SELECT user_id, title FROM quotes WHERE id = ?").bind(m[1]).first();
+        await env.DB.batch([
+          env.DB.prepare("UPDATE quotes SET status = 'quoted', total = ?, eta_days = ?, staff_note = ?, quoted_at = ? WHERE id = ? AND status = 'pending'").bind(total, Math.max(1, Math.round(+b.etaDays || 20)), String(b.note || "").slice(0, 300), t, m[1])
+        ].concat(q && q.user_id ? [notify(env, q.user_id, "quote", "Qiimahaagii waa diyaar: $" + total, q.title + " — hadda waad iibsan kartaa qiimahan rasmiga ah.", "orders.html")] : []));
+      } else {
+        const q = await env.DB.prepare("SELECT user_id, title FROM quotes WHERE id = ?").bind(m[1]).first();
+        await env.DB.batch([
+          env.DB.prepare("UPDATE quotes SET status = 'declined', staff_note = ?, quoted_at = ? WHERE id = ? AND status = 'pending'").bind(String(b.note || "Alaabtan ma keeni karno.").slice(0, 300), t, m[1])
+        ].concat(q && q.user_id ? [notify(env, q.user_id, "quote", "Codsigaagii lama qiimayn karin", q.title + " — " + String(b.note || "Alaabtan ma keeni karno."), "orders.html")] : []));
+      }
       return json({ ok: true });
     }
     if (path === "/ops/agents" && M === "GET") {
