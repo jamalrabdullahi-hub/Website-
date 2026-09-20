@@ -138,7 +138,7 @@ function productView(p, host, quoteId) {
     [].forEach.call(host.querySelectorAll(".g-o"), function (b) { b.onclick = function () { vi = +b.dataset.i; render(); }; });
     [].forEach.call(host.querySelectorAll("[data-mode]"), function (b) { b.onclick = function () { mode = b.dataset.mode; render(); }; });
     [].forEach.call(host.querySelectorAll("[data-dq]"), function (b) { b.onclick = function () { qty = Math.max(1, Math.min(p.stock || 99, qty + +b.dataset.dq)); render(); }; });
-    if ($("addBtn")) $("addBtn").onclick = function () { RF.cart.add(p.sku, vi, qty, quoteId, quoteId ? p : null); RF.api.ev("cart", p.sku); toast("✓ " + qty + " × waa lagu daray dambiisha"); };
+    if ($("addBtn")) $("addBtn").onclick = function () { RF.cart.add(p.sku, vi, qty, quoteId, quoteId ? p : null, pr.mode || null); RF.api.ev("cart", p.sku); toast("✓ " + qty + " × waa lagu daray dambiisha"); };
     if ($("shareBtn")) $("shareBtn").onclick = function () {
       var url = location.href, t = (p.brand ? p.brand + " " : "") + p.model + " — " + money(pr.total) + " · Garsoore";
       if (navigator.share) navigator.share({ title: t, url: url }).catch(function () {});
@@ -206,6 +206,7 @@ function checkout(items, fromCart) {
   function nm(p) { return (p.brand ? p.brand + " " : "") + p.model; }
   function vl(v) { return [v.label, v.color].filter(function (x) { return x && x !== "—" && x !== "Standard"; }).join(" · "); }
   function sums() {
+    items.forEach(function (it) { if (it.line && !it.line.mode && it.price && it.price.mode) it.line.mode = it.price.mode; });
     var sub = items.reduce(function (s, it) { return s + it.price.total * it.line.qty; }, 0), disc = Math.min(Math.round(sub * st.disc), st.cap);
     var fee = st.delivery && sub < DELIV.free ? DELIV.fee : 0, credit = A.remote && A.user && st.useCredit ? Math.min(A.user.credit || 0, sub - disc + fee) : 0;
     return { sub: sub, disc: disc, fee: fee, credit: credit, total: sub - disc + fee - credit };
@@ -301,7 +302,13 @@ function cart(app) {
           return '<div class="g-order g-cl"><div class="g-ohead"><a class="g-th" href="product.html?' + (it.line.quote ? "quote=" + it.line.quote : "sku=" + p.sku) + '">' + p.icon + '</a><div style="flex:1"><b>' + e((p.brand ? p.brand + " " : "") + p.model) + '</b>' +
             '<div class="g-eta">' + e([v.label, v.color].filter(function (x) { return x && x !== "—"; }).join(" · ")) + ' · ' + (it.price.local ? "Diyaar maanta" : "Diyaar " + eta(it.price.etaDays)) + ' · ' + money(it.price.total) + ' midkii</div></div>' +
             '<div class="g-qty"><button data-q="' + it.i + '" data-d="-1">−</button><span>' + it.line.qty + '</span><button data-q="' + it.i + '" data-d="1">+</button></div>' +
-            '<div class="g-price sm">' + money(it.price.total * it.line.qty) + '</div><button class="g-x" data-rm="' + it.i + '" aria-label="Ka saar">×</button></div></div>'; }).join("") + '</div>' +
+            '<div class="g-price sm">' + money(it.price.total * it.line.qty) + '</div><button class="g-x" data-rm="' + it.i + '" aria-label="Ka saar">×</button></div>' +
+            /* the lane the customer picked, still changeable here — and the price moves in front of them */
+            (it.price.options && it.price.mode ? '<div class="g-clane">' + ["air", "sea"].filter(function (m) { return it.price.options[m]; }).map(function (m) {
+              var b = it.price.options[m];
+              return '<button class="chip' + (m === it.price.mode ? " on" : "") + '" data-lane="' + it.i + '" data-lm="' + m + '">' +
+                (m === "air" ? "✈ Cirka" : "🚢 Badda") + ' · ' + b.transitMin + '–' + b.transitMax + 'm · ' + money(b.total) + '</button>';
+            }).join("") + '</div>' : "") + '</div>'; }).join("") + '</div>' +
           '<aside class="g-order g-cside"><div class="g-sum"><div><span>Alaabta</span><b>' + money(sub) + '</b></div><div><span>Ka qaadasho Km4</span><b>Bilaash</b></div><div><span>Gaarsiin guriga</span><b>' + (sub >= DELIV.free ? "Bilaash" : "$" + DELIV.fee) + '</b></div></div>' +
             (sub < DELIV.free ? '<div class="g-goal"><div><i style="width:' + Math.round(100 * sub / DELIV.free) + '%"></i></div>Ku dar ' + money(DELIV.free - sub) + ' → gaarsiin guriga bilaash</div>' : '<div class="g-goal ok">✓ Gaarsiin guriga waa bilaash</div>') +
             '<div class="g-tot"><span>Wadarta</span><b>' + money(sub) + '</b></div><button class="btn g-buy full" id="coBtn">U gudub lacag bixinta</button>' +
@@ -311,6 +318,7 @@ function cart(app) {
       (saved.length ? '<div class="g-grid">' + saved.map(cardHTML).join("") + '</div>' : '<div class="g-empty sm">Taabo ♡ alaab kasta si aad u kaydsato.</div>') + '</div>';
     [].forEach.call(app.querySelectorAll("[data-q]"), function (b) { b.onclick = function () { var l = RF.cart.lines()[+b.dataset.q]; RF.cart.setQty(+b.dataset.q, l.qty + +b.dataset.d); draw(); }; });
     [].forEach.call(app.querySelectorAll("[data-rm]"), function (b) { b.onclick = function () { RF.cart.setQty(+b.dataset.rm, 0); draw(); }; });
+    [].forEach.call(app.querySelectorAll("[data-lane]"), function (b) { b.onclick = function () { RF.cart.setMode(+b.dataset.lane, b.dataset.lm); draw(); }; });
     if ($("coBtn")) $("coBtn").onclick = function () { checkout(RF.cart.resolve(), true); };
   }
   draw();

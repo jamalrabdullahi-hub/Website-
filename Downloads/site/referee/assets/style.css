@@ -849,3 +849,8 @@ footer.site b{color:var(--fg);font-weight:650}
 .cs-kv b{font-size:13px;font-weight:600;line-height:1.5}
 .cs-note2{font-size:12.5px;color:var(--muted);line-height:1.6;margin-top:10px}
 .cs-note2 code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+
+/* lane chips on a cart line */
+.g-clane{display:flex;gap:7px;flex-wrap:wrap;padding:0 0 2px 52px}
+.g-clane .chip{cursor:pointer;font-size:12px}
+@media (max-width:560px){ .g-clane{padding-left:0} }
