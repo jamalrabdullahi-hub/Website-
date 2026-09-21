@@ -14,3 +14,6 @@ data/harvest-cache/
 !.dev.vars.example
 .env*
 !.env.example
+
+# wrangler auto-creates this at the repo root and it would publish the whole tree; the real config is deploy/wrangler.jsonc
+/wrangler.jsonc
