@@ -43,9 +43,11 @@ function breakdown(costCny, kg, cat, mode, qty, at) {
   var goods = (costCny / FX) * (qty || 1), cn = goods * RULES.cnFreight;
   var ship = S && S.quote({ kg: kg, cat: cat, qty: qty || 1, mode: mode || "air", at: at });
   if (!ship || !ship.ok) return null;
-  var duty = (goods + ship.cost) * RULES.duty, sub = goods + cn + RULES.consolidation + ship.cost + duty;
+  var clr = S.clearanceFee ? S.clearanceFee(ship.mode, ship.chargeable) : 0;
+  var rate = S.dutyRate ? S.dutyRate(cat) : RULES.duty;
+  var duty = (goods + ship.cost) * rate, sub = goods + cn + RULES.consolidation + ship.cost + duty + clr;
   var margin = sub * RULES.margin;
-  return { goods: goods, chinaFreight: cn, consolidation: RULES.consolidation, intlFreight: ship.cost, duty: duty, margin: margin,
+  return { goods: goods, chinaFreight: cn, consolidation: RULES.consolidation, intlFreight: ship.cost, duty: duty, dutyRate: rate, clearance: clr, margin: margin,
            total: Math.ceil(sub + margin), etaDays: ship.transitMax, transitMin: ship.transitMin, transitMax: ship.transitMax,
            mode: ship.mode, rateCardId: ship.rateCardId, rateCardStatus: ship.rateCardStatus,
            chargeable: ship.chargeable, chargeUnit: ship.unit, chargeBasis: ship.basis, estimatedSize: ship.estimatedSize };
@@ -55,14 +57,17 @@ function breakdown(costCny, kg, cat, mode, qty, at) {
    Kept separate from breakdown() because in a basket the freight is not this line's own — it is this line's SHARE of
    one shipment. Consolidation is charged once per line rather than per unit: the facility handles a SKU once, whether
    the carton holds one shirt or ten, and charging it per unit was quietly taxing bulk buyers. */
-function lineTotal(costCny, qty, freight) {
+function lineTotal(costCny, qty, freight, cat, clearance) {
   qty = Math.max(1, qty || 1);
+  clearance = clearance || 0;
   var goods = (costCny / FX) * qty, cn = goods * RULES.cnFreight;
-  var duty = (goods + freight) * RULES.duty;
-  var sub = goods + cn + RULES.consolidation + freight + duty;
+  /* duty is charged on CIF — goods plus the freight that brought them — at the rate for this kind of goods */
+  var rate = RF.shipping && RF.shipping.dutyRate ? RF.shipping.dutyRate(cat) : RULES.duty;
+  var duty = (goods + freight) * rate;
+  var sub = goods + cn + RULES.consolidation + freight + duty + clearance;
   var margin = sub * RULES.margin;
   return { total: Math.ceil(sub + margin), goods: goods, chinaFreight: cn, consolidation: RULES.consolidation,
-           intlFreight: freight, duty: duty, margin: margin };
+           intlFreight: freight, duty: duty, dutyRate: rate, clearance: clearance, margin: margin };
 }
 
 /* ---------------------------------------------------------------- price a whole basket as one shipment
@@ -96,9 +101,10 @@ function basketPrice(entries, at) {
       etaDays: m.etaDays, freight: 0, seller: seller(en.product) };
     var sh = byIdx[i];
     if (!sh) return { quote: true, reason: "no-shippable-rate", total: null, seller: seller(en.product) };
-    var g = b.groups[sh.mode], L = lineTotal(m.cny, m.qty, sh.freight);
+    var g = b.groups[sh.mode], L = lineTotal(m.cny, m.qty, sh.freight, m.cat, sh.clearance);
     return { total: L.total, unit: Math.round(L.total / m.qty * 100) / 100, qty: m.qty, mode: sh.mode,
-      freight: sh.freight, estimatedSize: sh.estimated, local: false,
+      freight: sh.freight, clearance: sh.clearance || 0, duty: Math.round(L.duty * 100) / 100, dutyRate: L.dutyRate,
+      estimatedSize: sh.estimated, local: false,
       transitMin: g.transitMin, transitMax: g.transitMax, etaDays: g.transitMax,
       rateCardId: g.rateCardId, breakdown: L, seller: seller(en.product) };
   });

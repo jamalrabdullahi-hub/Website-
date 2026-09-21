@@ -1,0 +1,90 @@
+{
+  "_doc": [
+    "Garsoore import clearance. This replaces the flat 5% duty the catalogue used to apply to everything.",
+    "",
+    "STATUS IS LOAD-BEARING, exactly as it is on the rate cards. 'draft' means NOBODY HAS CONFIRMED THESE NUMBERS.",
+    "They are structurally correct and numerically unverified: a licensed Somali clearing agent has to sit down with",
+    "this file and replace every rate and fee with what is actually charged at the port and the airport. Until then",
+    "the shop is quoting an assumption, and the admin console says so.",
+    "",
+    "What IS reliable here is the shape, and the shape is what the flat 5% got wrong:",
+    "",
+    "  1. Duty is assessed on CIF - the value of the goods PLUS the freight to get them here - not on the goods alone.",
+    "  2. The rate is not one number. It varies by what the thing is.",
+    "  3. A large part of clearing a shipment costs the SAME whether the box holds one phone or four hundred:",
+    "     the clearing agent, the delivery order, the documents, terminal handling. Those are per-shipment costs and",
+    "     they are shared across the basket like freight is, not charged per item. Charging them per item was the",
+    "     same mistake that made a $6 shirt cost $24.",
+    "",
+    "Anything a clearing agent tells you that is not in this file is missing from the customer's price."
+  ],
+
+  "status": "draft",
+  "confirmedBy": null,
+  "confirmedAt": null,
+  "jurisdiction": "Federal Republic of Somalia",
+  "currency": "USD",
+  "basis": "CIF",
+
+  "entry": {
+    "air": "Aden Adde International Airport, Mogadishu",
+    "sea": "Port of Mogadishu"
+  },
+
+  "dutyBands": {
+    "_doc": "Ad valorem rate applied to CIF, per catalogue category. Every one of these needs a broker's confirmation.",
+    "PHN": 0.05,
+    "CMP": 0.05,
+    "ELC": 0.05,
+    "APL": 0.05,
+    "HOM": 0.05,
+    "FRN": 0.05,
+    "CLO": 0.05,
+    "SOL": 0.05,
+    "BLD": 0.05,
+    "VEH": 0.05,
+    "_default": 0.05
+  },
+
+  "perConsignment": {
+    "_doc": [
+      "Fixed cost of clearing ONE consignment through the port or the airport, whatever is inside it.",
+      "",
+      "Read the next part carefully, because getting it wrong is how a $6 shirt ends up priced at $98.",
+      "",
+      "Garsoore does not clear one consignment per customer. The China facility consolidates many customers' goods",
+      "into one shipment and clears it once. So a single customer must pay a SHARE of these fees, proportional to",
+      "how much of the consignment is theirs - not the whole thing. The share is worked out by dividing these fees",
+      "by 'typical', the consignment size we actually expect to move, giving a per-kg (air) or per-CBM (sea) loading.",
+      "",
+      "'typical' is therefore an OPERATING ASSUMPTION, not a contract term, and it is the most important number on",
+      "this page: set it too high and every order is underpriced, too low and nobody buys. Revisit it against real",
+      "consignment weights once a few have actually shipped - the admin console shows what it is currently set to."
+    ],
+    "air": {
+      "typical": 500,
+      "typicalUnit": "kg",
+      "fees": { "clearingAgent": 25, "documentation": 10, "terminalHandling": 15, "deliveryOrder": 5 }
+    },
+    "sea": {
+      "typical": 20,
+      "typicalUnit": "cbm",
+      "fees": { "clearingAgent": 45, "documentation": 15, "terminalHandling": 35, "deliveryOrder": 10 }
+    }
+  },
+
+  "excluded": [
+    "storage or demurrage once free time at the port expires",
+    "physical inspection ordered by customs",
+    "penalties for a mis-declared shipment",
+    "anything requiring a permit (pharmaceuticals, weapons, some chemicals)"
+  ],
+
+  "notes": [
+    "Duty is charged on CIF, so raising the freight raises the duty - the two are not independent.",
+    "Categories that may not sit at the default rate once a broker looks: vehicles and parts, solar equipment (often",
+    "relieved or reduced as capital/energy goods), and building materials. Ask about these three specifically.",
+    "If any category turns out to be relieved from duty entirely, set it to 0 here rather than deleting the line, so",
+    "it is visible that somebody checked."
+  ]
+}

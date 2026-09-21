@@ -170,8 +170,23 @@ RF.authUI = {
           '<div class="g-err sm" id="auE"' + (msg ? "" : " hidden") + '>' + e(msg || "") + '</div>' +
           '<button class="btn g-buy full" id="auGo">' + (mode === "login" ? "Gal" : "Samee akoon") + '</button></form>' +
           '<div class="g-eta" style="margin-top:12px;text-align:center">' + (mode === "login" ? 'Akoon ma lihid? <a href="#" id="auSw">Samee mid — 20 ilbiriqsi</a>' : 'Akoon ma leedahay? <a href="#" id="auSw">Gal</a>') + '</div>' +
+          (mode === "login" ? '<div class="g-eta" style="margin-top:6px;text-align:center"><a href="#" id="auForgot">PIN-ka ma illowday?</a></div>' : "") +
           '<div class="g-escrow">🔒 PIN-kaaga cid kale lama wadaagto — shaqaalaha Garsoore weligood kuma weydiin doonaan.</div></div>';
         document.getElementById("auSw").onclick = function (ev) { ev.preventDefault(); mode = mode === "login" ? "join" : "login"; draw(); };
+        /* No email means no reset link. A person rings you back instead — so all this does is put the request in
+           front of staff, and it says the same thing whether or not the number has an account. */
+        if (document.getElementById("auForgot")) document.getElementById("auForgot").onclick = function (ev) {
+          ev.preventDefault();
+          var ph = document.getElementById("auP").value.trim();
+          if (!ph) { draw("Marka hore ku qor lambarkaaga taleefanka."); return; }
+          call("POST", "/auth/forgot", { phone: ph }).then(function (j) {
+            box.innerHTML = '<div class="g-co g-auth"><h2>Waan ku soo wacaynaa</h2>' +
+              '<div class="g-sku">' + e(j.message) + '</div>' +
+              '<div class="g-escrow">🔒 Shaqaaluhu weligood kuma weydiin doonaan PIN-kaaga hore — mid cusub ayay ku siin doonaan, adiguna waad beddelan doontaa markaad gasho.</div>' +
+              '<button class="btn ghost full" id="auBack" style="margin-top:14px">Ku laabo</button></div>';
+            document.getElementById("auBack").onclick = function () { draw(); };
+          }).catch(function (x) { draw(x.message); });
+        };
         document.getElementById("auF").onsubmit = function (ev) {
           ev.preventDefault();
           var ph = document.getElementById("auP").value, pin = document.getElementById("auK").value, go = document.getElementById("auGo");

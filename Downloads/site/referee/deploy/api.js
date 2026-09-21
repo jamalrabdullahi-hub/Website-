@@ -203,14 +203,29 @@ function rawUnits(mode, kg, cbm, card) {
 }
 function packedCbm(kg, cat) { const d = RATES.packedDensity || {}; return kg / (d[cat] || d._default || 175); }
 
+/* ---- import clearance, mirroring assets/shipping.js against the same generated data.
+   Duty is ad valorem on CIF at a rate that depends on the goods. Clearing the consignment is a fixed cost shared
+   over the consignment size we expect to move, so a customer pays a share of it rather than the whole bill. */
+function dutyRate(cat) {
+  const b = (RATES.customs && RATES.customs.dutyBands) || {};
+  return b[cat] != null ? b[cat] : (b._default != null ? b._default : PRICING.rules.duty);
+}
+function clearanceRate(mode) {
+  const c = ((RATES.customs && RATES.customs.perConsignment) || {})[mode === "sea" ? "sea" : "air"];
+  if (!c || !(c.typical > 0)) return 0;
+  const fees = c.fees || {};
+  return Object.keys(fees).reduce((n, k) => n + (+fees[k] || 0), 0) / c.typical;
+}
+
 /* One line's landed price given its share of the shipment. Mirrors lineTotal() in assets/catalog.js and uses the
    same exported constants, so the cart and the order cannot disagree. */
-function lineLanded(costCny, qty, freight) {
+function lineLanded(costCny, qty, freight, cat, clearance) {
   const R = PRICING.rules, goods = (costCny / PRICING.fx) * Math.max(1, qty), cn = goods * R.cnFreight;
-  const duty = (goods + freight) * R.duty;
-  const sub = goods + cn + R.consolidation + freight + duty;
+  const rate = dutyRate(cat);
+  const duty = (goods + freight) * rate;                      // CIF basis: goods plus the freight that brought them
+  const sub = goods + cn + R.consolidation + freight + duty + (clearance || 0);
   const margin = sub * R.margin;
-  return { total: Math.ceil(sub + margin), margin, goods, freight };
+  return { total: Math.ceil(sub + margin), margin, goods, freight, duty, dutyRate: rate, clearance: clearance || 0 };
 }
 
 /* Freight for a whole basket: one shipment per lane, shared out by each line's chargeable quantity. */
@@ -230,15 +245,20 @@ function basketFreight(lines, at) {
     const card = RATES.cards.find(c => c.id === q.rateCardId);
     const units = g.idx.map(x => Math.max(rawUnits(mode, x.kg, x.cbm, card), 1e-9));
     const totalUnits = units.reduce((a, b) => a + b, 0) || 1;
-    let allocated = 0, biggest = 0;
+    const clr = Math.round(clearanceRate(mode) * q.chargeable * 100) / 100;
+    let allocated = 0, allocatedClr = 0, biggest = 0;
     units.forEach((u, k) => { if (u > units[biggest]) biggest = k; });
     g.idx.forEach((x, k) => {
       const share = Math.round(q.cost * units[k] / totalUnits * 100) / 100;
-      shares[x.i] = { mode, freight: share };
-      allocated += share;
+      const cshare = Math.round(clr * units[k] / totalUnits * 100) / 100;
+      shares[x.i] = { mode, freight: share, clearance: cshare };
+      allocated += share; allocatedClr += cshare;
     });
     const drift = Math.round((q.cost - allocated) * 100) / 100;
     if (drift !== 0) shares[g.idx[biggest].i].freight = Math.round((shares[g.idx[biggest].i].freight + drift) * 100) / 100;
+    const cdrift = Math.round((clr - allocatedClr) * 100) / 100;
+    if (cdrift !== 0) shares[g.idx[biggest].i].clearance = Math.round((shares[g.idx[biggest].i].clearance + cdrift) * 100) / 100;
+    q.clearance = clr;
     out.groups[mode] = q;
   }
   return out;
@@ -351,7 +371,7 @@ async function priceItems(env, user, items) {
     ship.forEach((x, k) => {
       const sh = bf.shares[k], o = out[x.i];
       if (!sh) throw new Error("Rarka alaabtan lama qiimayn karo — codso qiimo.");
-      const g = bf.groups[sh.mode], L = lineLanded(o._cny, o.qty, sh.freight);
+      const g = bf.groups[sh.mode], L = lineLanded(o._cny, o.qty, sh.freight, o._cat, sh.clearance);
       o.lineTotal = L.total;
       o.unit = Math.round(L.total / o.qty * 100) / 100;
       o.cogs = Math.round((L.total - L.margin) / o.qty * 100) / 100;
@@ -422,6 +442,21 @@ export async function handleApi(req, env, url) {
       const row = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
       return json({ user: pubUser(row) }, 200, { "set-cookie": await newSession(env, url, u.id) });
     }
+    /* "I forgot my PIN". Deliberately says the same thing whether or not the number has an account: answering
+       truthfully would turn this into a way to test which phone numbers are Garsoore customers. Nothing is changed
+       here — it only puts the request in front of a human who will ring the number back. */
+    if (path === "/auth/forgot" && M === "POST") {
+      const b = await body(req), phone = normPhone(b.phone);
+      if (!phone) return err("Ku qor lambarkaaga taleefanka.");
+      const said = { ok: true, message: "Haddii lambarkani akoon leeyahay, shaqaale Garsoore ah ayaa ku soo wacaya si uu kuu caawiyo." };
+      const recent = await env.DB.prepare("SELECT COUNT(*) n FROM pin_resets WHERE phone = ? AND at > ?").bind(phone, new Date(Date.now() - 36e5).toISOString()).first();
+      if (recent.n >= 3) return json(said);                      // quietly stop someone hammering it
+      const u = await env.DB.prepare("SELECT id, name FROM users WHERE phone = ?").bind(phone).first();
+      await env.DB.prepare("INSERT INTO pin_resets (id, user_id, phone, at, state) VALUES (?,?,?,?, 'open')")
+        .bind(rid("PR-", 6), u ? u.id : null, phone, now()).run();
+      return json(said);
+    }
+
     if (path === "/auth/login" && M === "POST") {
       const b = await body(req), phone = normPhone(b.phone);
       if (!phone) return err("Lambarka taleefanka ma saxna.");
@@ -881,8 +916,26 @@ export async function handleApi(req, env, url) {
           await env.DB.prepare("UPDATE procurement SET note = ?, updated_at = ? WHERE id = ?").bind(String(b.note || "").slice(0, 300), t, p.id).run();
           return json({ ok: true });
         }
-        await env.DB.prepare("UPDATE procurement SET state = 'CANCELLED', note = ?, history = ?, updated_at = ? WHERE id = ?").bind(String(b.note || "").slice(0, 300), push("CANCELLED"), t, p.id).run();
-        return json({ ok: true, hint: "Dalabka macmiilka waa in la joojiyaa oo lacagta la celiyaa." });
+        /* A supplier that cannot deliver must not leave the customer's order sitting in SOURCING with their money
+           held. Cancelling the purchase cancels the order it exists for, puts the escrow into refund_due, gives back
+           any store credit they spent, and tells them why — in one batch, so it cannot half-happen. Marking the money
+           actually returned stays a separate, deliberate step (/ops/orders/:id/refunded). */
+        const why = String(b.note || "").slice(0, 300);
+        const ord = await env.DB.prepare("SELECT * FROM orders WHERE id = ?").bind(p.order_id).first();
+        const stmts = [env.DB.prepare("UPDATE procurement SET state = 'CANCELLED', note = ?, history = ?, updated_at = ? WHERE id = ?").bind(why, push("CANCELLED"), t, p.id)];
+        let refund = false;
+        if (ord && !["CANCELLED", "COMPLETED", "EXPIRED"].includes(ord.state)) {
+          const oh = J(ord.history) || []; oh.push({ state: "CANCELLED", at: t, by: user.name });
+          refund = ord.escrow === "held" || ord.state === "PAYMENT_REVIEW";
+          stmts.push(env.DB.prepare("UPDATE orders SET state = 'CANCELLED', escrow = ?, cancel_reason = ?, history = ?, updated_at = ? WHERE id = ?")
+            .bind(refund ? "refund_due" : "none", why || "Iibiyuhu ma heli karin alaabta.", JSON.stringify(oh), t, ord.id));
+          if (ord.credit_used) stmts.push(env.DB.prepare("UPDATE users SET credit = credit + ? WHERE id = ?").bind(ord.credit_used, ord.user_id));
+          stmts.push(notify(env, ord.user_id, "order", "Dalabkaaga waa la joojiyay",
+            ord.title + " — " + (why || "iibiyuhu ma heli karin alaabta") + ". " +
+            (refund ? "Lacagtaada oo dhan waa laguu celinayaa." : "Wax lacag ah lagaama qaadin."), "orders.html"));
+        }
+        await env.DB.batch(stmts);
+        return json({ ok: true, order: ord ? ord.id : null, refundDue: refund });
       }
       return err("Not found", 404);
     }
@@ -1258,6 +1311,46 @@ export async function handleApi(req, env, url) {
       await env.DB.prepare("UPDATE orders SET dispute = ?, escrow = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(d), b.refund ? "refund_due" : o.escrow, t, o.id).run();
       return json({ ok: true });
     }
+    /* the reset queue. Staff see who asked and when; they never see anyone's existing PIN, because nobody can —
+       only a hash is stored, and the new one is generated here and shown once. */
+    if (path === "/ops/pin-resets" && M === "GET") {
+      const r = await env.DB.prepare(`SELECT p.*, u.name u_name, u.status u_status,
+          (SELECT COUNT(*) FROM orders o WHERE o.user_id = p.user_id) orders
+        FROM pin_resets p LEFT JOIN users u ON u.id = p.user_id
+        WHERE p.state = 'open' ORDER BY p.at ASC LIMIT 100`).all();
+      return json({ requests: r.results.map(x => ({ id: x.id, phone: "+" + x.phone, at: x.at,
+        name: x.u_name || null, hasAccount: !!x.user_id, suspended: x.u_status === "suspended", orders: x.orders || 0 })) });
+    }
+    if ((m = path.match(/^\/ops\/pin-resets\/(PR-[A-Z0-9]+)\/(issue|reject)$/)) && M === "POST") {
+      const b = await body(req), t = now();
+      const pr = await env.DB.prepare("SELECT * FROM pin_resets WHERE id = ? AND state = 'open'").bind(m[1]).first();
+      if (!pr) return err("Codsigan lama helin ama horey ayaa loo xalliyay.", 404);
+      if (m[2] === "reject") {
+        await env.DB.prepare("UPDATE pin_resets SET state = 'rejected', handled_by = ?, handled_name = ?, handled_at = ?, note = ? WHERE id = ?")
+          .bind(user.id, user.name, t, String(b.note || "").slice(0, 200), pr.id).run();
+        return json({ ok: true });
+      }
+      if (!pr.user_id) return err("Lambarkan akoon ma laha.", 404);
+      const target = await env.DB.prepare("SELECT id, name, phone, status, role FROM users WHERE id = ?").bind(pr.user_id).first();
+      if (!target) return err("Akoonkan lama helin.", 404);
+      if (target.status === "suspended") return err("Akoonkan waa la hakiyay — marka hore furfur.");
+      if (target.role === "admin" && user.role !== "admin") return err("Maamulaha PIN-kiisa halkan lagama beddeli karo.");
+      /* six random digits, never a pattern. Shown to staff once so they can read it down the phone, stored only as a
+         hash, forced to be changed at first sign-in, and every existing session is dropped. */
+      const temp = String(crypto.getRandomValues(new Uint32Array(1))[0] % 900000 + 100000);
+      await env.DB.batch([
+        env.DB.prepare("UPDATE users SET pin_hash = ?, must_change_pin = 1 WHERE id = ?").bind(await pinHash(temp), target.id),
+        env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(target.id),
+        env.DB.prepare("UPDATE pin_resets SET state = 'issued', handled_by = ?, handled_name = ?, handled_at = ?, note = ? WHERE id = ?")
+          .bind(user.id, user.name, t, String(b.note || "").slice(0, 200), pr.id),
+        env.DB.prepare("INSERT INTO admin_log (at, who, who_name, action, target, detail) VALUES (?,?,?,?,?,?)")
+          .bind(t, user.id, user.name, "user.pin_reset", target.id, "PIN ku meel gaar ah ayaa la siiyay (" + pr.id + ")"),
+        notify(env, target.id, "money", "PIN-kaaga waa la beddelay",
+          "Shaqaale Garsoore ah ayaa ku siiyay PIN ku meel gaar ah. Marka aad gasho waxaa lagu weydiinayaa inaad mid cusub dhigato. Haddii aanad adigu codsan, nala soo xiriir hadda.", "account.html")
+      ]);
+      return json({ ok: true, tempPin: temp, name: target.name, phone: "+" + target.phone });
+    }
+
     if (path === "/ops/pickup" && M === "POST") {
       const b = await body(req), code = String(b.code || "").replace(/\D/g, "");
       if (code.length !== 6) return err("Koodhku waa 6 lambar.");
@@ -1325,13 +1418,14 @@ export async function handleApi(req, env, url) {
       const byState = {}; rows.forEach(r => byState[r.state] = (byState[r.state] || 0) + 1);
       const ev = (await env.DB.prepare("SELECT name, COUNT(DISTINCT sid) n FROM events WHERE at > ? GROUP BY name").bind(since).all()).results;
       const funnel = {}; ev.forEach(r => funnel[r.name] = r.n);
+      const pr = await env.DB.prepare("SELECT COUNT(*) n FROM pin_resets WHERE state = 'open'").first();
       const q = await env.DB.prepare("SELECT COUNT(*) n, MIN(created_at) oldest FROM quotes WHERE status = 'pending'").first();
       const users = await env.DB.prepare("SELECT COUNT(*) n FROM users").first();
       const cat = Object.values(CATALOG), catalog = { products: cat.length, verified: cat.filter(p => p.verified).length, requireVerified: env.REQUIRE_VERIFIED === "1" };
       return json({ days, orders: rows.length, paidOrders: paid.length, gmv: sum(paid, r => r.total), revenue: +sum(paid, r => (J(r.econ) || {}).revenue || 0).toFixed(2),
         gross: +sum(paid, r => (J(r.econ) || {}).gross || 0).toFixed(2), aov: paid.length ? Math.round(sum(paid, r => r.total) / paid.length) : 0,
         held: sum(rows.filter(r => r.escrow === "held"), r => r.total), refundDue: sum(rows.filter(r => r.escrow === "refund_due"), r => r.total),
-        openDisputes: rows.filter(r => (J(r.dispute) || {}).status === "open").length, byState, funnel, pendingQuotes: q.n, oldestQuote: q.oldest, users: users.n, econ: ECON, catalog });
+        openDisputes: rows.filter(r => (J(r.dispute) || {}).status === "open").length, byState, funnel, pendingQuotes: q.n, oldestQuote: q.oldest, pendingResets: pr.n, users: users.n, econ: ECON, catalog });
     }
     return err("Not found", 404);
   } catch (x) {

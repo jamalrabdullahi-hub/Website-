@@ -27,8 +27,30 @@ for c in cards:
     if c["mode"] == "air":
         assert c.get("volumetricDivisor", 0) > 0, "%s needs a volumetric divisor" % c["id"]
 
-# the browser and the Worker get the cards and the density table; the prose notes stay out of the payload
-payload = {"cards": cards, "packedDensity": {k: v for k, v in data.get("packedDensity", {}).items() if not k.startswith("_")}}
+# ---- import clearance: duty bands and the per-shipment fees, from the same one source
+cus = json.load(io.open(os.path.join(ROOT, "data", "customs.json"), encoding="utf-8"))
+assert cus.get("status") in ("draft", "confirmed"), "customs status must be draft or confirmed"
+assert cus.get("basis") == "CIF", "duty is assessed on CIF; changing that changes the pricing maths"
+bands = {k: v for k, v in cus.get("dutyBands", {}).items() if not k.startswith("_")}
+assert bands.get("_default") is not None or "_default" in cus.get("dutyBands", {}), "customs needs a _default band"
+for k, v in bands.items():
+    assert isinstance(v, (int, float)) and 0 <= v < 1, "duty band %s must be a fraction, got %r" % (k, v)
+for m, f in cus.get("perConsignment", {}).items():
+    if m.startswith("_"): continue
+    assert f.get("typical", 0) > 0, "%s needs a typical consignment size to share clearance over" % m
+    assert f.get("typicalUnit") in ("kg", "cbm"), "%s typicalUnit must be kg or cbm" % m
+customs = {
+    "status": cus["status"], "basis": cus["basis"], "entry": cus.get("entry", {}),
+    "dutyBands": {**bands, "_default": cus["dutyBands"].get("_default", 0.05)},
+    "perConsignment": {m: {"typical": f["typical"], "typicalUnit": f["typicalUnit"],
+                           "fees": {k: v for k, v in f["fees"].items() if not k.startswith("_")}}
+                       for m, f in cus.get("perConsignment", {}).items() if not m.startswith("_")},
+    "excluded": cus.get("excluded", []),
+}
+
+# the browser and the Worker get the cards, the density table and the clearance rules; prose notes stay out
+payload = {"cards": cards, "packedDensity": {k: v for k, v in data.get("packedDensity", {}).items() if not k.startswith("_")},
+           "customs": customs}
 blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 def write(path, text):
@@ -44,3 +66,9 @@ write(os.path.join(ROOT, "deploy", "rates.gen.js"),
 unsigned = [c["id"] for c in cards if c.get("status") != "contracted"]
 print("rate cards: %d (%s) -> assets/rate-cards.js, deploy/rates.gen.js"
       % (len(cards), ("UNSIGNED: " + ", ".join(unsigned)) if unsigned else "all contracted"))
+print("customs: %d duty bands, clearance fees for %s (%s)"
+      % (len(bands) - 1, "/".join(sorted(customs["perConsignment"])), 
+         "UNCONFIRMED - no broker has signed off" if customs["status"] != "confirmed" else "confirmed"))
+for m, f in sorted(customs["perConsignment"].items()):
+    tot = sum(f["fees"].values())
+    print("  %s clearance: $%g shared over %g %s = $%.3f/%s" % (m, tot, f["typical"], f["typicalUnit"], tot / f["typical"], f["typicalUnit"]))

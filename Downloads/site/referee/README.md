@@ -205,6 +205,23 @@ The consolidation and receiving point is **Guangzhou, Guangdong**. It is infrast
 ### Packed dimensions are estimated, and say so
 All 421 catalogue rows have a weight; none has measured packed dimensions. Volume is estimated from weight using a per-category packed density (`packedDensity` in the rate cards), flagged `estimated` everywhere it is used. Air break-even at divisor 6000 is 167 kg/CBM, so bulky categories (furniture 110, clothing 120) correctly price as volumetric-dominant. When the facility weighs and measures the real carton, Garsoore absorbs the difference — the customer's locked price does not move.
 
+### Import clearance (`data/customs.json`)
+The flat 5% duty is gone. What replaced it is structurally right and **numerically unconfirmed** — `status: "draft"`, `confirmedBy: null` — exactly like the rate cards, and the console says so.
+
+- **Duty is ad valorem on CIF** (goods + the freight that brought them), at a rate that varies by category. Raising freight raises duty; they are not independent.
+- **Clearing a consignment is a fixed cost** — agent, documents, terminal handling, delivery order — that does not care what is inside the box.
+- **A customer pays a share of it, not the whole bill.** Garsoore consolidates many customers into one consignment and clears it once. The fees are spread over `typical`, the consignment size we expect to move (500 kg air / 20 CBM sea), giving a loading of $0.11/kg air and $5.25/CBM sea. Charging the full $55 per basket would have priced a $6 shirt at $98.
+- `typical` is an **operating assumption, not a contract term**, and it is the most sensitive number in the file: too high and every order is underpriced, too low and nothing sells. Revisit it against real consignment weights once a few have shipped.
+- Ask a broker specifically about **vehicles, solar and building materials** — those are the three most likely to sit off the default rate. If a category turns out to be relieved entirely, set it to `0` rather than deleting the line, so it is visible that somebody checked.
+
+### PIN recovery (`deploy/schema-9.sql`)
+The account is a phone number and a PIN, so there is no reset link and there was previously **no way back in at all** — `/auth/pin` needs the old PIN and an admin could change a person's role but not their PIN. The first customer to forget theirs was locked out of their orders and their escrow permanently.
+
+Now: the customer asks from the sign-in sheet (`/auth/forgot`, public, **above the auth gate** — a locked-out user cannot authenticate to ask), a human rings the number on file and satisfies themselves it is them, then issues a one-time PIN from the ops console's **PIN la illoobay** tab. The reply is identical whether or not the number has an account, so this cannot be used to test which numbers are customers, and three requests an hour is the limit. The new PIN is shown to staff exactly once, forces a change at next sign-in, drops every existing session, and is written to `admin_log` with the name of whoever issued it. Staff never see anyone's existing PIN — nobody can, only a hash is stored.
+
+### When a supplier cannot deliver
+Cancelling a purchase order used to return a *hint* — a string telling staff to remember to cancel the order and refund. The customer's order sat in SOURCING with their money held, and they were told nothing. Now cancelling the PO cancels the order it exists for, moves the escrow to `refund_due`, returns any store credit they spent and notifies them with the reason, in one batch so it cannot half-happen. Marking the money actually returned stays a separate, deliberate step in the refunds queue.
+
 ### Basket freight: one basket is one shipment (`RF.shipping.basket`, `RF.catalog.basketPrice`)
 Freight is charged **per shipment, not per line**. Charging the minimum on every line made cheap light goods unsellable: a $6 SHEIN top carried the $12 air minimum and retailed at $23.79, and ten of them would have quoted ten × $12 = $120 of freight against a real consolidated cost of $37.80.
 

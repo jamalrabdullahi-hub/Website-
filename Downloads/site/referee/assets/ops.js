@@ -15,7 +15,7 @@ function wa(phone, text) {
 }
 function toast(m) { var t = document.createElement("div"); t.className = "toast in"; t.textContent = m; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2600); }
 var NEXT_SO = { SOURCING: "Laga iibsaday", IN_TRANSIT: "Soo socda", ARRIVED: "Yimid", CONFIRMED: "Iibiyaha xaqiijiyay", READY: "Diyaar (u sheeg macmiilka)" };
-var TABS = [["stats", "Tirakoob"], ["pay", "Lacag bixin"], ["orders", "Dalabyo"], ["pickup", "Qaadasho"], ["buy", "Iibsiga"], ["fbg", "FBG (Shiinaha)"], ["quotes", "Codsiyo qiimo"], ["issues", "Celin & cabasho"]];
+var TABS = [["stats", "Tirakoob"], ["pay", "Lacag bixin"], ["orders", "Dalabyo"], ["pickup", "Qaadasho"], ["buy", "Iibsiga"], ["fbg", "FBG (Shiinaha)"], ["quotes", "Codsiyo qiimo"], ["issues", "Celin & cabasho"], ["pins", "PIN la illoobay"]];
 
 RF.opsUI = function (app, tab) {
   if (!RF.api || !RF.api.remote) { app.innerHTML = '<div class="wrap g-empty">Hawlgalku wuxuu u baahan yahay server-ka (API). Ku fur bogga live-ka ah ama <code>wrangler dev</code>.</div>'; return; }
@@ -35,7 +35,7 @@ RF.opsUI = function (app, tab) {
   /* counts on the tabs = today's to-do list */
   Promise.all([call("GET", "/ops/stats?days=365"), call("GET", "/quotes?all=1")]).then(function (a) {
     var s = a[0], bs = s.byState || {};
-    var n = { pay: bs.PAYMENT_REVIEW || 0, pickup: bs.READY || 0, quotes: s.pendingQuotes, issues: s.openDisputes + (s.refundDue ? 1 : 0), orders: (bs.PLACED || 0) + (bs.CONFIRMED || 0) + (bs.SOURCING || 0) + (bs.IN_TRANSIT || 0) + (bs.ARRIVED || 0) };
+    var n = { pay: bs.PAYMENT_REVIEW || 0, pickup: bs.READY || 0, quotes: s.pendingQuotes, pins: s.pendingResets || 0, issues: s.openDisputes + (s.refundDue ? 1 : 0), orders: (bs.PLACED || 0) + (bs.CONFIRMED || 0) + (bs.SOURCING || 0) + (bs.IN_TRANSIT || 0) + (bs.ARRIVED || 0) };
     Object.keys(n).forEach(function (k) { if ($("n-" + k) && n[k]) $("n-" + k).textContent = n[k]; });
     $("opsBadge").textContent = "👤 " + RF.api.user.name + " · " + s.users + " macmiil";
   }).catch(function () {});
@@ -127,6 +127,37 @@ RF.opsUI = function (app, tab) {
     bind("[data-q]", function (b) { var id = b.dataset.q, t = +body.querySelector('[data-t="' + id + '"]').value, d = +body.querySelector('[data-d="' + id + '"]').value;
       if (!(t > 0)) return Promise.reject(new Error("Ku qor qiimo sax ah.")); return call("POST", "/ops/quotes/" + id, { action: "price", total: t, etaDays: d }); });
     bind("[data-x]", function (b) { var why = prompt("Sababta (macmiilka ayaa arkaya):", "Alaabtan ma keeni karno."); if (why === null) return null; return call("POST", "/ops/quotes/" + b.dataset.x, { action: "decline", note: why }); });
+  }).catch(fail);
+
+  /* Somebody is locked out of their own orders and their escrow. The only proof of identity available is the phone
+     itself, so the rule is on screen: ring the number on file, satisfy yourself it is them, then issue. The new PIN
+     appears once, is single-use, and every session they had is dropped. */
+  if (tab === "pins") return call("GET", "/ops/pin-resets").then(function (j) {
+    body.innerHTML = '<p class="g-eta" style="max-width:76ch">Wac lambarka <b>sida uu akoonka ugu qoran yahay</b> — ha ku wicin lambar kale oo lagu siiyay. Weydii magaca, magaalada iyo dalabkii u dambeeyay. Marka aad hubto, sii PIN ku meel gaar ah. ' +
+      '<b>Weligaa ha weydiin PIN-kooda hore</b> — mana jiro cid arki karta, xogta waa la qarsoodiyay.</p>' +
+      (j.requests.length ? j.requests.map(function (r) {
+        return '<div class="g-order"><div class="g-ohead"><div style="flex:1"><b>' + e(r.phone) + (r.name ? ' · ' + e(r.name) : "") + '</b>' +
+          '<div class="g-eta">' + r.id + ' · ' + ago(r.at) + ' kahor · ' +
+            (r.hasAccount ? r.orders + ' dalab' + (r.suspended ? ' · <b style="color:var(--down)">akoonka waa la hakiyay</b>' : "") : '<b style="color:var(--down)">lambarkan akoon ma laha</b>') + '</div>' +
+          '<div class="g-eta" id="pr-' + r.id + '"></div></div>' +
+          wa(r.phone, "Salaan, waa Garsoore. Codsi PIN cusub ayaa naga soo gaadhay lambarkan. Ma adigaa codsaday?") +
+          (r.hasAccount && !r.suspended ? '<button class="btn" data-pin="' + r.id + '">🔑 Sii PIN cusub</button>' : "") +
+          '<button class="btn ghost" data-prx="' + r.id + '">✕ Diid</button></div></div>';
+      }).join("") : '<div class="g-empty sm">Codsi PIN ah ma jiro.</div>');
+    /* wired by hand rather than through bind(), because bind() reloads the tab on success and that would wipe the
+       one and only showing of the new PIN off the screen before staff could read it out */
+    [].forEach.call(body.querySelectorAll("[data-pin]"), function (b) {
+      b.onclick = function () {
+        if (!confirm("Ma hubtaa inaad lambarka la hadashay oo aad xaqiijisay inuu yahay qofka akoonka leh?")) return;
+        b.disabled = true;
+        call("POST", "/ops/pin-resets/" + b.dataset.pin + "/issue", {}).then(function (r) {
+          var el = $("pr-" + b.dataset.pin);
+          el.innerHTML = '<b style="font-size:20px;letter-spacing:.18em;color:var(--fg)">' + e(r.tempPin) + '</b> — u akhri ' + e(r.name) + ' taleefanka. Mar kale lama muujin doono.';
+          b.remove();
+        }).catch(function (x) { b.disabled = false; fail(x); });
+      };
+    });
+    bind("[data-prx]", function (b) { return call("POST", "/ops/pin-resets/" + b.dataset.prx + "/reject", { note: "Lama xaqiijin" }); });
   }).catch(fail);
 
   if (tab === "issues") return call("GET", "/ops/orders").then(function (j) {

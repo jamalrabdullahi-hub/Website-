@@ -15,6 +15,23 @@ var RF = window.RF = window.RF || {};
 var DATA = window.RF_RATE_CARDS || { cards: [], packedDensity: { _default: 175 } };
 
 function cards() { return DATA.cards || []; }
+
+/* ---------------------------------------------------------------- import clearance
+   Duty is assessed on CIF (goods + freight), at a rate that depends on what the thing is. The rest of clearing a
+   shipment — the agent, the documents, terminal handling, the delivery order — costs the same whether the box holds
+   one phone or four hundred, so it is a per-shipment cost and is shared across the basket exactly like freight. */
+function customs() { return DATA.customs || { status: "draft", dutyBands: { _default: 0.05 }, perShipment: {} }; }
+function dutyRate(cat) { var b = customs().dutyBands || {}; return b[cat] != null ? b[cat] : (b._default != null ? b._default : 0.05); }
+/* A customer pays a SHARE of clearing one consignment, not the whole bill: the facility consolidates many people's
+   goods and clears them together. The fees are spread over the consignment size we expect to move (an operating
+   assumption, declared in data/customs.json), giving a loading per chargeable kg or CBM. */
+function clearanceRate(mode) {
+  var c = (customs().perConsignment || {})[mode === "sea" ? "sea" : "air"];
+  if (!c || !(c.typical > 0)) return 0;
+  var fees = c.fees || {}, total = Object.keys(fees).reduce(function (n, k) { return n + (+fees[k] || 0); }, 0);
+  return total / c.typical;
+}
+function clearanceFee(mode, chargeable) { return Math.round(clearanceRate(mode) * (chargeable || 0) * 100) / 100; }
 function density(cat) { var d = DATA.packedDensity || {}; return d[cat] || d._default || 175; }
 
 /* ---------------------------------------------------------------- picking the card that applies
@@ -131,6 +148,17 @@ function basket(lines, at) {
     });
     var drift = Math.round((q.cost - allocated) * 100) / 100;
     if (drift !== 0) out.shares[g.lines[biggest].idx].freight = Math.round((out.shares[g.lines[biggest].idx].freight + drift) * 100) / 100;
+    /* the fixed cost of clearing this consignment, shared out on the same basis as the freight */
+    var clr = clearanceFee(mode, q.chargeable), allocatedClr = 0;
+    g.lines.forEach(function (x, k) {
+      var share = Math.round(clr * units[k] / totalUnits * 100) / 100;
+      out.shares[x.idx].clearance = share;
+      allocatedClr += share;
+    });
+    var cdrift = Math.round((clr - allocatedClr) * 100) / 100;
+    if (cdrift !== 0) out.shares[g.lines[biggest].idx].clearance = Math.round((out.shares[g.lines[biggest].idx].clearance + cdrift) * 100) / 100;
+    q.clearance = clr;
+    q.customsStatus = customs().status;
     out.groups[mode] = q;
   }
   return out;
@@ -149,6 +177,7 @@ function options(spec) {
 RF.shipping = {
   data: DATA, cards: cards, cardFor: cardFor, cardById: cardById, density: density,
   packed: packed, quote: quote, options: options, bulk: bulk, basket: basket, rawUnits: rawUnits,
+  customs: customs, dutyRate: dutyRate, clearanceFee: clearanceFee, clearanceRate: clearanceRate,
   /* is every card that prices the shop actually signed? the admin console asks this */
   unsigned: function () { return cards().filter(function (c) { return c.status !== "contracted"; }).map(function (c) { return c.id; }); }
 };
