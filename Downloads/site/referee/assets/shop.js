@@ -138,8 +138,8 @@ function freightHeavyHTML(p, v) {
   var vb = C.viability(p, v, 1);
   if (vb.ok) return "";
   var href = (RF.sources ? RF.sources.crossHref("product.html?sku=" + encodeURIComponent(p.sku) + "&qty=10", "business") : "#");
-  return '<div class="g-bulk">⚖️ <b>Alaabtan way culus tahay marka loo eego qiimaheeda</b> — ' +
-    Math.round(vb.share * 100) + '% qiimaha waa rar. Hal xabbo si macquul ah uguma soo diri karno, ' +
+  return '<div class="g-bulk">⚖️ <b>Alaabtan way culus tahay marka loo eego qiimaheeda</b> — rarkeedu waa ' +
+    money(vb.shipping) + ', alaabtuna waa ' + money(vb.item) + '. Hal xabbo si macquul ah uguma soo diri karno, ' +
     'mana rabno inaan kuu iibinno wax rarkiisu ka qaali yahay alaabta.' +
     '<div class="g-bulkrow"><span>Tiro badan ayay macquul ku tahay</span>' +
     '<a class="btn ghost" href="' + href + '">Ku eeg jumlad →</a></div></div>';

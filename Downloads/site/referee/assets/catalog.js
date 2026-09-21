@@ -187,23 +187,34 @@ function retailOK(p) {
    asks one question of every product — what fraction of the price is shipping, on the better of the two lanes — and
    declines to sell the ones where the answer is most of it. The business surface is not gated: at wholesale
    quantities the same product's freight share collapses, which is exactly why it belongs there instead. */
-var SHIP_SHARE_MAX = 0.45;
+/* The test is NOT "what fraction of the price is shipping". Tried that first and it flagged a $7 power bank, because
+   on anything cheap the freight share is high even when the price is good — and $7 for a 20000mAh power bank is a
+   fine price, not an embarrassment. Nobody minds that shipping is most of $7.
+
+   What actually reads as absurd is paying several times the goods value to move them, on something dear enough to
+   notice. So: fail when shipping exceeds SHIP_RATIO_MAX times the item, and the total is past the point where a
+   customer would care. Below that floor the ratio is noise.
+
+   This is a guard, not a filter — since consignment pooling it catches almost nothing, which is the correct outcome.
+   It exists so that a future import of heavy, worthless goods cannot quietly fill the consumer shop. */
+var SHIP_RATIO_MAX = 2, SHIP_GATE_FLOOR = 15;
 function viability(p, v, qty) {
-  if (!p || !v) return { ok: false, share: 1, mode: null, reason: "no-variant" };
-  if (v.price != null) return { ok: true, share: 0, mode: null, reason: "local" };   /* FBG stock: already here */
+  if (!p || !v) return { ok: false, ratio: Infinity, mode: null, reason: "no-variant" };
+  if (v.price != null) return { ok: true, ratio: 0, mode: null, reason: "local" };   /* FBG stock: already here */
   qty = Math.max(1, qty || 1);
   var best = null;
   ["air", "sea"].forEach(function (m) {
     var L = basketPrice([{ product: p, variant: v, qty: qty, mode: m }]).lines[0];
     if (!L || !(L.total > 0)) return;
-    var share = L.shipping / L.total;
-    if (!best || share < best.share) best = { share: share, mode: m, total: L.total };
+    var ratio = L.shipping / Math.max(1, L.item);
+    if (!best || ratio < best.ratio) best = { ratio: ratio, share: L.shipping / L.total, mode: m, total: L.total, item: L.item, shipping: L.shipping };
   });
-  if (!best) return { ok: false, share: 1, mode: null, reason: "no-rate" };
-  best.ok = best.share <= SHIP_SHARE_MAX;
+  if (!best) return { ok: false, ratio: Infinity, mode: null, reason: "no-rate" };
+  best.ok = best.ratio <= SHIP_RATIO_MAX || best.total < SHIP_GATE_FLOOR;
   best.reason = best.ok ? "ok" : "freight-heavy";
   return best;
 }
+
 function eligible(p, v) {
   if (!p || !v) return { ok: false, reason: "no-variant" };
   if (v.price != null) return { ok: true, reason: "fixed-price" };          // FBG stock or an accepted quote
@@ -257,7 +268,7 @@ function card(p) {
 
 RF.catalog = {
   CATS: CATS, products: P, isChina: isChina, price: price, sameVariant: sameVariant, card: card, _breakdown: breakdown,
-  seller: seller, eligible: eligible, moqOf: moqOf, retailOK: retailOK, viability: viability, SHIP_SHARE_MAX: SHIP_SHARE_MAX, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
+  seller: seller, eligible: eligible, moqOf: moqOf, retailOK: retailOK, viability: viability, SHIP_RATIO_MAX: SHIP_RATIO_MAX, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
   get: function (sku) { return P.filter(function (p) { return p.sku === sku; })[0]; },
   search: function (q, opts) {
     opts = opts || {}; q = (q || "").toLowerCase().trim();
