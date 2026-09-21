@@ -126,7 +126,9 @@ for kw in [k.strip() for k in a.keywords.split(",") if k.strip()]:
         if not (name and cat): continue
         try: kg = float(d.get("productWeight"))
         except (TypeError, ValueError): continue
-        if kg > 50: kg = kg / 1000.0          # CJ reports grams on most rows and kilograms on a few
+        # productWeight is ALWAYS grams. Treating small values as kilograms priced a 35 g earbud case as 35 kg
+        # of air freight, so there is no threshold here on purpose.
+        kg = kg / 1000.0
         if not (kg > 0): continue
         seen.add(sku); kept += 1
         rows.append({
@@ -147,8 +149,10 @@ if not rows:
 
 # ---- give each row a Garsoore SKU, continuing the existing numbering per category
 existing = list(csv.DictReader(io.open(CSV, encoding="utf-8-sig")))
+# number against the rows we are KEEPING, not the CJ block we are about to replace, or every re-run walks the
+# SKUs forward and yesterday's links stop resolving
 nxt = {}
-for r in existing:
+for r in [x for x in existing if x.get("source_platform") != "cj"]:
     m = re.match(r"GRS-([A-Z]{3})-(\d+)", r.get("sku") or "")
     if m: nxt[m.group(1)] = max(nxt.get(m.group(1), 0), int(m.group(2)))
 for r in rows:
