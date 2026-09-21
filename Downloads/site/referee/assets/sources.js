@@ -212,18 +212,11 @@ function coreOffers(q, plats) {
   return out;
 }
 function demoSearch(q, plats) {
-  var core = coreOffers(q, plats); if (core.length) return core.slice(0, 40);
-  var out = [];
-  POOL.forEach(function (row, i) {
-    var hay = (row[0] + " " + row[1] + " " + row[2] + " " + row[7]).toLowerCase();
-    if (q && !q.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; })) return;
-    plats.forEach(function (pl, j) {
-      if ((i + j) % 2) return; // each item listed on roughly half the platforms
-      var ref = String(600000000000 + i * 1000 + j);
-      out.push(demoOffer(pl, ref, row));
-    });
-  });
-  return out;
+  /* Only ever the real catalogue. This used to fall back to POOL when nothing matched, which invented products at
+     invented prices and attached them to REAL supplier names — filtering by Alibaba, where Garsoore has no listings
+     at all, produced a convincing page of goods that do not exist. An empty result is the honest answer, and the
+     caller turns it into "paste a link instead". */
+  return coreOffers(q, plats).slice(0, 40);
 }
 
 /* landed pricing — consumer gets total only; business gets per-unit landed + tier */

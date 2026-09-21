@@ -598,7 +598,16 @@ function bizChina(app) {
   $("bForm").onsubmit = function (ev) { ev.preventDefault(); var v = $("bQ").value.trim(); location.href = S.urlOf(v) ? "?u=" + encodeURIComponent(S.urlOf(v)) : "?q=" + encodeURIComponent(v) + (plat ? "&p=" + plat : ""); };
   function priceTxt(L) { return "halkii · $" + L.total.toLocaleString() + " wadar · " + (L.mode === "sea" ? "bad" : "cir") + " ~" + L.etaDays + " maalmood"; }
   function rows(offers) {
-    if (!offers.length) { $("offers").innerHTML = '<div class="g-empty">Wax lama helin.</div>'; return; }
+    if (!offers.length) {
+      /* Garsoore has listings from Made-in-China and 1688 only. Alibaba and the retail markets are link-in channels:
+         say so, rather than leaving a filter that silently returns nothing and reads as a broken page. */
+      var pn = plat && A[plat] ? A[plat].name : "";
+      $("offers").innerHTML = '<div class="g-empty">' +
+        (pn ? 'Garsoore weli katalog ' + e(pn) + ' ma laha. ' : 'Wax lama helin. ') +
+        'Ku dheji link — wakiil ayaa la xiriiraya iibiyaha, kuuna soo celinaya hal qiime.' +
+        '<div style="margin-top:10px"><a class="btn" href="sourcing.html">Naga codso inaan kuu iibsanno →</a></div></div>';
+      return;
+    }
     $("offers").innerHTML = '<div class="g-otable">' + offers.map(function (o, i) {
       var known = o.tiers[0].cost > 0, L = S.landed(o, Math.max(o.moq, 50));
       return '<div class="g-orow2"><div class="g-th">' + o.icon + '</div>' +
