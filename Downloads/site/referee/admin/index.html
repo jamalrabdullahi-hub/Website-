@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="so">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,12 +11,15 @@
 <body class="console">
 <div id="app"><div class="cs-boot">⏳</div></div>
 <div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+<!-- The console is English only. Its own strings are written in English; this pins the shared pieces it borrows
+     from the shops — the sign-in sheet, mainly — to English too, before i18n.js reads the setting. admin.<domain> is
+     a separate origin from the shops, so this cannot change the language anyone else sees. -->
+<script>try { localStorage.setItem("garsoore.lang", "en"); } catch (e) {}</script>
 <script src="../assets/config.js"></script>
 <script src="../assets/rate-cards.js"></script>
 <script src="../assets/shipping.js"></script>
 <script src="../assets/i18n.js"></script>
 <script src="../assets/api.js"></script>
-<script src="../assets/fbg.js"></script>
 <script src="../assets/console.js"></script>
 </body>
 </html>
