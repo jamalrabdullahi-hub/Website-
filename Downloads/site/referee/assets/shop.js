@@ -18,7 +18,10 @@ function cardHTML(p) {
   return '<a class="g-pc" href="product.html?sku=' + c.sku + '"><div class="g-pimg"><span class="g-bd ' + (c.china ? "cn" : "lo") + '">' +
     (c.china ? "SHIINAHA" : "GUDAHA") + '</span><button class="g-heart' + (sv ? " on" : "") + '" data-save="' + c.sku + '" aria-label="Kaydi" title="Kaydi">' + (sv ? "♥" : "♡") + '</button>' +
     (c.image ? '<img class="g-pimgi" loading="lazy" src="' + e(c.image) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(\'' + c.icon + '\'))">' : c.icon) + '</div><div class="g-pb"><div class="g-pn">' + e(c.title) + '</div>' +
-    '<div class="g-pr">' + money(c.total) + (c.moq > 1 ? '<small class="g-moq"> / ' + c.moq + ' xabbo</small>' : "") + '</div>' + (rt ? '<div class="g-eta">' + stars(rt.avg) + ' ' + rt.n + '</div>' : "") +
+    /* the item first, the shipping immediately under it — never one without the other */
+    '<div class="g-pr">' + money(c.china && c.shipping ? c.item : c.total) + (c.moq > 1 ? '<small class="g-moq"> / xabbo</small>' : "") + '</div>' +
+    (c.china && c.shipping ? '<div class="g-ship-sm">+ ' + money(c.shipping) + ' gaarsiin' + (c.moq > 1 ? ' · ugu yaraan ' + c.moq : "") + '</div>' : "") +
+    (rt ? '<div class="g-eta">' + stars(rt.avg) + ' ' + rt.n + '</div>' : "") +
     '<div class="g-eta"><span class="g-v">✓</span> ' + eta(c.etaDays) + ' · ' + e(c.where) + '</div></div></a>';
 }
 /* one delegated handler for every ♡ on the page (cards live inside links) */
@@ -142,10 +145,15 @@ function productView(p, host, quoteId) {
       (bp && bp.freight >= 10 && qty === 1 && moq === 1 ?
         '<div class="g-bulk">📦 Rarku hal shixnad ayuu ku baxaa — haddii aad laba ama ka badan iibsato, mid kastaa wuu raqiisanayaa. ' +
         'Tusaale: 3 xabbo = ' + money(Math.round(C.basketPrice([{ product: p, variant: v, qty: 3, mode: pr.mode }]).lines[0].total / 3)) + ' midkii.</div>' : "") +
-      (pr.total != null && !isReq ? '<div class="g-incl">✓ <b>' + money(pr.total) + ' waa qiimaha oo dhan</b> — ' + (china ? "alaabta, rarka Shiinaha → Muqdisho, canshuurta iyo adeegga" : "alaabta iyo adeegga") + ' way ku jiraan. Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +
+      (bp && bp.shipping ? '<div class="g-incl">✓ <b>' + money(bp.item) + ' alaabta + ' + money(bp.shipping) + ' gaarsiin = ' + money(lineTotal) + '</b> — ' +
+        'gaarsiintu waxay ku jirtaa rarka Shiinaha → Muqdisho, canshuurta iyo gudbinta. Wax kale lagaama qaadayo. ' +
+        'Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +
+      (pr.total != null && !isReq && !(bp && bp.shipping) ? '<div class="g-incl">✓ <b>' + money(pr.total) + ' waa qiimaha oo dhan</b> — ' + (china ? "alaabta, rarka Shiinaha → Muqdisho, canshuurta iyo adeegga" : "alaabta iyo adeegga") + ' way ku jiraan. Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +
       '<div class="g-buybar"><div class="g-bi">' + p.icon + '</div><div class="g-bt"><b>' + e(p.model) + (v.label && v.label !== "Standard" ? " · " + e(v.label) : "") + '</b>' +
         '<div class="g-eta">' + (china ? "🚚 " + (pr.transitMin ? pr.transitMin + "–" + pr.transitMax + " maalmood" : eta(pr.etaDays)) + " · Pickup Muqdisho" : "Diyaar maanta · Muqdisho") + ' · 🔒 Lacag la xajiyo</div></div>' +
-        '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' + (pr.total == null ? "Qiimo la sugayo" : isReq ? "≈ " + money(pr.total) : money(lineTotal)) + '</div>' +
+        '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' +
+          (pr.total == null ? "Qiimo la sugayo" : isReq ? "≈ " + money(pr.total) : money(bp && bp.shipping ? bp.item : lineTotal)) +
+          (bp && bp.shipping ? '<small class="g-ship-in">+ ' + money(bp.shipping) + ' gaarsiin · wadar ' + money(lineTotal) + '</small>' : "") + '</div>' +
         (isReq ? "" : '<div class="g-qty"><button data-dq="-1" aria-label="ka dhim"' + (qty <= moq ? " disabled" : "") + '>−</button><span>' + qty + '</span><button data-dq="1" aria-label="ku dar">+</button></div>' +
           '<button class="btn ghost g-add" id="addBtn">🛒 Dambiisha</button>') +
         '<button class="btn g-buy" id="buyBtn">' + (isReq ? "Codso qiimo rasmi ah" : "Hadda iibso") + '</button></div>' +
@@ -319,6 +327,8 @@ function cart(app) {
     var bk = C.basketPrice(items.map(function (it) { return { product: it.product, variant: it.variant, qty: it.line.qty, mode: it.line.mode }; }));
     items.forEach(function (it, i) { if (bk.lines[i]) it.price = bk.lines[i]; });
     var sub = bk.total;
+    var goodsSum = items.reduce(function (n, it) { return n + (it.price.item != null ? it.price.item : it.price.total || 0); }, 0);
+    var shipSum = items.reduce(function (n, it) { return n + (it.price.shipping || 0); }, 0);
     /* what the same basket would cost if every line paid freight on its own — the saving consolidation creates */
     var alone = items.reduce(function (n, it) {
       var one = C.basketPrice([{ product: it.product, variant: it.variant, qty: it.line.qty, mode: it.line.mode }]);
@@ -341,7 +351,8 @@ function cart(app) {
               return '<button class="chip' + (m === it.price.mode ? " on" : "") + '" data-lane="' + it.i + '" data-lm="' + m + '">' +
                 (m === "air" ? "✈ Cirka" : "🚢 Badda") + ' · ' + L.transitMin + '–' + L.transitMax + 'm · ' + money(L.total) + '</button>';
             }).join("") + '</div>' : "") + '</div>'; }).join("") + '</div>' +
-          '<aside class="g-order g-cside"><div class="g-sum"><div><span>Alaabta (rar iyo canshuur ku jira)</span><b>' + money(sub) + '</b></div>' +
+          '<aside class="g-order g-cside"><div class="g-sum"><div><span>Alaabta</span><b>' + money(goodsSum) + '</b></div>' +
+            (shipSum ? '<div><span>Gaarsiin (rar + canshuur)</span><b>' + money(shipSum) + '</b></div>' : "") +
             (saving > 0 ? '<div class="save"><span>✓ Isku-darid</span><b>−' + money(saving) + '</b></div>' : "") +
             '<div><span>Ka qaadasho Km4</span><b>Bilaash</b></div><div><span>Gaarsiin guriga</span><b>' + (sub >= DELIV.free ? "Bilaash" : "$" + DELIV.fee) + '</b></div></div>' +
             (saving > 0 ? '<div class="g-goal ok">✓ Waxaad badbaadisay ' + money(saving) + ' — alaabtaadu hal shixnad ayay wada saaran tahay</div>'

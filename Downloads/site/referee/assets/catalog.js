@@ -66,7 +66,23 @@ function lineTotal(costCny, qty, freight, cat, clearance) {
   var duty = (goods + freight) * rate;
   var sub = goods + cn + RULES.consolidation + freight + duty + clearance;
   var margin = sub * RULES.margin;
-  return { total: Math.ceil(sub + margin), goods: goods, chinaFreight: cn, consolidation: RULES.consolidation,
+  var total = Math.ceil(sub + margin);
+
+  /* ---- the two numbers the customer is shown.
+     A $38 kettle reads as expensive; "$21 + $17 delivered from China" reads as a kettle and a shipping cost, which
+     is what it is. Both are real: the item side is the goods and getting them to our China facility, the shipping
+     side is the freight, duty, clearance and consolidation that carry them to Mogadishu. Garsoore's margin is split
+     across the two in proportion, so neither number is doing hidden work.
+
+     They ALWAYS sum to exactly the total charged — shipping is derived by subtraction so rounding cannot open a gap.
+     This is partitioned pricing, not drip pricing: both halves are on the product page and the card, before anyone
+     commits. Revealing shipping only at checkout is the dark pattern; showing it beside the price is not. */
+  var itemBase = goods + cn, shipBase = RULES.consolidation + freight + duty + clearance;
+  var base = itemBase + shipBase;
+  var item = base > 0 ? Math.round(itemBase + margin * (itemBase / base)) : total;
+  if (item > total) item = total;
+  return { total: total, item: item, shipping: Math.max(0, total - item),
+           goods: goods, chinaFreight: cn, consolidation: RULES.consolidation,
            intlFreight: freight, duty: duty, dutyRate: rate, clearance: clearance, margin: margin };
 }
 
@@ -103,7 +119,9 @@ function basketPrice(entries, at) {
     var sh = byIdx[i];
     if (!sh) return { quote: true, reason: "no-shippable-rate", total: null, seller: seller(en.product) };
     var g = b.groups[sh.mode], L = lineTotal(m.cny, m.qty, sh.freight, m.cat, sh.clearance);
-    return { total: L.total, unit: Math.round(L.total / m.qty * 100) / 100, qty: m.qty, moq: moqOf(en.product, en.variant), mode: sh.mode,
+    return { total: L.total, item: L.item, shipping: L.shipping,
+      unit: Math.round(L.total / m.qty * 100) / 100, itemUnit: Math.round(L.item / m.qty * 100) / 100,
+      qty: m.qty, moq: moqOf(en.product, en.variant), mode: sh.mode,
       freight: sh.freight, clearance: sh.clearance || 0, duty: Math.round(L.duty * 100) / 100, dutyRate: L.dutyRate,
       estimatedSize: sh.estimated, local: false,
       transitMin: g.transitMin, transitMax: g.transitMax, etaDays: g.transitMax,
@@ -183,8 +201,14 @@ function sameVariant(a, b) {
 
 function card(p) {
   var v = p.variants[0], pr = price(p, v), sl = pr.seller;
+  var bl = (pr.total != null && !pr.local) ? basketPrice([{ product: p, variant: v, qty: moqOf(p, v) }]).lines[0] : null;
   return { sku: p.sku, icon: p.icon, image: p.image || "", title: (p.brand ? p.brand + " " : "") + p.model + (v.label && v.label !== "Standard" ? " · " + v.label : ""),
     total: pr.total, etaDays: pr.etaDays, china: !pr.local, quote: !!pr.quote, moq: moqOf(p, v),
+    /* per unit, to match `total` above: on a minimum-order product the freight is shared across the lot, so the
+       per-unit shipping is the lot's shipping divided by the lot. Shipping is derived by subtraction so the two
+       always add up to the price shown. */
+    item: bl ? Math.min(pr.total, Math.round(bl.item / Math.max(1, bl.qty))) : pr.total,
+    shipping: bl ? Math.max(0, pr.total - Math.min(pr.total, Math.round(bl.item / Math.max(1, bl.qty)))) : 0,
     seller: sl, where: sl.official ? "Garsoore Official" : sl.name,
     options: pr.options || null, mode: pr.mode || null };
 }

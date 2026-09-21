@@ -864,3 +864,7 @@ footer.site b{color:var(--fg);font-weight:650}
 
 /* the supplier's minimum, shown on the card next to the price */
 .g-moq{font-size:12px;font-weight:600;color:var(--muted)}
+
+/* item price first, shipping immediately beside it — partitioned, never hidden */
+.g-ship-sm{font-size:12.5px;color:var(--muted);margin-top:-2px}
+.g-ship-in{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-top:2px}
