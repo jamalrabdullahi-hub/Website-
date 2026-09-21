@@ -11,9 +11,9 @@ Rows that break a rule are reported and skipped; nothing is silently guessed."""
 import csv, json, re, sys, collections
 
 CATS = {"PHN", "CMP", "APL", "FRN", "VEH", "ELC", "SOL", "HOM", "CLO", "BLD"}
-PLATS = {"mic", "jd", "1688", "taobao", "pdd", "alibaba"}
+PLATS = {"mic", "jd", "1688", "taobao", "pdd", "alibaba", "aliexpress", "shein", "cj"}
 ICON = {"PHN": "📱", "CMP": "💻", "SOL": "☀️", "APL": "🧊", "HOM": "🍳", "FRN": "🪑", "CLO": "👘", "BLD": "🔧", "VEH": "🛺", "ELC": "🎧"}
-PLAT_NAME = {"mic": "Made-in-China", "jd": "JD", "1688": "1688", "taobao": "Taobao", "pdd": "Pinduoduo", "alibaba": "Alibaba"}
+PLAT_NAME = {"mic": "Made-in-China", "jd": "JD", "1688": "1688", "taobao": "Taobao", "pdd": "Pinduoduo", "alibaba": "Alibaba", "aliexpress": "AliExpress", "shein": "SHEIN", "cj": "CJdropshipping"}
 
 def ref_from_url(u, plat=""):
     if plat == "mic":                      # Made-in-China: the product URL (with the supplier's subdomain) is the reference

@@ -31,24 +31,51 @@ ap.add_argument("--max-price", type=float, default=200.0, help="skip anything de
 ap.add_argument("--dry", action="store_true", help="print the rows, write nothing")
 a = ap.parse_args()
 
+# CJ issues a long-lived API key, which is NOT what the product endpoints accept. The key is exchanged for a
+# short-lived access token (15 days), so do that here rather than making somebody keep a fresh token in their shell.
+# Both values come from the environment; neither is written anywhere.
 TOKEN = os.environ.get("CJ_ACCESS_TOKEN", "").strip()
 if not TOKEN:
-    sys.exit("CJ_ACCESS_TOKEN is not set. Get it from CJ → Authorization → API, then set it in your shell.\n"
-             "Do not paste it into a file or into chat.")
+    email, key = os.environ.get("CJ_EMAIL", "").strip(), os.environ.get("CJ_API_KEY", "").strip()
+    if not (email and key):
+        sys.exit("Set CJ_EMAIL and CJ_API_KEY (CJ -> Authorization -> API) in your shell. "
+                 "Do not paste either into a file or into chat.")
+    req = urllib.request.Request(API + "/authentication/getAccessToken",
+                                 data=json.dumps({"email": email, "apiKey": key}).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            j = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as ex:
+        sys.exit("CJ auth %s: %s" % (ex.code, ex.read().decode("utf-8", "replace")[:200]))
+    TOKEN = ((j.get("data") or {}).get("accessToken") or "").strip()
+    if not TOKEN:
+        # CJ allows one token request every 5 minutes; that limit arrives here as a plain failure message
+        sys.exit("CJ would not issue a token: %s" % j.get("message"))
+    print("authenticated as %s" % email)
 
 # ---- CJ category name -> Garsoore category. Anything unmapped is skipped rather than guessed into the wrong place.
 CATMAP = [
-    (r"phone|mobile|cell", "PHN"), (r"computer|laptop|tablet|office electronics", "CMP"),
-    (r"women|men|clothing|apparel|dress|shirt|shoe", "CLO"),
-    (r"home applian|kitchen|household", "HOM"), (r"furniture", "FRN"),
-    (r"solar", "SOL"), (r"tool|hardware|security|light", "BLD"),
-    (r"automotive|motorcycle|vehicle", "VEH"), (r"consumer electronic|audio|headphone|earbud|watch|camera|charger|power", "ELC"),
+    # Specific things first, matched against the product NAME before the category path: CJ files a rechargeable
+    # fan under "Home Office Storage", so their taxonomy is the fallback, not the source of truth.
+    (r"solar", "SOL"),
+    (r"(^|[ -])fan([ s-]|$)|blender|kettle|cooker|rice ?cook|humidifier|air fry|vacuum|juicer|toaster|kitchen|household|home applian", "HOM"),
+    (r"power ?bank|charger|earbud|headphone|speaker|smartwatch|camera|audio|consumer electronic", "ELC"),
+    (r"phone|mobile|cell", "PHN"),
+    (r"computer|laptop|tablet|office electronics", "CMP"),
+    (r"women|clothing|apparel|dress|shirt|shoe|hoodie|jacket", "CLO"),
+    (r"sofa|chair|desk|bed |wardrobe|furniture|storage", "FRN"),
+    (r"automotive|motorcycle|vehicle", "VEH"),
+    (r"tool|hardware|security|light|lamp|torch", "BLD"),
 ]
 def cat_of(name):
-    n = (name or "").lower()
-    for rx, c in CATMAP:
-        if re.search(rx, n):
-            return c
+    """CJ gives a path like "Home Garden & Furniture/Household Appliances/Fan". Read it from the most specific
+    segment outwards, or a desk fan gets filed as furniture because its top-level parent says so."""
+    segs = [s.strip().lower() for s in re.split(r"[/>]", name or "") if s.strip()]
+    for seg in reversed(segs or [(name or "").lower()]):
+        for rx, c in CATMAP:
+            if re.search(rx, seg):
+                return c
     return None
 
 def get(path, params):
@@ -63,38 +90,54 @@ def get(path, params):
         sys.exit("CJ API %s on %s: %s" % (e.code, path, body))
 
 rows, seen = [], set()
+
+def detail(pid):
+    """CJ's search feed carries no weight and no category path, and freight cannot be priced without a weight.
+    Both live on /product/query, so every candidate costs a second call. CJ allows roughly one a second."""
+    j = get("/product/query", {"pid": pid})
+    time.sleep(1.1)
+    return j.get("data") if isinstance(j.get("data"), dict) else None
+
+def usd(v):
+    """sellPrice is a string, and on variant products it is a range like "10.00-12.00". Take the low end: it is the
+    one a customer can actually reach, and it is the conservative choice for a price we then mark up."""
+    try: return float(str(v).split("-")[0].strip())
+    except (TypeError, ValueError, AttributeError): return 0.0
+
 for kw in [k.strip() for k in a.keywords.split(",") if k.strip()]:
-    j = get("/product/listV2", {"keyWord": kw, "page": 1, "size": min(100, max(1, a.per))})
+    j = get("/product/listV2", {"keyWord": kw, "pageNum": 1, "pageSize": min(100, max(1, a.per))})
     if not j.get("result"):
         print("  ! %s: %s" % (kw, j.get("message"))); continue
     data = j.get("data") or {}
-    items = data.get("list") or data.get("content") or (data if isinstance(data, list) else [])
+    # data.content is a list of groups, each holding a productList
+    flat = []
+    for g in (data.get("content") or []):
+        flat.extend((g or {}).get("productList") or [])
     kept = 0
-    for it in items:
-        pid = str(it.get("pid") or it.get("productId") or "")
-        sku = str(it.get("productSku") or "")
-        name = (it.get("productNameEn") or it.get("productName") or "").strip()
-        price = it.get("sellPrice")
-        kg = it.get("productWeight")
-        cat = cat_of(it.get("categoryName") or "") or cat_of(name)
-        if not (pid and name and cat): continue
-        if sku in seen or not sku: continue
-        try: price = float(price)
+    for it in flat[:a.per]:
+        pid, sku = str(it.get("id") or ""), str(it.get("sku") or "")
+        if not (pid and sku) or sku in seen: continue
+        price = usd(it.get("nowPrice") or it.get("sellPrice"))
+        if not (0 < price <= a.max_price): continue
+        d = detail(pid)
+        if not d: continue
+        name = (d.get("productNameEn") or it.get("nameEn") or "").strip()
+        cat = cat_of(name) or cat_of(d.get("categoryName") or "")   # name first: see CATMAP
+        if not (name and cat): continue
+        try: kg = float(d.get("productWeight"))
         except (TypeError, ValueError): continue
-        if not (price > 0) or price > a.max_price: continue
-        try: kg = float(kg) / 1000.0 if float(kg) > 50 else float(kg)   # CJ reports grams on some rows
-        except (TypeError, ValueError): kg = 0
+        if kg > 50: kg = kg / 1000.0          # CJ reports grams on most rows and kilograms on a few
         if not (kg > 0): continue
         seen.add(sku); kept += 1
         rows.append({
             "sku": "", "cat": cat, "brand": "", "model": name[:120], "model_no": sku,
             "variant": "Standard", "color": "—", "color_hex": "",
             # CJ sells in USD; the catalogue works in CNY, so convert at the same FX the pricing engine uses
-            "cost_cny": round(price * 7.2, 2), "kg": kg, "moq": 1,
+            "cost_cny": round(price * 7.2, 2), "kg": round(kg, 3), "moq": 1,
             "source_platform": "cj", "source_url": "https://cjdropshipping.com/product/-p-%s.html" % pid,
             "supplier": "CJdropshipping", "cost_verified": "check",
-            "blurb_so": "", "image": it.get("productImage") or "", "price_usd": price,
-            "moq_unit": it.get("productUnit") or "pieces", "specs": "",
+            "blurb_so": "", "image": it.get("bigImage") or "", "price_usd": price,
+            "moq_unit": "pieces", "specs": "",
             "captured": time.strftime("%Y-%m-%d"), "search": name[:80],
         })
     print("  %-28s %d kept" % (kw, kept))
