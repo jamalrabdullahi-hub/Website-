@@ -17,6 +17,9 @@ for (const p of C.products) {
   const src = p.sources[0] || {};
   out[p.sku] = {
     title: ((p.brand ? p.brand + " " : "") + p.model).trim(), icon: p.icon, cat: p.cat, kg: p.kg || 0,
+    /* the supplier's minimum order. Garsoore holds no stock, so an order below this is one we cannot place:
+       the server refuses it rather than taking the money and discovering the problem in Guangzhou. */
+    moq: Math.max(1, Math.round(+p.moq || 1)),
     verified: p.verified === true,   // cost checked by a person (data/catalog.csv cost_verified=yes)
     china: C.isChina(p), fbg: !!p.fbg,
     /* what the CUSTOMER is told: "Garsoore Official" for procurement, the merchant's name for FBG. The supplier below

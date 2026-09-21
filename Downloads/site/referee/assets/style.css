@@ -861,3 +861,6 @@ footer.site b{color:var(--fg);font-weight:650}
 
 /* "cheaper if you buy more" - stated once, where the single-shipment minimum bites */
 .g-bulk{margin:14px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);font-size:13.5px;color:var(--muted);line-height:1.65}
+
+/* the supplier's minimum, shown on the card next to the price */
+.g-moq{font-size:12px;font-weight:600;color:var(--muted)}

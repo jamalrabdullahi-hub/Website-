@@ -18,7 +18,7 @@ function cardHTML(p) {
   return '<a class="g-pc" href="product.html?sku=' + c.sku + '"><div class="g-pimg"><span class="g-bd ' + (c.china ? "cn" : "lo") + '">' +
     (c.china ? "SHIINAHA" : "GUDAHA") + '</span><button class="g-heart' + (sv ? " on" : "") + '" data-save="' + c.sku + '" aria-label="Kaydi" title="Kaydi">' + (sv ? "♥" : "♡") + '</button>' +
     (c.image ? '<img class="g-pimgi" loading="lazy" src="' + e(c.image) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(\'' + c.icon + '\'))">' : c.icon) + '</div><div class="g-pb"><div class="g-pn">' + e(c.title) + '</div>' +
-    '<div class="g-pr">' + money(c.total) + '</div>' + (rt ? '<div class="g-eta">' + stars(rt.avg) + ' ' + rt.n + '</div>' : "") +
+    '<div class="g-pr">' + money(c.total) + (c.moq > 1 ? '<small class="g-moq"> / ' + c.moq + ' xabbo</small>' : "") + '</div>' + (rt ? '<div class="g-eta">' + stars(rt.avg) + ' ' + rt.n + '</div>' : "") +
     '<div class="g-eta"><span class="g-v">✓</span> ' + eta(c.etaDays) + ' · ' + e(c.where) + '</div></div></a>';
 }
 /* one delegated handler for every ♡ on the page (cards live inside links) */
@@ -54,7 +54,8 @@ function home(app) {
       '<div class="g-seg" id="seg"><span class="on" data-v="">Dhammaan</span><span data-v="lo">Gudaha</span><span data-v="cn">Shiinaha</span></div></div>' +
     '<div class="g-filters"><label>Kala saar <select id="fSort"><option value="">Ku habboon</option><option value="lo">Qiimaha ↑</option><option value="hi">Qiimaha ↓</option><option value="fast">Ugu dhakhsaha badan</option></select></label>' +
       '<label>Ugu badnaan $ <input id="fMax" type="number" min="0" step="10" placeholder="—"></label>' +
-      '<label class="g-chk"><input type="checkbox" id="fToday"> Diyaar maanta</label><span class="g-eta" id="fCount"></span></div>' +
+      '<label class="g-chk"><input type="checkbox" id="fToday"> Diyaar maanta</label>' +
+      '<label class="g-chk"><input type="checkbox" id="fOne"> Hal xabbo la iibsan karo</label><span class="g-eta" id="fCount"></span></div>' +
     '<div class="g-grid" id="grid"></div>' +
     (RF.recent.list().length ? '<div class="g-sec"><h2>Aad dhowaan eegtay</h2></div><div class="g-grid g-row" id="recent"></div>' : "") +
     '<section class="g-bizband"><div><h3>Garsoore <span>Ganacsi</span></h3><p>Jumlad, qandaraas, adeegyo ganacsi iyo iibsi Shiinaha oo badan.</p></div>' +
@@ -63,9 +64,11 @@ function home(app) {
   var PAGE_N = 30, shown = PAGE_N, filt = "";
   function draw() {
     var list = C.search(q, { cat: cat || null, china: filt === "cn" ? true : filt === "lo" ? false : undefined });
-    var sort = $("fSort").value, max = +$("fMax").value, today = $("fToday").checked;
-    if (max > 0 || today || sort) {
-      var withP = list.map(function (p) { return { p: p, c: C.card(p) }; }).filter(function (x) { return (!(max > 0) || (x.c.total != null && x.c.total <= max)) && (!today || !x.c.china); });
+    var sort = $("fSort").value, max = +$("fMax").value, today = $("fToday").checked, one = $("fOne").checked;
+    if (max > 0 || today || sort || one) {
+      /* "one unit" is the filter a consumer actually wants: most of the catalogue is wholesale-sourced and the
+         supplier will not break a carton, so without this the shop looks like it sells nothing you can buy alone */
+      var withP = list.map(function (p) { return { p: p, c: C.card(p) }; }).filter(function (x) { return (!(max > 0) || (x.c.total != null && x.c.total <= max)) && (!today || !x.c.china) && (!one || (x.c.moq || 1) <= 1); });
       if (sort) withP.sort(function (a, b) { return sort === "lo" ? a.c.total - b.c.total : sort === "hi" ? b.c.total - a.c.total : (a.c.etaDays || 0) - (b.c.etaDays || 0); });
       list = withP.map(function (x) { return x.p; });
     }
@@ -78,7 +81,7 @@ function home(app) {
     if ($("moreBtn")) $("moreBtn").onclick = function () { shown += PAGE_N; draw(); };
   }
   draw();
-  ["fSort", "fMax", "fToday"].forEach(function (id) { $(id).onchange = $(id).oninput = function () { shown = PAGE_N; draw(); }; });
+  ["fSort", "fMax", "fToday", "fOne"].forEach(function (id) { $(id).onchange = $(id).oninput = function () { shown = PAGE_N; draw(); }; });
   if ($("recent")) $("recent").innerHTML = RF.recent.list().map(C.get).filter(Boolean).slice(0, 6).map(cardHTML).join("");
   $("seg").onclick = function (ev) { var sp = ev.target.closest("span"); if (!sp) return; [].forEach.call(this.children, function (x) { x.classList.toggle("on", x === sp); }); filt = sp.dataset.v; shown = PAGE_N; draw(); };
   $("sForm").onsubmit = function (ev) { ev.preventDefault(); var v = $("sQ").value, u = RF.sources && RF.sources.urlOf(v);
@@ -89,7 +92,7 @@ function home(app) {
 /* ---------------------------------------------------------------- product (immersive + sticky buy bar) */
 var CUR = null;
 function productView(p, host, quoteId) {
-  var vi = 0, qty = 1, mode = null;          /* null = let price() pick the cheaper lane */
+  var vi = 0, qty = C.moqOf(p, p.variants[0]), mode = null;   /* start at the supplier's minimum; null mode = cheaper lane */
   function render() {
     /* launch mode: products whose cost nobody has checked yet are sold via a staff quote, never at a placeholder price */
     var gate = RF.api && RF.api.config && RF.api.config.requireVerified && !p.oneoff && p.verified !== true;
@@ -97,6 +100,10 @@ function productView(p, host, quoteId) {
     var sl = pr.seller || C.seller(p), opts = pr.options || null;
     /* Freight is charged per shipment, so three of something is not three times the price of one. The buy bar prices
        the quantity on screen exactly as the cart will, or the two would disagree the moment somebody typed "3". */
+    /* Garsoore holds no stock, so the supplier's minimum is the customer's minimum. Saying so on the page is the
+       difference between an honest shop and one that takes money for an order it cannot place. */
+    var moq = C.moqOf(p, v);
+    if (qty < moq) qty = moq;
     var bp = (!isReq && !pr.quote && pr.total != null) ? C.basketPrice([{ product: p, variant: v, qty: qty, mode: pr.mode }]).lines[0] : null;
     var lineTotal = bp && bp.total != null ? bp.total : (pr.total != null ? pr.total * qty : null);
     /* Only offer a lane the customer could sensibly want. Air is always faster, so sea earns its place on the page
@@ -128,15 +135,18 @@ function productView(p, host, quoteId) {
           return '<button class="g-shopt' + (k === pr.mode ? " on" : "") + '" data-mode="' + k + '"><b>' + LANE_SO[k][0] + '</b>' +
             '<span>' + b.transitMin + '–' + b.transitMax + ' maalmood</span><i>' + money(b.total) + '</i></button>';
         }).join("") + '</div></div>' : "") +
+      (moq > 1 ? '<div class="g-bulk">📦 Alaabtan iibiyuhu wuxuu ka iibiyaa <b>ugu yaraan ' + moq + ' xabbo</b> — ' +
+        'Garsoore kayd ma hayo, wuxuu iibsadaa markaad adigu iibsato, sidaa darteed ugu yaraantiisu waa taada. ' +
+        'Hal xabbo ma iibsan kartid, laakiin waad <a href="china.html" style="color:var(--link);font-weight:700">codsan kartaa qiimo</a>.</div>' : "") +
       /* say why one costs what it does, once, exactly where the single-shipment minimum bites */
-      (bp && bp.freight >= 10 && qty === 1 ?
+      (bp && bp.freight >= 10 && qty === 1 && moq === 1 ?
         '<div class="g-bulk">📦 Rarku hal shixnad ayuu ku baxaa — haddii aad laba ama ka badan iibsato, mid kastaa wuu raqiisanayaa. ' +
         'Tusaale: 3 xabbo = ' + money(Math.round(C.basketPrice([{ product: p, variant: v, qty: 3, mode: pr.mode }]).lines[0].total / 3)) + ' midkii.</div>' : "") +
       (pr.total != null && !isReq ? '<div class="g-incl">✓ <b>' + money(pr.total) + ' waa qiimaha oo dhan</b> — ' + (china ? "alaabta, rarka Shiinaha → Muqdisho, canshuurta iyo adeegga" : "alaabta iyo adeegga") + ' way ku jiraan. Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +
       '<div class="g-buybar"><div class="g-bi">' + p.icon + '</div><div class="g-bt"><b>' + e(p.model) + (v.label && v.label !== "Standard" ? " · " + e(v.label) : "") + '</b>' +
         '<div class="g-eta">' + (china ? "🚚 " + (pr.transitMin ? pr.transitMin + "–" + pr.transitMax + " maalmood" : eta(pr.etaDays)) + " · Pickup Muqdisho" : "Diyaar maanta · Muqdisho") + ' · 🔒 Lacag la xajiyo</div></div>' +
         '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' + (pr.total == null ? "Qiimo la sugayo" : isReq ? "≈ " + money(pr.total) : money(lineTotal)) + '</div>' +
-        (isReq ? "" : '<div class="g-qty"><button data-dq="-1" aria-label="ka dhim">−</button><span>' + qty + '</span><button data-dq="1" aria-label="ku dar">+</button></div>' +
+        (isReq ? "" : '<div class="g-qty"><button data-dq="-1" aria-label="ka dhim"' + (qty <= moq ? " disabled" : "") + '>−</button><span>' + qty + '</span><button data-dq="1" aria-label="ku dar">+</button></div>' +
           '<button class="btn ghost g-add" id="addBtn">🛒 Dambiisha</button>') +
         '<button class="btn g-buy" id="buyBtn">' + (isReq ? "Codso qiimo rasmi ah" : "Hadda iibso") + '</button></div>' +
       (p.oneoff ? "" : '<div class="g-pact"><button class="chip" data-save="' + p.sku + '" data-label="1">' + (RF.saved.has(p.sku) ? "♥ La kaydiyay" : "♡ Kaydi") + '</button>' +
@@ -145,8 +155,8 @@ function productView(p, host, quoteId) {
         'koox Garsoore ah ayaa hubinaysa oo kuu soo diraysa qiimo rasmi ah (saacado gudahood), kadibna waad iibsan kartaa.</div>' : "");
     [].forEach.call(host.querySelectorAll(".g-o"), function (b) { b.onclick = function () { vi = +b.dataset.i; render(); }; });
     [].forEach.call(host.querySelectorAll("[data-mode]"), function (b) { b.onclick = function () { mode = b.dataset.mode; render(); }; });
-    [].forEach.call(host.querySelectorAll("[data-dq]"), function (b) { b.onclick = function () { qty = Math.max(1, Math.min(p.stock || 99, qty + +b.dataset.dq)); render(); }; });
-    if ($("addBtn")) $("addBtn").onclick = function () { RF.cart.add(p.sku, vi, qty, quoteId, quoteId ? p : null, pr.mode || null); RF.api.ev("cart", p.sku); toast("✓ " + qty + " × waa lagu daray dambiisha"); };
+    [].forEach.call(host.querySelectorAll("[data-dq]"), function (b) { b.onclick = function () { qty = Math.max(moq, Math.min(p.stock || 999, qty + +b.dataset.dq * (moq > 1 ? moq : 1))); render(); }; });
+    if ($("addBtn")) $("addBtn").onclick = function () { RF.cart.add(p.sku, vi, Math.max(qty, moq), quoteId, quoteId ? p : null, pr.mode || null); RF.api.ev("cart", p.sku); toast("✓ " + qty + " × waa lagu daray dambiisha"); };
     if ($("shareBtn")) $("shareBtn").onclick = function () {
       var url = location.href, t = (p.brand ? p.brand + " " : "") + p.model + " — " + money(pr.total) + " · Garsoore";
       if (navigator.share) navigator.share({ title: t, url: url }).catch(function () {});
@@ -342,7 +352,12 @@ function cart(app) {
         : '<div class="g-empty">Dambiishu waa madhan tahay. <a href="index.html">Bilow iibsiga →</a></div>') +
       '<div class="g-sec"><h2>Waxaad kaydsatay</h2><span class="g-eta">' + saved.length + '</span></div>' +
       (saved.length ? '<div class="g-grid">' + saved.map(cardHTML).join("") + '</div>' : '<div class="g-empty sm">Taabo ♡ alaab kasta si aad u kaydsato.</div>') + '</div>';
-    [].forEach.call(app.querySelectorAll("[data-q]"), function (b) { b.onclick = function () { var l = RF.cart.lines()[+b.dataset.q]; RF.cart.setQty(+b.dataset.q, l.qty + +b.dataset.d); draw(); }; });
+    [].forEach.call(app.querySelectorAll("[data-q]"), function (b) { b.onclick = function () {
+    var i = +b.dataset.q, l = RF.cart.lines()[i], it = RF.cart.resolve().filter(function (x) { return x.i === i; })[0];
+    var m = it ? C.moqOf(it.product, it.variant) : 1, step = m > 1 ? m : 1;
+    var next = l.qty + (+b.dataset.d) * step;
+    RF.cart.setQty(i, next < m ? 0 : next);          /* dropping below the minimum removes the line rather than pretending */
+    draw(); }; });
     [].forEach.call(app.querySelectorAll("[data-rm]"), function (b) { b.onclick = function () { RF.cart.setQty(+b.dataset.rm, 0); draw(); }; });
     [].forEach.call(app.querySelectorAll("[data-lane]"), function (b) { b.onclick = function () { RF.cart.setMode(+b.dataset.lane, b.dataset.lm); draw(); }; });
     if ($("coBtn")) $("coBtn").onclick = function () { checkout(RF.cart.resolve(), true); };

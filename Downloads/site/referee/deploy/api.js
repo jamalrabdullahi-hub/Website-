@@ -328,7 +328,8 @@ async function priceItems(env, user, items) {
   const out = [];
   for (const it of items) {
     const qty = Math.floor(+it.qty || 0);
-    if (!(qty >= 1 && qty <= 99)) throw new Error("Tirada alaabta ma saxna.");
+    /* the ceiling has to clear the largest supplier minimum in the catalogue, or a 100-piece MOQ is unorderable */
+    if (!(qty >= 1 && qty <= 9999)) throw new Error("Tirada alaabta ma saxna.");
     if (it.quote) {
       const q = await env.DB.prepare("SELECT * FROM quotes WHERE id = ? AND status = 'quoted' AND (user_id = ? OR user_id IS NULL)").bind(String(it.quote), user.id).first();
       if (!q) throw new Error("Qiimahan rasmiga ah lama helin ama wuu dhacay.");
@@ -352,6 +353,10 @@ async function priceItems(env, user, items) {
     /* The customer picks air or sea; a lane this product does not have is refused rather than silently swapped,
        because a silent swap is how somebody pays for air and waits six weeks. Pricing itself waits until the whole
        basket is known: freight is charged once per shipment, not once per line. */
+    /* Garsoore buys only after the customer buys, so the supplier's minimum is a hard limit on what can be sold.
+       Selling one of a 100-piece minimum means taking the money and then cancelling from Guangzhou. */
+    const moq = Math.max(1, +p.moq || 1);
+    if (!v.local && qty < moq) throw new Error("Alaabtan waxaa laga iibiyaa ugu yaraan " + moq + " xabbo.");
     const want = it.mode === "air" || it.mode === "sea" ? it.mode : null;
     if (want && v.lanes && !v.lanes[want]) throw new Error("Habkan rarka alaabtan looma heli karo.");
     const mode = want || v.mode || null;

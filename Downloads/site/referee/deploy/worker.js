@@ -15,7 +15,10 @@ function ogFor(url) {
   const p = sku && CATALOG[sku];
   if (!p) return null;
   const v = p.variants[0] || {};
-  const price = v.total != null ? "$" + v.total : null;
+  /* v.total is the price of ONE. Where the supplier will not break a carton, a shared link saying "$219" next to an
+     item you must buy 100 of is a lie the preview tells before anyone opens the page. */
+  const moq = Math.max(1, +p.moq || 1);
+  const price = v.total != null ? "$" + v.total + (moq > 1 ? " / unit (min " + moq + ")" : "") : null;
   return {
     title: p.title + (price ? " — " + price : "") + " · Garsoore",
     desc: (p.china ? "Laga keenay Shiinaha · " : "Diyaar maanta · ") + (price ? price + " — qiimaha oo dhan, rar iyo canshuur ku jira." : "Qiimo la sugayo.")

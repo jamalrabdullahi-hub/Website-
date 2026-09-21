@@ -85,6 +85,7 @@ function basketPrice(entries, at) {
     if (v.price != null) { meta[i] = { fixed: true, qty: qty, unit: v.price, quoted: !!v.quoted, etaDays: v.quoted ? (v.etaDays || 20) : 0 }; return; }
     if (!(v.cost > 0)) { meta[i] = { quote: true, reason: "no-purchase-price" }; return; }
     var mode = en.mode === "sea" || en.mode === "air" ? en.mode : (price(p, v).mode || "air");
+    qty = Math.max(qty, moqOf(p, v));                     /* below the supplier's minimum there is no price to show */
     meta[i] = { cny: v.cost, qty: qty, mode: mode, kg: p.kg, cat: p.cat };
     ship.push({ idx: i, kg: p.kg, cat: p.cat, qty: qty, mode: mode });
   });
@@ -102,7 +103,7 @@ function basketPrice(entries, at) {
     var sh = byIdx[i];
     if (!sh) return { quote: true, reason: "no-shippable-rate", total: null, seller: seller(en.product) };
     var g = b.groups[sh.mode], L = lineTotal(m.cny, m.qty, sh.freight, m.cat, sh.clearance);
-    return { total: L.total, unit: Math.round(L.total / m.qty * 100) / 100, qty: m.qty, mode: sh.mode,
+    return { total: L.total, unit: Math.round(L.total / m.qty * 100) / 100, qty: m.qty, moq: moqOf(en.product, en.variant), mode: sh.mode,
       freight: sh.freight, clearance: sh.clearance || 0, duty: Math.round(L.duty * 100) / 100, dutyRate: L.dutyRate,
       estimatedSize: sh.estimated, local: false,
       transitMin: g.transitMin, transitMax: g.transitMax, etaDays: g.transitMax,
@@ -136,6 +137,13 @@ function seller(p) {
    known purchase price, a known packed weight, and a lane that today's rate card can actually price. Anything short of
    that says "Request a quote" — price certainty is the product, and pretending every item is predictable is how the
    surprise-shipping-bill problem starts. */
+/* The supplier's minimum order, as a number we can rely on. FBG stock and accepted quotes are already bought, so
+   they have no minimum — the constraint only exists where Garsoore has to go and buy the thing. */
+function moqOf(p, v) {
+  if (!p) return 1;
+  if (v && v.price != null) return 1;
+  return Math.max(1, Math.round(+p.moq || 1));
+}
 function eligible(p, v) {
   if (!p || !v) return { ok: false, reason: "no-variant" };
   if (v.price != null) return { ok: true, reason: "fixed-price" };          // FBG stock or an accepted quote
@@ -176,14 +184,14 @@ function sameVariant(a, b) {
 function card(p) {
   var v = p.variants[0], pr = price(p, v), sl = pr.seller;
   return { sku: p.sku, icon: p.icon, image: p.image || "", title: (p.brand ? p.brand + " " : "") + p.model + (v.label && v.label !== "Standard" ? " · " + v.label : ""),
-    total: pr.total, etaDays: pr.etaDays, china: !pr.local, quote: !!pr.quote,
+    total: pr.total, etaDays: pr.etaDays, china: !pr.local, quote: !!pr.quote, moq: moqOf(p, v),
     seller: sl, where: sl.official ? "Garsoore Official" : sl.name,
     options: pr.options || null, mode: pr.mode || null };
 }
 
 RF.catalog = {
   CATS: CATS, products: P, isChina: isChina, price: price, sameVariant: sameVariant, card: card, _breakdown: breakdown,
-  seller: seller, eligible: eligible, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
+  seller: seller, eligible: eligible, moqOf: moqOf, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
   get: function (sku) { return P.filter(function (p) { return p.sku === sku; })[0]; },
   search: function (q, opts) {
     opts = opts || {}; q = (q || "").toLowerCase().trim();
@@ -322,12 +330,12 @@ RF.cart = {
      line never silently falls back to the cheaper lane on the way to checkout. */
   add: function (sku, vi, qty, quoteId, snap, mode) {
     var a = cartS.get(), l = a.filter(function (x) { return x.sku === sku && x.vi === vi && (x.mode || null) === (mode || null); })[0];
-    if (l) l.qty = Math.min(99, l.qty + (qty || 1)); else a.push({ sku: sku, vi: vi || 0, qty: qty || 1, quote: quoteId || null, snap: snap || null, mode: mode || null });
+    if (l) l.qty = Math.min(9999, l.qty + (qty || 1)); else a.push({ sku: sku, vi: vi || 0, qty: qty || 1, quote: quoteId || null, snap: snap || null, mode: mode || null });
     cartS.set(a); RF.cart.onchange(); return a;
   },
   /* change a line's lane in the cart (the price moves with it, in front of the customer) */
   setMode: function (i, mode) { var a = cartS.get(); if (!a[i]) return; a[i].mode = mode || null; cartS.set(a); RF.cart.onchange(); },
-  setQty: function (i, q) { var a = cartS.get(); if (!a[i]) return; if (q < 1) a.splice(i, 1); else a[i].qty = Math.min(99, q); cartS.set(a); RF.cart.onchange(); },
+  setQty: function (i, q) { var a = cartS.get(); if (!a[i]) return; if (q < 1) a.splice(i, 1); else a[i].qty = Math.min(9999, q); cartS.set(a); RF.cart.onchange(); },
   clear: function () { cartS.set([]); RF.cart.onchange(); },
   /* resolve lines to {product, variant, price} (drops lines whose product disappeared) */
   resolve: function () {
