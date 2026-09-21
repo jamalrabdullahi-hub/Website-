@@ -14,7 +14,7 @@ var call = null, app = null, view = "money";
 var NAV = [
   ["money", "💰", "Lacagta"], ["accounts", "👥", "Akoonnada"], ["business", "🏢", "Ganacsiyada"],
   ["buy", "🛒", "Iibsiga"], ["fbg", "📦", "FBG"], ["agents", "🤝", "Wakiillada"], ["catalogue", "🏷", "Katalogga"],
-  ["shipping", "🛩", "Rarka"], ["ops", "⚙", "Hawlgalka"], ["log", "📜", "Diiwaanka"]
+  ["shipping", "🛩", "Rarka"], ["calibration", "🎯", "Saxitaan"], ["ops", "⚙", "Hawlgalka"], ["log", "📜", "Diiwaanka"]
 ];
 var ROLE_SO = { consumer: "Macmiil", business: "Ganacsi", agent: "Wakiil", staff: "Shaqaale", admin: "Maamule" };
 var STATE_SO = { AWAITING_PAYMENT: "Sugaya lacag", PAYMENT_REVIEW: "Hubinta lacagta", PLACED: "La bixiyay", CONFIRMED: "La xaqiijiyay", SOURCING: "Laga iibsanayo", IN_TRANSIT: "Socda", ARRIVED: "Yimid", READY: "Diyaar", COMPLETED: "Dhammaystiran", CANCELLED: "La joojiyay", EXPIRED: "Dhacay" };
@@ -90,7 +90,84 @@ function render() {
   location.hash = view;
   [].forEach.call(app.querySelectorAll(".cs-side nav a"), function (a) { a.classList.toggle("on", a.dataset.v === view); });
   panel('<div class="cs-boot">⏳</div>');
-  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, ops: ops, log: log }[view] || money_)();
+  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, calibration: calibration, ops: ops, log: log }[view] || money_)();
+}
+
+/* ---------------------------------------------------------------- calibration: what the guesses got wrong
+   Four numbers hold up every consumer price and not one of them has been checked against reality: the freight rate
+   card, the clearance loading, the packed density per category, and the transit window. This page puts each one next
+   to what actually happened on shipments that have landed.
+
+   It deliberately does NOT edit anything. One shipment is a sample of one, and quietly re-pricing 421 products from
+   it would replace a stated guess with a hidden one. It tells you what it saw; you decide. */
+function calibration() {
+  head("Saxitaan", '<span class="cs-note">Waxa la saadaaliyay vs waxa dhab ahaan dhacay</span>');
+  call("GET", "/admin/calibration").then(function (c) {
+    if (!c.samples) {
+      panel('<div class="cs-warn"><b>Weli shixnad ma imanin</b>' +
+        '<div>Qiimaha alaabta oo dhan wuxuu ku salaysan yahay afar qiyaasood oo aan weli la hubin: kaadhka rarka, ' +
+        'kharashka gudbinta (' + c.clearance.assumedPerKgAir + '$/kg cirka · ' + c.clearance.assumedPerCbmSea + '$/cbm badda), ' +
+        'cufnaanta sanduuqa iyo waqtiga safarka. <b>Hal shixnad oo dhab ah ayaa afartaba saxaysa.</b> ' +
+        'Marka shixnaddaadii ugu horreysay timaaddo, ku qor kharashka rasmiga ah bogga FBG — halkan ayay ka muuqan doontaa.</div></div>' +
+        '<div class="cs-note2">Waxa la sugayo: shixnad xaaladdeedu tahay ARRIVED oo leh kharash rar iyo gudbin.</div>');
+      return;
+    }
+    var f = c.freight, cl = c.clearance, tr = c.transit;
+    function verdict(errPct, tol) {
+      if (errPct == null) return '<span class="g-pill">xog la\'aan</span>';
+      var bad = Math.abs(errPct) > (tol || 10);
+      return '<span class="g-pill' + (bad ? " gold" : "") + '">' + (errPct > 0 ? "+" : "") + errPct + '%' + (bad ? " — sax" : " — fiican") + '</span>';
+    }
+    panel(
+      '<div class="cs-note2" style="margin-bottom:14px">' + c.samples + ' shixnad oo la falanqeeyay. Qiimayaashu ma beddelmaan halkan — ' +
+        'akhri, kadibna adigu ku sax <code>data/rate-cards.json</code> ama <code>data/customs.json</code>.</div>' +
+
+      '<div class="cs-kv" style="margin-bottom:18px">' +
+        kv("Rarka la saadaaliyay", "$" + f.predicted) + kv("Rarka dhabta ah", "$" + f.actual) +
+        kv("Farqiga", (f.errorPct == null ? "—" : (f.errorPct > 0 ? "+" : "") + f.errorPct + "%")) +
+        kv("Gudbinta la saadaaliyay", "$" + cl.predicted) + kv("Gudbinta dhabta ah", "$" + cl.actual) +
+        kv("Farqiga", (cl.errorPct == null ? "—" : (cl.errorPct > 0 ? "+" : "") + cl.errorPct + "%")) +
+      '</div>' +
+
+      '<div class="cs-card"><div class="cs-cardh"><b>1 · Kaadhka rarka</b>' + verdict(f.errorPct) + '</div>' +
+        '<div class="cs-note2">' + (f.errorPct == null ? "Weli lama hubin — kharashka rarka ma buuxin."
+          : f.errorPct > 0 ? "Rarku wuu ka qaalisan yahay intii la filayay. Qiimaha alaabta ayaa hoos u dhacaya faa'iidada — kor u qaad heerarka kaadhka ama la wadaag qiimaha."
+          : "Rarku wuu ka raqiisan yahay intii la filayay — waad ka faa'iidaysanaysaa, laakiin qiimahaagu wuu ka sarreeyaa suuqa.") + '</div></div>' +
+
+      '<div class="cs-card"><div class="cs-cardh"><b>2 · Kharashka gudbinta</b>' + verdict(cl.errorPct) + '</div>' +
+        '<div class="cs-note2">Hadda: <b>$' + cl.assumedPerKgAir + '/kg</b> (cir) · <b>$' + cl.assumedPerCbmSea + '/cbm</b> (bad). ' +
+        (cl.errorPct == null ? "Ku qor kharashka gudbinta ee dhabta ah marka shixnaddu timaaddo."
+          : "Haddii farqigu weyn yahay, waxa khaldan badanaa waa <code>typical</code> — cabbirka shixnadda ee aan filaynay, ee ku jira data/customs.json.") + '</div></div>' +
+
+      '<div class="cs-card"><div class="cs-cardh"><b>3 · Cufnaanta sanduuqa</b>' +
+        '<span class="g-pill' + (Object.keys(c.density).length ? "" : " gold") + '">' + Object.keys(c.density).length + ' qaybood</span></div>' +
+        (Object.keys(c.density).length ? table([["Qaybta", "1fr"], ["La qiyaasay", "1fr"], ["La cabbiray", "1fr"], ["Farqi", "1fr"], ["Tirada", "1fr"]],
+          Object.keys(c.density).map(function (k) {
+            var d = c.density[k], diff = d.assumed ? Math.round((d.measured - d.assumed) / d.assumed * 100) : null;
+            return [e(k), (d.assumed || "—") + " kg/cbm", '<b>' + d.measured + " kg/cbm</b>",
+              diff == null ? "—" : '<span class="g-pill' + (Math.abs(diff) > 15 ? " gold" : "") + '">' + (diff > 0 ? "+" : "") + diff + '%</span>', String(d.items)];
+          }))
+        : '<div class="cs-note2">Weli sanduuq lama cabbirin. Marka xarunta Shiinaha ay miisaanto oo cabbirto, tani way buuxin doontaa.</div>') +
+        '<div class="cs-note2">Cufnaantu waxay go\'aamisaa qiimaha rarka cirka ee alaabta weyn ee fudud. Ku sax <code>packedDensity</code>.</div></div>' +
+
+      '<div class="cs-card"><div class="cs-cardh"><b>4 · Waqtiga safarka</b>' +
+        (tr ? '<span class="g-pill' + (tr.avgActual > tr.avgPredictedMax ? " gold" : "") + '">' + tr.avgActual + ' maalmood</span>' : '<span class="g-pill gold">xog la\'aan</span>') + '</div>' +
+        (tr ? '<div class="cs-note2">Celceliska dhabta ah <b>' + tr.avgActual + ' maalmood</b>, waxaan u ballan qaadnay ugu badnaan <b>' + tr.avgPredictedMax + '</b>. ' +
+          (tr.avgActual > tr.avgPredictedMax ? "Macaamiishu way sugayaan wax ka badan intii loo sheegay — ballanta kordhi." : "Ballantu waa mid la gaadhi karo.") + '</div>'
+          : '<div class="cs-note2">Waxay u baahan tahay shixnad leh taariikhda dirista iyo taariikhda imaanshaha.</div>') + '</div>' +
+
+      '<div class="g-sec"><h2>Shixnadaha</h2></div>' +
+      table([["Shixnad", "1fr"], ["Hab", ".6fr"], ["Miisaan", ".8fr"], ["Rar: saadaal → dhab", "1.4fr"], ["Gudbin: saadaal → dhab", "1.4fr"], ["Maalmo", ".7fr"]],
+        c.shipments.map(function (x) {
+          return ['<code>' + e(x.id) + '</code>', x.mode === "air" ? "✈" : "🚢",
+            (x.kg || 0) + " kg / " + (x.cbm || 0) + " cbm",
+            (x.freightPredicted == null ? "—" : "$" + x.freightPredicted) + " → " + (x.freightActual == null ? '<i>lama qorin</i>' : "<b>$" + x.freightActual + "</b>"),
+            (x.clearancePredicted == null ? "—" : "$" + x.clearancePredicted) + " → " + (x.clearanceActual == null ? '<i>lama qorin</i>' : "<b>$" + x.clearanceActual + "</b>"),
+            x.transitDays == null ? "—" : x.transitDays + (x.transitPredicted ? " / " + x.transitPredicted[1] : "")];
+        })) +
+      '<div class="cs-note2" style="margin-top:14px">Kaadhadhka: ' + c.cards.map(function (k) { return e(k.id) + " (" + (k.status === "contracted" ? "la saxiixay" : "aan la saxiixin") + ")"; }).join(" · ") +
+        ' · canshuurta: ' + (c.customsStatus === "confirmed" ? "la xaqiijiyay" : "aan la xaqiijin") + '</div>');
+  }).catch(function (x) { panel('<div class="cs-empty">' + e(x.message) + '</div>'); });
 }
 
 /* ---------------------------------------------------------------- shipping: the contracts behind every price

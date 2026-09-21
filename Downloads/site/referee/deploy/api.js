@@ -686,6 +686,67 @@ export async function handleApi(req, env, url) {
       const alog = (action, target, detail) => env.DB.prepare("INSERT INTO admin_log (at, who, who_name, action, target, detail) VALUES (?,?,?,?,?,?)")
         .bind(now(), user.id, user.name, action, target || null, detail || null);
 
+      /* ---------------------------------------------------------------- calibration
+         Every consumer price rests on four guesses: the freight rate card, the clearance loading, the packed density
+         per category, and the transit window. This compares each against what actually happened on shipments that
+         have landed, and says what the number should be instead. It never edits anything — the operator reads the
+         suggestion, decides, and edits data/rate-cards.json or data/customs.json by hand, because silently
+         re-pricing a catalogue from one noisy sample is how you get a worse guess than you started with. */
+      if (path === "/admin/calibration" && M === "GET") {
+        const cns = (await env.DB.prepare("SELECT * FROM fbg_consignments WHERE state = 'ARRIVED' ORDER BY updated_at DESC LIMIT 50").all()).results;
+        const out = [], density = {}, perCat = {};
+        let freightPred = 0, freightReal = 0, clrPred = 0, clrReal = 0, transitN = 0, transitSum = 0, transitPredSum = 0;
+
+        for (const cn of cns) {
+          const pred = shipCost(cn.mode, cn.kg, cn.cbm, cn.shipped_at || cn.created_at);
+          const clrRate = clearanceRate(cn.mode);
+          const clrExpected = pred ? Math.round(clrRate * pred.chargeable * 100) / 100 : null;
+          const days = cn.shipped_at && cn.arrived_at
+            ? Math.max(0, Math.round((Date.parse(cn.arrived_at) - Date.parse(cn.shipped_at)) / 864e5)) : null;
+
+          if (pred && cn.cost_usd != null) { freightPred += pred.cost; freightReal += cn.cost_usd; }
+          if (clrExpected != null && cn.clearance_usd != null) { clrPred += clrExpected; clrReal += cn.clearance_usd; }
+          if (days != null && pred) { transitN++; transitSum += days; transitPredSum += pred.transitMax; }
+
+          /* measured density per category, from what the facility actually weighed and measured */
+          const items = (await env.DB.prepare("SELECT sku, kg, cbm FROM procurement WHERE consignment = ?").bind(cn.id).all()).results;
+          for (const it of items) {
+            if (!(it.kg > 0) || !(it.cbm > 0)) continue;
+            const cat = (CATALOG[it.sku] || {}).cat || "_unknown";
+            (perCat[cat] = perCat[cat] || { kg: 0, cbm: 0, n: 0 });
+            perCat[cat].kg += it.kg; perCat[cat].cbm += it.cbm; perCat[cat].n++;
+          }
+
+          out.push({ id: cn.id, mode: cn.mode, kg: cn.kg, cbm: cn.cbm,
+            shippedAt: cn.shipped_at, arrivedAt: cn.arrived_at, transitDays: days,
+            transitPredicted: pred ? [pred.transitMin, pred.transitMax] : null,
+            freightPredicted: pred ? pred.cost : null, freightActual: cn.cost_usd,
+            chargeable: pred ? pred.chargeable : null, unit: pred ? pred.unit : null,
+            clearancePredicted: clrExpected, clearanceActual: cn.clearance_usd,
+            dutyActual: cn.duty_usd, note: cn.note });
+        }
+
+        const assumed = (RATES.packedDensity || {});
+        for (const cat of Object.keys(perCat)) {
+          const p = perCat[cat];
+          if (!(p.cbm > 0)) continue;
+          density[cat] = { measured: Math.round(p.kg / p.cbm), assumed: assumed[cat] || assumed._default || null, items: p.n };
+        }
+
+        const pct = (a, b) => b > 0 ? Math.round((a - b) / b * 1000) / 10 : null;
+        return json({
+          shipments: out,
+          samples: out.length,
+          freight: { predicted: +freightPred.toFixed(2), actual: +freightReal.toFixed(2), errorPct: pct(freightReal, freightPred) },
+          clearance: { predicted: +clrPred.toFixed(2), actual: +clrReal.toFixed(2), errorPct: pct(clrReal, clrPred),
+            assumedPerKgAir: Math.round(clearanceRate("air") * 1000) / 1000, assumedPerCbmSea: Math.round(clearanceRate("sea") * 1000) / 1000 },
+          transit: transitN ? { samples: transitN, avgActual: Math.round(transitSum / transitN), avgPredictedMax: Math.round(transitPredSum / transitN) } : null,
+          density,
+          cards: RATES.cards.map(c => ({ id: c.id, mode: c.mode, status: c.status })),
+          customsStatus: (RATES.customs || {}).status || "draft"
+        });
+      }
+
       if (path === "/admin/overview" && M === "GET") {
         const roles = (await env.DB.prepare("SELECT role, COUNT(*) n FROM users GROUP BY role").all()).results;
         const st = (await env.DB.prepare("SELECT status, COUNT(*) n FROM users GROUP BY status").all()).results;
@@ -1014,8 +1075,8 @@ export async function handleApi(req, env, url) {
              the facility actually weighed and measured — never the FBG sell price, and never weight alone. */
           const q = shipCost(cn.mode, cn.kg, cn.cbm, t);
           const cost = +b.cost > 0 ? +b.cost : (q ? q.cost : (cn.kg || 0) * (cn.mode === "air" ? FBG.airPerKg : FBG.seaPerKg));
-          const stmts = [env.DB.prepare("UPDATE fbg_consignments SET state = 'SHIPPED', awb = ?, cost_usd = ?, eta = ?, updated_at = ? WHERE id = ?")
-            .bind(String(b.awb || "").slice(0, 40), +cost.toFixed(2), String(b.eta || "").slice(0, 30), t, cn.id)];
+          const stmts = [env.DB.prepare("UPDATE fbg_consignments SET state = 'SHIPPED', awb = ?, cost_usd = ?, eta = ?, shipped_at = ?, updated_at = ? WHERE id = ?")
+            .bind(String(b.awb || "").slice(0, 40), +cost.toFixed(2), String(b.eta || "").slice(0, 30), t, t, cn.id)];
           /* Apportion by each item's own chargeable quantity. Sharing a bulky item's freight by actual weight makes
              the dense cargo in the same consignment subsidise it, which quietly misprices both. */
           const chargeableOf = r => { const c = shipCost(cn.mode, r.kg, r.cbm, t); return c ? c.chargeable : (r.kg || 0); };
@@ -1049,7 +1110,10 @@ export async function handleApi(req, env, url) {
           return json({ ok: true, cost: +cost.toFixed(2), items: rows.length + pos.length });
         }
         /* arrived in Mogadishu: the goods become inventory the owner can sell, keep or hand to an agent */
-        const stmts = [env.DB.prepare("UPDATE fbg_consignments SET state = 'ARRIVED', updated_at = ? WHERE id = ?").bind(t, cn.id)];
+        /* what it really cost to land it. Staff type these off the invoices; blank is allowed — a half-filled
+           calibration is still worth more than none, and the page says which figures are missing. */
+        const stmts = [env.DB.prepare("UPDATE fbg_consignments SET state = 'ARRIVED', clearance_usd = ?, duty_usd = ?, arrived_at = ?, note = ?, updated_at = ? WHERE id = ?")
+          .bind(+b.clearance > 0 ? +(+b.clearance).toFixed(2) : null, +b.duty > 0 ? +(+b.duty).toFixed(2) : null, t, String(b.note || "").slice(0, 300) || null, t, cn.id)];
         for (const r of rows) {
           const h = J(r.history) || []; h.push({ state: "ARRIVED", at: t, by: user.name });
           const qty = r.qty_received || r.qty_expected;
