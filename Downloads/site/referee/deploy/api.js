@@ -47,6 +47,29 @@ function serviceFee(keys) {
   }, 0);
 }
 
+/* ---- managed wholesale sourcing. The deposit buys an agent's time, so the rules are about whose fault it is that
+   the time was spent. Garsoore fails to source it: full refund, our problem. The trader walks away mid-negotiation:
+   we keep a share that grows per day, because the hours are gone either way.
+   Every one of these numbers is shown to the customer before they pay a cent — see docs/SOURCING-TERMS.md. */
+export const SOURCING = {
+  depositPct: 30,            // % of the GOODS value only. Shipping is never part of the deposit base.
+  subscriptionUsd: 100,      // per month; an active subscription waives the deposit entirely
+  cancelDecayPctPerDay: 5,   // % of the deposit kept per day elapsed once sourcing started
+  cancelDecayCapPct: 100,    // ...never more than the deposit itself
+  minDeposit: 20,            // below this the paperwork costs more than the deposit protects
+  quoteValidDays: 7
+};
+/* What Garsoore keeps if the trader cancels. Day 0 costs them nothing: changing your mind the same hour is not the
+   behaviour this is here to discourage. After that it is 5% a day, capped at the whole deposit. */
+function forfeitOf(sr, at) {
+  const paid = +sr.deposit_paid || 0;
+  if (!paid || !sr.deposit_at) return 0;
+  const days = Math.max(0, Math.floor((Date.parse(at) - Date.parse(sr.deposit_at)) / 864e5));
+  const pct = Math.min(SOURCING.cancelDecayCapPct, days * SOURCING.cancelDecayPctPerDay);
+  return Math.round(paid * pct) / 100;
+}
+function subActive(u, at) { return !!(u && u.sub_until && Date.parse(u.sub_until) > Date.parse(at || now())); }
+
 /* Discounts never exceed contribution margin: first-order only, capped. */
 const PROMOS = { SOODHAWOW: { pct: 0.05, cap: 10, firstOrder: true } };
 
@@ -280,6 +303,16 @@ export function shipCost(mode, kg, cbm, at, cardId) {
   return { cost: Math.round(cost * 100) / 100, chargeable: Math.round(chargeable * 1000) / 1000, rate, unit: card.unit,
     rateCardId: card.id, rateCardStatus: card.status, transitMin: card.transitMinDays, transitMax: card.transitMaxDays };
 }
+/* the customer's view of a sourcing request. `supplier` is deliberately absent: who the agent found is Garsoore's
+   procurement relationship, exactly as it is for Official Procurement. */
+const srcOut = r => ({ id: r.id, state: r.state, title: r.title, url: r.url, platform: r.platform, qty: r.qty, unit: r.unit,
+  targetUnit: r.target_unit, goodsEst: r.goods_est, city: r.city, notes: r.notes,
+  depositDue: r.deposit_due, depositPaid: r.deposit_paid, depositAt: r.deposit_at, depositTxn: r.deposit_txn, waived: !!r.waived,
+  quoteUnit: r.quote_unit, quoteGoods: r.quote_goods, quoteShip: r.quote_ship, quoteTotal: r.quote_total,
+  quoteEta: r.quote_eta, quoteNote: r.quote_note, quotedAt: r.quoted_at,
+  forfeit: r.forfeit, refund: r.refund, closeReason: r.close_reason, orderId: r.order_id,
+  history: J(r.history) || [], createdAt: r.created_at, updatedAt: r.updated_at });
+
 const procOut = r => ({ id: r.id, orderId: r.order_id, sku: r.sku, title: r.title, qty: r.qty, platform: r.platform,
   sourceUrl: r.source_url, supplier: r.supplier, targetCny: r.target_cny, paidCny: r.paid_cny, tracking: r.tracking,
   cartons: r.cartons, kg: r.kg, cbm: r.cbm, consignment: r.consignment, state: r.state, note: r.note,
@@ -422,7 +455,7 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
-    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES,
+    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING,
       /* the lanes a customer may choose, and nothing about who flies or sails them */
       shipping: { lanes: RATES.cards.filter(c => c.status !== "expired").map(c => ({ mode: c.mode, transitMin: c.transitMinDays, transitMax: c.transitMaxDays })),
         facility: "Garsoore China Facility · Guangzhou" }, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
@@ -604,6 +637,60 @@ export async function handleApi(req, env, url) {
       if (o.state !== "COMPLETED" || o.review) return err("Faallo waxaa laga bixin karaa alaab aad qaadatay oo keliya.");
       const stars = Math.max(1, Math.min(5, Math.round(+b.stars || 5)));
       await env.DB.prepare("UPDATE orders SET review = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify({ stars, text: String(b.text || "").trim().slice(0, 500), at: t, by: user.name.split(" ")[0] }), t, o.id).run();
+      return json({ ok: true });
+    }
+
+    /* ---------------------------------------------------------------- managed sourcing (customer) */
+    if (path === "/sourcing" && M === "GET") {
+      const r = await env.DB.prepare("SELECT * FROM sourcing WHERE user_id = ? ORDER BY created_at DESC LIMIT 100").bind(user.id).all();
+      return json({ requests: r.results.map(x => srcOut(x)), sub: { active: subActive(user), until: user.sub_until || null }, terms: SOURCING });
+    }
+    if (path === "/sourcing" && M === "POST") {
+      const b = await body(req), t = now();
+      const title = String(b.title || "").trim().slice(0, 200);
+      if (title.length < 3) return err("Sharax waxa aad rabto.");
+      const qty = Math.max(1, Math.min(1000000, Math.round(+b.qty || 0)));
+      if (!(qty >= 1)) return err("Ku qor tirada aad rabto.");
+      const goods = Math.round((+b.goodsEst || 0) * 100) / 100;
+      if (!(goods > 0)) return err("Ku qor qiyaasta qiimaha alaabta (lacagta rarka ha ku darin).");
+      const waived = subActive(user, t);
+      /* the deposit is a share of the GOODS only — shipping is quoted later and never sits in the deposit base */
+      const due = waived ? 0 : Math.max(SOURCING.minDeposit, Math.round(goods * SOURCING.depositPct) / 100);
+      const id = rid("SR-", 6);
+      await env.DB.prepare(`INSERT INTO sourcing (id,user_id,created_at,updated_at,state,title,url,platform,qty,unit,target_unit,goods_est,city,notes,deposit_due,waived,history)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        id, user.id, t, t, waived ? "SOURCING" : "AWAITING_DEPOSIT", title,
+        /^https?:\/\//.test(b.url || "") ? String(b.url).slice(0, 500) : null, String(b.platform || "").slice(0, 20) || null,
+        qty, String(b.unit || "xabbo").slice(0, 20), +b.targetUnit || null, goods,
+        String(b.city || "Muqdisho").slice(0, 60), String(b.notes || "").slice(0, 800) || null,
+        due, waived ? 1 : 0, JSON.stringify([{ state: waived ? "SOURCING" : "AWAITING_DEPOSIT", at: t }])).run();
+      return json({ id, depositDue: due, waived, terms: SOURCING });
+    }
+    if ((m = path.match(/^\/sourcing\/(SR-[A-Z0-9]+)\/(deposit|cancel|accept)$/)) && M === "POST") {
+      const sr = await env.DB.prepare("SELECT * FROM sourcing WHERE id = ? AND user_id = ?").bind(m[1], user.id).first();
+      if (!sr) return err("Codsigan lama helin.", 404);
+      const b = await body(req), t = now(), h = J(sr.history) || [];
+      if (m[2] === "deposit") {
+        if (sr.state !== "AWAITING_DEPOSIT") return err("Codsigan horey ayuu u socdaa.");
+        const txn = String(b.txn || "").trim();
+        if (!/^[A-Za-z0-9\-. ]{4,40}$/.test(txn)) return err("Ku qor lambarka macaamilka.");
+        h.push({ state: "DEPOSIT_SENT", at: t });
+        await env.DB.prepare("UPDATE sourcing SET deposit_txn = ?, history = ?, updated_at = ? WHERE id = ?").bind(txn, JSON.stringify(h), t, sr.id).run();
+        return json({ ok: true });
+      }
+      if (m[2] === "cancel") {
+        if (["CANCELLED", "UNSOURCEABLE", "ORDERED", "DELIVERED"].includes(sr.state)) return err("Codsigan lama joojin karo hadda.");
+        /* the trader is told the exact number before this call, and it is written into the history either way */
+        const keep = forfeitOf(sr, t), back = Math.round(((+sr.deposit_paid || 0) - keep) * 100) / 100;
+        h.push({ state: "CANCELLED", at: t, by: "customer", forfeit: keep, refund: back });
+        await env.DB.prepare("UPDATE sourcing SET state = 'CANCELLED', closed_at = ?, close_reason = ?, forfeit = ?, refund = ?, history = ?, updated_at = ? WHERE id = ?")
+          .bind(t, String(b.why || "").slice(0, 300) || "Macmiilku wuu joojiyay", keep, back, JSON.stringify(h), t, sr.id).run();
+        return json({ ok: true, forfeit: keep, refund: back });
+      }
+      if (sr.state !== "QUOTED") return err("Weli qiimo lama soo celin.");
+      if (sr.quoted_at && Date.now() - Date.parse(sr.quoted_at) > SOURCING.quoteValidDays * 864e5) return err("Qiimahan wuu dhacay — codso mid cusub.");
+      h.push({ state: "ACCEPTED", at: t });
+      await env.DB.prepare("UPDATE sourcing SET state = 'ACCEPTED', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, sr.id).run();
       return json({ ok: true });
     }
 
@@ -1382,6 +1469,62 @@ export async function handleApi(req, env, url) {
     }
     /* the reset queue. Staff see who asked and when; they never see anyone's existing PIN, because nobody can —
        only a hash is stored, and the new one is generated here and shown once. */
+    /* ---------------------------------------------------------------- managed sourcing (staff) */
+    if (path === "/ops/sourcing" && M === "GET") {
+      const r = await env.DB.prepare(`SELECT s.*, u.name u_name, u.phone u_phone FROM sourcing s LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.state NOT IN ('DELIVERED','CANCELLED','UNSOURCEABLE','DECLINED') ORDER BY s.created_at ASC LIMIT 200`).all();
+      return json({ requests: r.results.map(x => Object.assign(srcOut(x), {
+        supplier: x.supplier, customer: x.u_name ? { name: x.u_name, phone: "+" + x.u_phone } : null })) });
+    }
+    if ((m = path.match(/^\/ops\/sourcing\/(SR-[A-Z0-9]+)\/(deposit|quote|unsourceable|decline|ordered)$/)) && M === "POST") {
+      const sr = await env.DB.prepare("SELECT * FROM sourcing WHERE id = ?").bind(m[1]).first();
+      if (!sr) return err("Codsigan lama helin.", 404);
+      const b = await body(req), t = now(), h = J(sr.history) || [];
+      const push = (st, extra) => { h.push(Object.assign({ state: st, at: t, by: user.name }, extra || {})); return JSON.stringify(h); };
+
+      if (m[2] === "deposit") {                       // the money landed: sourcing starts and the clock starts with it
+        const paid = Math.round((+b.amount || sr.deposit_due) * 100) / 100;
+        await env.DB.batch([
+          env.DB.prepare("UPDATE sourcing SET state = 'SOURCING', deposit_paid = ?, deposit_at = ?, history = ?, updated_at = ? WHERE id = ?")
+            .bind(paid, t, push("SOURCING", { deposit: paid }), t, sr.id),
+          notify(env, sr.user_id, "money", "Waxaan bilownay raadinta", sr.title + " — wakiilkeennu wuxuu la xiriirayaa iibiyeyaasha. Qiimo ayaa kuu imanaya.", "sourcing.html")
+        ]);
+        return json({ ok: true });
+      }
+      if (m[2] === "quote") {                          // one number back, goods and shipping named separately
+        const goods = Math.round((+b.goods || 0) * 100) / 100, ship = Math.round((+b.ship || 0) * 100) / 100;
+        if (!(goods > 0)) return err("Ku qor qiimaha alaabta.");
+        const total = Math.round((goods + ship) * 100) / 100;
+        await env.DB.batch([
+          env.DB.prepare(`UPDATE sourcing SET state = 'QUOTED', quote_goods = ?, quote_ship = ?, quote_total = ?, quote_unit = ?,
+            quote_eta = ?, quote_note = ?, supplier = ?, quoted_at = ?, history = ?, updated_at = ? WHERE id = ?`)
+            .bind(goods, ship, total, Math.round(goods / Math.max(1, sr.qty) * 100) / 100,
+              Math.max(1, Math.round(+b.etaDays || 30)), String(b.note || "").slice(0, 600) || null,
+              String(b.supplier || "").slice(0, 160) || null, t, push("QUOTED", { total }), t, sr.id),
+          notify(env, sr.user_id, "quote", "Qiimahaagii waa diyaar: $" + total, sr.title + " — " + SOURCING.quoteValidDays + " maalmood ayuu shaqaynayaa.", "sourcing.html")
+        ]);
+        return json({ ok: true, total });
+      }
+      if (m[2] === "unsourceable") {                   // our listing was bad, so the deposit goes back whole
+        const back = +sr.deposit_paid || 0;
+        await env.DB.batch([
+          env.DB.prepare("UPDATE sourcing SET state = 'UNSOURCEABLE', closed_at = ?, close_reason = ?, forfeit = 0, refund = ?, history = ?, updated_at = ? WHERE id = ?")
+            .bind(t, String(b.why || "").slice(0, 300) || "Lama heli karo", back, push("UNSOURCEABLE", { refund: back }), t, sr.id),
+          notify(env, sr.user_id, "money", "Lama heli karin — lacagtaadii waa laguu celinayaa",
+            sr.title + " — " + (b.why || "iibiyuhu ma jirin ama ma iibin karin") + ". Carbuunkaagii oo dhan (" + back + "$) waa laguu celinayaa. Khalad kayaga ah.", "sourcing.html")
+        ]);
+        return json({ ok: true, refund: back });
+      }
+      if (m[2] === "decline") {
+        await env.DB.prepare("UPDATE sourcing SET state = 'DECLINED', closed_at = ?, close_reason = ?, refund = ?, forfeit = 0, history = ?, updated_at = ? WHERE id = ?")
+          .bind(t, String(b.why || "").slice(0, 300), +sr.deposit_paid || 0, push("DECLINED"), t, sr.id).run();
+        return json({ ok: true });
+      }
+      await env.DB.prepare("UPDATE sourcing SET state = 'ORDERED', order_id = ?, history = ?, updated_at = ? WHERE id = ?")
+        .bind(String(b.orderId || "").slice(0, 40) || null, push("ORDERED"), t, sr.id).run();
+      return json({ ok: true });
+    }
+
     if (path === "/ops/pin-resets" && M === "GET") {
       const r = await env.DB.prepare(`SELECT p.*, u.name u_name, u.status u_status,
           (SELECT COUNT(*) FROM orders o WHERE o.user_id = p.user_id) orders

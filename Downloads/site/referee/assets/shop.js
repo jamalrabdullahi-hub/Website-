@@ -653,9 +653,10 @@ RF.shopUI = function (page, h) {
   /* the pro screens for agents / FBG / China sourcing only render in Xirfadle mode */
   if (RF.mode && RF.mode.simple() && RF.simpleUI && ["agents", "fbg", "bizchina"].indexOf(page) >= 0)
     return RF.api.ready.then(function () { RF.simpleUI(app, { agents: "agent", fbg: "fbg", bizchina: "china" }[page]); });
-  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); }, admin: function (a) { RF.adminUI(a, qs("tab") || "home"); }, fbg: function (a) { RF.fbgUI(a); }, account: function (a) { RF.accountUI(a); } }[page] || home)(app); };
+  var run = function () { ({ home: home, product: product, china: china, orders: orders, cart: cart, bizchina: bizChina,
+    calculator: function (a) { RF.calcUI(a); }, sourcing: function (a) { RF.sourcingUI(a); }, quotes: quotesAdmin, ops: function (a) { RF.opsUI(a, qs("tab") || "stats"); }, agents: function (a) { RF.agentsUI(a, qs("tab") || "mine"); }, admin: function (a) { RF.adminUI(a, qs("tab") || "home"); }, fbg: function (a) { RF.fbgUI(a); }, account: function (a) { RF.accountUI(a); } }[page] || home)(app); };
   /* staff pages need to know whether the API is there before drawing; shop pages draw immediately */
-  if ((page === "quotes" || page === "ops" || page === "agents" || page === "admin" || page === "fbg" || page === "account" || page === "bizchina") && RF.api) RF.api.ready.then(run);
+  if ((page === "quotes" || page === "ops" || page === "agents" || page === "admin" || page === "fbg" || page === "account" || page === "bizchina" || page === "sourcing") && RF.api) RF.api.ready.then(run);
   else if (RF.backend && ["home", "product", "cart", "china"].indexOf(page) >= 0)
     RF.backend.listings().then(function (l) { C.addLive(l || []); }).catch(function () {}).then(run);
   else run();
