@@ -180,7 +180,7 @@ function chrome() {
       '<a class="brand" href="' + (biz ? "index.html" : "index.html") + '">' + FLAG + '<span class="bname"> Garsoore</span>' + (biz ? ' <span class="bizmark">Ganacsi</span>' : '') + '</a>' +
       '<nav class="nav">' +
         (biz
-          ? nl("index.html", "Suuqa ganacsiga", cur === "b2b") + nl("sourcing.html", "Naga iibso", window.SHOP === "sourcing") + nl("china.html", "Iibsi Shiinaha", window.SHOP === "bizchina", "cnlink") + nl("fbg.html", "FBG", window.SHOP === "fbg") + nl("agents.html", "Wakiillo", window.SHOP === "agents") + nl("contracts.html", "Qandaraasyo", cur === "tenders") +
+          ? nl("index.html", "Suuqa ganacsiga", cur === "b2b") + nl("sourcing.html", "Naga iibso", window.SHOP === "sourcing") + nl("pro.html", "Pro", window.SHOP === "pro") + nl("china.html", "Iibsi Shiinaha", window.SHOP === "bizchina", "cnlink") + nl("fbg.html", "FBG", window.SHOP === "fbg") + nl("agents.html", "Wakiillo", window.SHOP === "agents") + nl("contracts.html", "Qandaraasyo", cur === "tenders") +
             nl("logistics.html", "Rar", cur === "logi") + nl("exchange.html", "Suuqa badeecada", cur === "exchange") +
             nl("activity.html", "Hawlaha shirkadda", cur === "activity")
           : nl("index.html", "Suuqa", sp === "home") + nl("marketplace.html", "Xayeysiis", cur === "classifieds") +
@@ -1543,6 +1543,7 @@ document.addEventListener("DOMContentLoaded", function () {
   /* the calculator and the sourcing desk are standalone pages: they do not load the whole shop bundle, so they
      dispatch before the RF.shopUI branch rather than through it */
   else if (window.SHOP === "calculator" && RF.calcUI) RF.calcUI(document.getElementById("app"));
+  else if (window.SHOP === "pro" && RF.proUI) RF.api.ready.then(function () { RF.proUI(document.getElementById("app")); });
   else if (window.SHOP === "sourcing" && RF.sourcingUI) RF.api.ready.then(function () { RF.sourcingUI(document.getElementById("app")); });
   else if (window.SHOP && RF.shopUI) RF.shopUI(window.SHOP, { toast: toast, e: e });
   else if (window.BOARD) boardPage();

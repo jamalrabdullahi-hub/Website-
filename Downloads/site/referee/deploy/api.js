@@ -47,13 +47,29 @@ function serviceFee(keys) {
   }, 0);
 }
 
+/* ---- the two things a Somali business can be on Garsoore.
+
+   GARSOORE BUSINESS (free) is the whole marketplace: search wholesale, paste a link, ask for a price, place an
+   order, use an agent, sell on the consumer shop. Nothing about buying is behind a paywall, deliberately — charging
+   somebody for permission to spend money with you is how a marketplace stays empty.
+
+   GARSOORE BUSINESS PRO is the two things that cost Garsoore real capacity rather than server time:
+     • an FBG suite — a China address of their own, and space in our facility and our consolidations
+     • sourcing with no deposit — an agent works their request on trust instead of against money held
+
+   Both are capacity we have to reserve whether or not they use it, which is exactly what a subscription is for. */
+export const PLANS = {
+  proMonthly: 50,            // $/month for Garsoore Business Pro
+  proBenefits: ["fbg", "no-deposit"]
+};
+
 /* ---- managed wholesale sourcing. The deposit buys an agent's time, so the rules are about whose fault it is that
    the time was spent. Garsoore fails to source it: full refund, our problem. The trader walks away mid-negotiation:
    we keep a share that grows per day, because the hours are gone either way.
    Every one of these numbers is shown to the customer before they pay a cent — see docs/SOURCING-TERMS.md. */
 export const SOURCING = {
   depositPct: 30,            // % of the GOODS value only. Shipping is never part of the deposit base.
-  subscriptionUsd: 100,      // per month; an active subscription waives the deposit entirely
+  subscriptionUsd: 50,       // per month; Garsoore Business Pro waives the deposit entirely (see PLANS)
   cancelDecayPctPerDay: 5,   // % of the deposit kept per day elapsed once sourcing started
   cancelDecayCapPct: 100,    // ...never more than the deposit itself
   minDeposit: 20,            // below this the paperwork costs more than the deposit protects
@@ -68,7 +84,11 @@ function forfeitOf(sr, at) {
   const pct = Math.min(SOURCING.cancelDecayCapPct, days * SOURCING.cancelDecayPctPerDay);
   return Math.round(paid * pct) / 100;
 }
-function subActive(u, at) { return !!(u && u.sub_until && Date.parse(u.sub_until) > Date.parse(at || now())); }
+/* Garsoore Business Pro, stored as an expiry rather than a boolean so a lapsed membership needs no cleanup job.
+   There is no recurring billing yet — an administrator extends it after payment lands, which is honest about what
+   the system can actually do today. */
+function proActive(u, at) { return !!(u && u.sub_until && Date.parse(u.sub_until) > Date.parse(at || now())); }
+const subActive = proActive;                     // sourcing called it a subscription before the tier had a name
 
 /* Discounts never exceed contribution margin: first-order only, capped. */
 const PROMOS = { SOODHAWOW: { pct: 0.05, cap: 10, firstOrder: true } };
@@ -455,7 +475,7 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
-    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING,
+    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING, plans: PLANS,
       /* the lanes a customer may choose, and nothing about who flies or sails them */
       shipping: { lanes: RATES.cards.filter(c => c.status !== "expired").map(c => ({ mode: c.mode, transitMin: c.transitMinDays, transitMax: c.transitMaxDays })),
         facility: "Garsoore China Facility · Guangzhou" }, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
@@ -857,6 +877,7 @@ export async function handleApi(req, env, url) {
             ORDER BY u.created_at DESC LIMIT 200`).bind(role, role, q, like, like).all()).results;
         return json({ users: rows.map(u => ({ id: u.id, name: u.name, phone: "+" + u.phone, role: u.role, status: u.status, credit: u.credit,
           mustChangePin: !!u.must_change_pin, refCode: u.ref_code, orders: u.orders, createdAt: u.created_at,
+          pro: proActive(u), proUntil: u.sub_until || null,
           company: u.company || null, kind: u.kind || null, bizStatus: u.b_status || null, agentStatus: u.a_status || null })) });
       }
       if (path === "/admin/users" && M === "POST") {
@@ -893,6 +914,17 @@ export async function handleApi(req, env, url) {
           if (b.role === "admin") return err("Hal maamule ayaa jira.");
           if (target.role === "admin") return err("Maamulaha xilka lagama qaadi karo halkan.");
           stmts.push(env.DB.prepare("UPDATE users SET role = ? WHERE id = ?").bind(b.role, target.id), alog("user.role", target.id, target.role + " → " + b.role));
+        }
+        /* Pro is granted by hand after money arrives, because there is no recurring payment provider yet.
+           Months are added to whatever is left, so extending early never costs the member days. */
+        if (b.proMonths != null) {
+          const n = Math.max(-24, Math.min(24, Math.round(+b.proMonths || 0)));
+          const from = target.sub_until && Date.parse(target.sub_until) > Date.now() ? Date.parse(target.sub_until) : Date.now();
+          const until = n === 0 ? null : new Date(from + n * 30 * 864e5).toISOString();
+          stmts.push(env.DB.prepare("UPDATE users SET sub_until = ? WHERE id = ?").bind(until, target.id),
+            alog("user.pro", target.id, n === 0 ? "Pro waa la joojiyay" : n + " bilood → " + (until || "").slice(0, 10)));
+          if (n > 0) stmts.push(notify(env, target.id, "money", "Garsoore Business Pro waa shaqeeya",
+            "FBG iyo raadin carbuun la\'aan ah ayaad hadda heli kartaa. Waxay dhacaysaa " + (until || "").slice(0, 10) + ".", "pro.html"));
         }
         if (b.status && ["active", "suspended"].includes(b.status) && b.status !== target.status) {
           if (target.role === "admin") return err("Maamulaha lama hakin karo.");
@@ -946,6 +978,12 @@ export async function handleApi(req, env, url) {
        The importer buys in China and ships to their Garsoore China suite. We receive, inspect, photograph, weigh,
        consolidate, freight to Mogadishu and store. They then keep it, sell it on Garsoore, or hand it to an agent.
        The goods stay theirs until sold; Garsoore charges fees + a commission on what sells. */
+    /* what tier am I on, and what does the other one get me */
+    if (path === "/plan" && M === "GET") {
+      return json({ pro: proActive(user), until: user.sub_until || null, plans: PLANS,
+        benefits: { fbg: proActive(user), noDeposit: proActive(user) } });
+    }
+
     if (path === "/fbg/me" && M === "GET") {
       const acc = await env.DB.prepare("SELECT * FROM fbg_accounts WHERE user_id = ?").bind(user.id).first();
       if (!acc) return json({ account: null, fees: FBG, address: null });
@@ -960,6 +998,9 @@ export async function handleApi(req, env, url) {
     if (path === "/fbg/enroll" && M === "POST") {
       const ex = await env.DB.prepare("SELECT suite FROM fbg_accounts WHERE user_id = ?").bind(user.id).first();
       if (ex) return json({ suite: ex.suite, address: chinaAddress(env, ex.suite) });
+      /* a suite reserves a physical address and space in our consolidations — that is the Pro tier.
+         An existing suite keeps working if a membership lapses; we do not strand somebody's goods. */
+      if (!proActive(user)) return err("FBG waxaa loo furay Garsoore Business Pro ($" + PLANS.proMonthly + " bishii).", 402);
       const suite = "GS-" + String(1000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 9000));
       await env.DB.prepare("INSERT INTO fbg_accounts (id, user_id, suite, status, created_at) VALUES (?,?,?, 'active', ?)").bind(rid("FB-", 6), user.id, suite, now()).run();
       return json({ suite, address: chinaAddress(env, suite) });

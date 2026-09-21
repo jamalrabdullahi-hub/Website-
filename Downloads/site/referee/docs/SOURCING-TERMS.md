@@ -31,7 +31,7 @@ A deposit buys an agent's real hours. The rules are about **whose fault it is** 
 | Deposit | **30% of the goods value** |
 | Deposit on shipping | **None.** Shipping is never in the deposit base |
 | Minimum deposit | $20 |
-| Subscription alternative | **$100/month — no deposit at all** |
+| Subscription alternative | **Garsoore Business Pro, $50/month — no deposit at all** |
 | Quote validity | 7 days |
 
 ### Garsoore fails to source it → full refund
@@ -62,11 +62,29 @@ however fair the arithmetic is.
 - No fee for a quote that the trader simply declines while it is still valid — declining a price is not cancelling
 - No charge when Garsoore declines the job
 
+## The two tiers
+
+**Garsoore Business** is free, and everything about *buying* stays free: search wholesale, paste a link, ask for a
+price, place an order, use an agent, sell your stock on the consumer shop. Charging somebody for permission to spend
+money with you is how a marketplace stays empty.
+
+**Garsoore Business Pro — $50/month** is the two things that consume real capacity rather than server time:
+
+| | |
+|---|---|
+| **FBG suite** | A China address of their own, plus space in the facility and in our consolidations |
+| **No sourcing deposit** | An agent works the request on trust instead of against money held |
+
+Both are reserved whether or not the member uses them in a given month, which is what a subscription is for. FBG's
+own fees (receiving, freight, storage, commission) are unchanged — Pro is the door, not the running costs.
+
+An existing FBG suite keeps working if a membership lapses. We do not strand somebody's goods behind a billing state.
+
 ## Open questions before this takes real money
 
 1. **Is a 5%/day forfeit enforceable** under Somali contract law, and is 20 days to total forfeiture defensible? It is
    aggressive. It is also stated up front, which is the usual test, but that is a lawyer's call rather than mine.
-2. **The subscription cannot be auto-billed** — there is no merchant account and no recurring payment provider. Today
+2. **Pro cannot be auto-billed** — there is no merchant account and no recurring payment provider. Today
    `users.sub_until` is set by an administrator by hand after payment is received.
 3. **Refunds are manual.** A full refund on an unsourceable request creates the obligation; a person still has to send
    the money back.

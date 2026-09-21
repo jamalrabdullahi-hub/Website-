@@ -47,7 +47,20 @@ RF.fbgUI = function (app) {
     F = j.fees || F;
     if (!j.account) {
       body.innerHTML = '<div class="g-order"><b>Bilow FBG</b><div class="g-eta" style="margin:6px 0 12px">Waxaad hesha kood iyo cinwaan Shiinaha. Kharashka: qaabilaad $' + F.receivingPerCarton + ' sanduuqii · rar ' + F.seaPerKg + '$/kg (bad) ama ' + F.airPerKg + '$/kg (cir) · kayd bilaash ' + F.freeStorageDays + ' maalmood, kadib $' + F.storagePerCbmDay + '/cbm maalintii · komishan ' + F.commissionPct + '% marka la iibiyo.</div><button class="btn gold" id="fbGo">Samee akoon FBG</button></div>';
-      $("fbGo").onclick = function () { call("POST", "/fbg/enroll", {}).then(reload).catch(fail); };
+      /* a 402 here is the Pro gate, not an error — say what it costs and where to get it, rather than "Khalad" */
+      $("fbGo").onclick = function () {
+        call("POST", "/fbg/enroll", {}).then(reload).catch(function (x) {
+          if (x.status === 402) {
+            body.innerHTML = '<div class="g-order"><b>FBG waa qayb ka mid ah Garsoore Ganacsi Pro</b>' +
+              '<div class="g-eta" style="margin:8px 0 12px;line-height:1.8">Cinwaan Shiinaha oo kaaga gaar ah wuxuu qabsadaa ' +
+              'meel bakhaarkeena iyo boos shixnadaheena — taasi waa sababta ay Pro u tahay. Kharashyada FBG ee kor ku xusan ' +
+              'way sidoodii yihiin; Pro waa furitaanka oo keliya.</div>' +
+              '<a class="btn gold" href="pro.html">Eeg Garsoore Ganacsi Pro →</a></div>';
+            return;
+          }
+          fail(x);
+        });
+      };
       return;
     }
     var inb = j.inbound, inv = j.inventory;

@@ -868,3 +868,18 @@ footer.site b{color:var(--fg);font-weight:650}
 /* item price first, shipping immediately beside it — partitioned, never hidden */
 .g-ship-sm{font-size:12.5px;color:var(--muted);margin-top:-2px}
 .g-ship-in{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-top:2px}
+
+/* ---------------------------------------------------------------- membership tiers */
+.pr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin:18px 0}
+.pr-card{padding:20px 22px;border:1px solid var(--line);border-radius:18px;background:var(--card)}
+.pr-card.on{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
+.pr-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+.pr-head b{font-size:17px}
+.pr-price{font-size:24px;font-weight:800}
+.pr-price small{font-size:13px;font-weight:600;color:var(--muted)}
+.pr-list{list-style:none;padding:0;margin:0;display:grid;gap:9px}
+.pr-list li{font-size:13.5px;line-height:1.6}
+.pr-list li.off{color:var(--faint)}
+.pr-fees{margin-top:14px;padding-top:12px;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--muted);line-height:1.65}
+.pr-status{padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--card);margin-bottom:4px}
+.pr-status.off{color:var(--muted);font-size:13.5px}
