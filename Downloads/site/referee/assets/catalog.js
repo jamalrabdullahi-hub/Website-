@@ -162,6 +162,20 @@ function moqOf(p, v) {
   if (v && v.price != null) return 1;
   return Math.max(1, Math.round(+p.moq || 1));
 }
+/* ---------------------------------------------------------------- which shop a product belongs on
+   The whole catalogue is sourced from wholesale platforms — 1688 and Made-in-China. That is Garsoore's buying
+   channel and it is invisible to customers. What is NOT invisible is the minimum order that comes with it: 263 of
+   these products cannot be bought as one, and a consumer shop full of "minimum 36" is a wholesale site wearing a
+   consumer shop's clothes.
+
+   So the line is the minimum, not the platform. A thing you can buy one of belongs in front of consumers; a thing
+   sold by the carton belongs on business.buurwen.com, where MOQ and tier pricing are what the buyer came for.
+   FBG stock and one-off pasted links are always single-unit, so they always qualify. */
+function retailOK(p) {
+  if (!p) return false;
+  if (p.fbg || p.oneoff) return true;
+  return Math.max(1, Math.round(+p.moq || 1)) <= 1;
+}
 function eligible(p, v) {
   if (!p || !v) return { ok: false, reason: "no-variant" };
   if (v.price != null) return { ok: true, reason: "fixed-price" };          // FBG stock or an accepted quote
@@ -215,7 +229,7 @@ function card(p) {
 
 RF.catalog = {
   CATS: CATS, products: P, isChina: isChina, price: price, sameVariant: sameVariant, card: card, _breakdown: breakdown,
-  seller: seller, eligible: eligible, moqOf: moqOf, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
+  seller: seller, eligible: eligible, moqOf: moqOf, retailOK: retailOK, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
   get: function (sku) { return P.filter(function (p) { return p.sku === sku; })[0]; },
   search: function (q, opts) {
     opts = opts || {}; q = (q || "").toLowerCase().trim();

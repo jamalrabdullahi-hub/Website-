@@ -58,7 +58,7 @@ function home(app) {
     '<div class="g-filters"><label>Kala saar <select id="fSort"><option value="">Ku habboon</option><option value="lo">Qiimaha ↑</option><option value="hi">Qiimaha ↓</option><option value="fast">Ugu dhakhsaha badan</option></select></label>' +
       '<label>Ugu badnaan $ <input id="fMax" type="number" min="0" step="10" placeholder="—"></label>' +
       '<label class="g-chk"><input type="checkbox" id="fToday"> Diyaar maanta</label>' +
-      '<label class="g-chk"><input type="checkbox" id="fOne"> Hal xabbo la iibsan karo</label><span class="g-eta" id="fCount"></span></div>' +
+      '<label class="g-chk"><input type="checkbox" id="fOne"> Tus jumlada sidoo kale</label><span class="g-eta" id="fCount"></span></div>' +
     '<div class="g-grid" id="grid"></div>' +
     (RF.recent.list().length ? '<div class="g-sec"><h2>Aad dhowaan eegtay</h2></div><div class="g-grid g-row" id="recent"></div>' : "") +
     '<section class="g-bizband"><div><h3>Garsoore <span>Ganacsi</span></h3><p>Jumlad, qandaraas, adeegyo ganacsi iyo iibsi Shiinaha oo badan.</p></div>' +
@@ -67,11 +67,13 @@ function home(app) {
   var PAGE_N = 30, shown = PAGE_N, filt = "";
   function draw() {
     var list = C.search(q, { cat: cat || null, china: filt === "cn" ? true : filt === "lo" ? false : undefined });
-    var sort = $("fSort").value, max = +$("fMax").value, today = $("fToday").checked, one = $("fOne").checked;
-    if (max > 0 || today || sort || one) {
-      /* "one unit" is the filter a consumer actually wants: most of the catalogue is wholesale-sourced and the
-         supplier will not break a carton, so without this the shop looks like it sells nothing you can buy alone */
-      var withP = list.map(function (p) { return { p: p, c: C.card(p) }; }).filter(function (x) { return (!(max > 0) || (x.c.total != null && x.c.total <= max)) && (!today || !x.c.china) && (!one || (x.c.moq || 1) <= 1); });
+    var sort = $("fSort").value, max = +$("fMax").value, today = $("fToday").checked, bulk = $("fOne").checked;
+    /* The consumer shop shows what a consumer can buy: one of. Wholesale lots live on business.buurwen.com, where
+       MOQ and tiers are the point. The checkbox lets a shopper opt INTO seeing bulk rather than having to filter it
+       out — the default should be the shop they came for. */
+    if (!bulk) list = list.filter(C.retailOK);
+    if (max > 0 || today || sort) {
+      var withP = list.map(function (p) { return { p: p, c: C.card(p) }; }).filter(function (x) { return (!(max > 0) || (x.c.total != null && x.c.total <= max)) && (!today || !x.c.china); });
       if (sort) withP.sort(function (a, b) { return sort === "lo" ? a.c.total - b.c.total : sort === "hi" ? b.c.total - a.c.total : (a.c.etaDays || 0) - (b.c.etaDays || 0); });
       list = withP.map(function (x) { return x.p; });
     }
@@ -138,6 +140,10 @@ function productView(p, host, quoteId) {
           return '<button class="g-shopt' + (k === pr.mode ? " on" : "") + '" data-mode="' + k + '"><b>' + LANE_SO[k][0] + '</b>' +
             '<span>' + b.transitMin + '–' + b.transitMax + ' maalmood</span><i>' + money(b.total) + '</i></button>';
         }).join("") + '</div></div>' : "") +
+      (moq > 1 && window.SURFACE !== "business" ?
+        '<div class="g-bulk">🏢 Tani waa alaab <b>jumlad</b> ah — ugu yaraan ' + moq + ' xabbo. ' +
+        'Waxay ku habboon tahay <a href="' + (RF.sources ? RF.sources.crossLink(location.href, "business") : "#") + '" style="color:var(--link);font-weight:700">Garsoore Ganacsi</a>, ' +
+        'halkaas oo qiimaha heerarka iyo MOQ-gu ay yihiin waxa aad u timid.</div>' : "") +
       (moq > 1 ? '<div class="g-bulk">📦 Alaabtan iibiyuhu wuxuu ka iibiyaa <b>ugu yaraan ' + moq + ' xabbo</b> — ' +
         'Garsoore kayd ma hayo, wuxuu iibsadaa markaad adigu iibsato, sidaa darteed ugu yaraantiisu waa taada. ' +
         'Hal xabbo ma iibsan kartid, laakiin waad <a href="china.html" style="color:var(--link);font-weight:700">codsan kartaa qiimo</a>.</div>' : "") +
@@ -571,6 +577,15 @@ function bizChina(app) {
       WHOLESALE.filter(function (k) { return !A[k].nosearch; }).concat(RETAIL).map(function (k) {
         return '<a href="?p=' + k + (q ? "&q=" + encodeURIComponent(q) : "") + '"' + on(k) + '>' + A[k].name + ' <small>' + (RETAIL.indexOf(k) >= 0 ? "tafaariiq" : A[k].zh) + '</small></a>'; }).join("") + '</div></section>' +
     svcHTML() +
+    /* The 1688 / Made-in-China catalogue lives HERE. It is wholesale: every row carries the supplier's minimum and
+       the per-unit landed price at that minimum, which is what a trader is actually deciding between. The consumer
+       shop only ever shows what can be bought one of. */
+    '<div class="g-sec"><h2>Katalogga jumlada</h2><span class="g-eta" id="bcCount"></span></div>' +
+    '<div class="g-filters"><label>Qaybta <select id="bcCat"><option value="">Dhammaan</option>' +
+      C.CATS.map(function (c) { return '<option value="' + c.id + '">' + e(c.so) + '</option>'; }).join("") + '</select></label>' +
+      '<label>MOQ ugu badnaan <input id="bcMoq" type="number" min="1" step="1" placeholder="—" style="width:90px"></label>' +
+      '<label>Qiimaha halkii unug ugu badnaan $ <input id="bcMax" type="number" min="0" step="10" placeholder="—" style="width:100px"></label></div>' +
+    '<div class="g-grid" id="bcGrid"></div>' +
     '<div class="g-sec"><h2>Dalabyo</h2><span class="g-eta">Qiimaha halkii unug = la keenay Muqdisho · beddel tirada si aad u aragto qiimaha jumladda</span></div>' +
     '<div id="offers"></div>' +
     '<div class="g-sec"><h2>Iibiyeyaasha Shiinaha</h2><span class="g-eta">Warshado iyo ganacsato ay Garsoore hubisay</span></div>' +
@@ -609,6 +624,41 @@ function bizChina(app) {
     });
   }
   wireSvc();
+
+  /* ---- the wholesale catalogue grid */
+  (function () {
+    var PAGE = 36, shown = PAGE;
+    function draw() {
+      var cat = $("bcCat").value, maxMoq = +$("bcMoq").value, maxUnit = +$("bcMax").value;
+      var list = C.products.filter(function (p) {
+        if (p.fbg || p.oneoff) return false;                 /* FBG stock and pasted one-offs are not the catalogue */
+        if (cat && p.cat !== cat) return false;
+        var m = C.moqOf(p, p.variants[0]);
+        if (maxMoq > 0 && m > maxMoq) return false;
+        return true;
+      }).map(function (p) {
+        var m = C.moqOf(p, p.variants[0]);
+        var L = C.basketPrice([{ product: p, variant: p.variants[0], qty: m }]).lines[0];
+        return { p: p, moq: m, line: L, unit: L && L.total != null ? L.total / m : null };
+      }).filter(function (x) { return x.unit != null && (!(maxUnit > 0) || x.unit <= maxUnit); });
+
+      $("bcCount").textContent = list.length + " alaab · qiimaha waa la keenay Muqdisho";
+      $("bcGrid").innerHTML = list.slice(0, shown).map(function (x) {
+        var p = x.p, img = p.image;
+        return '<a class="g-pc" href="' + (RF.sources ? RF.sources.crossLink("", "consumer").replace("china.html?u=", "") : "") + 'product.html?sku=' + p.sku + '" target="_blank" rel="noopener">' +
+          '<div class="g-pimg"><span class="g-bd cn">MOQ ' + x.moq + '</span>' +
+          (img ? '<img class="g-pimgi" loading="lazy" src="' + e(img) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(\'' + p.icon + '\'))">' : p.icon) +
+          '</div><div class="g-pb"><div class="g-pn">' + e((p.brand ? p.brand + " " : "") + p.model) + '</div>' +
+          '<div class="g-pr">$' + (Math.round(x.unit * 100) / 100).toLocaleString() + '<small class="g-moq"> / xabbo</small></div>' +
+          '<div class="g-ship-sm">' + x.moq + ' xabbo = ' + money(x.line.total) + '</div>' +
+          '<div class="g-eta">' + (x.line.mode === "sea" ? "\ud83d\udea2 bad" : "\u2708 cir") + " " + x.line.transitMin + "\u2013" + x.line.transitMax + ' maalmood</div></div></a>';
+      }).join("") + (list.length > shown ? '<button class="btn ghost" id="bcMore" style="grid-column:1/-1">Tus wax badan</button>' : "");
+      if ($("bcMore")) $("bcMore").onclick = function () { shown += PAGE; draw(); };
+    }
+    ["bcCat", "bcMoq", "bcMax"].forEach(function (id) { $(id).onchange = $(id).oninput = function () { shown = PAGE; draw(); }; });
+    draw();
+  })();
+
   if (u) {
     var id = S.identify(u);
     if (!id) { $("offers").innerHTML = '<div class="g-err">Link-gan lama aqoonsan.</div>'; return; }
