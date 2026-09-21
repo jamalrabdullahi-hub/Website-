@@ -90,15 +90,36 @@ function bulk(mode, kg, cbm, at, rateCardId) {
   if (mode === "air") basis = (card.volumetricDivisor > 0 ? (cbm * 1e6) / card.volumetricDivisor : 0) > kg ? "volumetric" : "actual";
   else basis = (card.weightCapPerCbm > 0 ? kg / card.weightCapPerCbm : 0) > cbm ? "weight-capped" : "volume";
 
-  var chargeable = roundUp(Math.max(units, card.minimumBillable || 0), card.roundingUnit || 0);
-  var rate = rateFor(card, chargeable);
-  if (rate == null) return { ok: false, reason: "no-tier", mode: mode };
+  /* ---- pooling.
+     A minimum charge and a minimum billable quantity belong to a SHIPMENT. Garsoore's shipment is a week of orders
+     leaving together, not one customer's basket, so pricing a basket as its own shipment made a single light item
+     carry an entire consignment's floor by itself: a 0.23 kg power bank was billed $12 of freight against a marginal
+     cost near $1.50. With typicalConsignment set, this shipment is priced as its SHARE of the consignment it rides
+     in, and it also earns that consignment's tier rate.
 
-  var raw = rate * chargeable, cost = Math.max(raw, card.minimumCharge || 0);
+     An order bigger than the typical consignment prices on its own size, so a large order never subsidises itself
+     upward, and with typicalConsignment unset the old per-shipment behaviour returns exactly. */
+  var typical = +card.typicalConsignment || 0, pooled = typical > 0 && units < typical;
+  var chargeable, rate, raw, cost;
+  if (pooled) {
+    var consUnits = typical;
+    rate = rateFor(card, consUnits);
+    if (rate == null) return { ok: false, reason: "no-tier", mode: mode };
+    var consCost = Math.max(rate * consUnits, card.minimumCharge || 0);
+    chargeable = Math.round(units * 1000) / 1000;
+    raw = rate * units;
+    cost = consCost * (units / consUnits);
+  } else {
+    chargeable = roundUp(Math.max(units, card.minimumBillable || 0), card.roundingUnit || 0);
+    rate = rateFor(card, chargeable);
+    if (rate == null) return { ok: false, reason: "no-tier", mode: mode };
+    raw = rate * chargeable;
+    cost = Math.max(raw, card.minimumCharge || 0);
+  }
   return {
     ok: true, mode: mode, cost: Math.round(cost * 100) / 100,
     chargeable: Math.round(chargeable * 1000) / 1000, units: units, unit: card.unit, basis: basis,
-    rate: rate, minimumApplied: cost > raw + 1e-9,
+    rate: rate, minimumApplied: cost > raw + 1e-9, pooled: pooled, consignment: pooled ? typical : null,
     rateCardId: card.id, rateCardStatus: card.status,
     transitMin: card.transitMinDays, transitMax: card.transitMaxDays,
     actualKg: Math.round(kg * 1000) / 1000, cbm: Math.round(cbm * 1000) / 1000

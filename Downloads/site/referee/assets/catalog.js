@@ -174,7 +174,35 @@ function moqOf(p, v) {
 function retailOK(p) {
   if (!p) return false;
   if (p.fbg || p.oneoff) return true;
-  return Math.max(1, Math.round(+p.moq || 1)) <= 1;
+  if (Math.max(1, Math.round(+p.moq || 1)) > 1) return false;
+  return viability(p, p.variants && p.variants[0], 1).ok;
+}
+
+/* ---------------------------------------------------------------- is this thing worth shipping at all?
+   Flying a $5 object 8,000 km costs more than the object. That is physics, not a pricing bug, and no rate card
+   negotiation fixes it. The median product in this catalogue carries about $9 of value per kilo against air freight
+   near $8/kg, so for a large minority of it the customer would mostly be buying freight.
+
+   A shop that lists those anyway is not a bigger shop, it is a shop people stop trusting. So the consumer surface
+   asks one question of every product — what fraction of the price is shipping, on the better of the two lanes — and
+   declines to sell the ones where the answer is most of it. The business surface is not gated: at wholesale
+   quantities the same product's freight share collapses, which is exactly why it belongs there instead. */
+var SHIP_SHARE_MAX = 0.45;
+function viability(p, v, qty) {
+  if (!p || !v) return { ok: false, share: 1, mode: null, reason: "no-variant" };
+  if (v.price != null) return { ok: true, share: 0, mode: null, reason: "local" };   /* FBG stock: already here */
+  qty = Math.max(1, qty || 1);
+  var best = null;
+  ["air", "sea"].forEach(function (m) {
+    var L = basketPrice([{ product: p, variant: v, qty: qty, mode: m }]).lines[0];
+    if (!L || !(L.total > 0)) return;
+    var share = L.shipping / L.total;
+    if (!best || share < best.share) best = { share: share, mode: m, total: L.total };
+  });
+  if (!best) return { ok: false, share: 1, mode: null, reason: "no-rate" };
+  best.ok = best.share <= SHIP_SHARE_MAX;
+  best.reason = best.ok ? "ok" : "freight-heavy";
+  return best;
 }
 function eligible(p, v) {
   if (!p || !v) return { ok: false, reason: "no-variant" };
@@ -229,7 +257,7 @@ function card(p) {
 
 RF.catalog = {
   CATS: CATS, products: P, isChina: isChina, price: price, sameVariant: sameVariant, card: card, _breakdown: breakdown,
-  seller: seller, eligible: eligible, moqOf: moqOf, retailOK: retailOK, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
+  seller: seller, eligible: eligible, moqOf: moqOf, retailOK: retailOK, viability: viability, SHIP_SHARE_MAX: SHIP_SHARE_MAX, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
   get: function (sku) { return P.filter(function (p) { return p.sku === sku; })[0]; },
   search: function (q, opts) {
     opts = opts || {}; q = (q || "").toLowerCase().trim();

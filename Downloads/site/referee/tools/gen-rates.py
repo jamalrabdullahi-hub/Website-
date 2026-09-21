@@ -26,6 +26,12 @@ for c in cards:
     assert tiers[0]["from"] == 0, "%s needs a tier starting at 0" % c["id"]
     if c["mode"] == "air":
         assert c.get("volumetricDivisor", 0) > 0, "%s needs a volumetric divisor" % c["id"]
+    # Pooling: a single order is priced as its share of the consignment it rides in, not as a shipment of its own.
+    # Leaving it unset keeps the old per-basket behaviour, so this can be turned off by deleting one number.
+    tc = c.get("typicalConsignment")
+    if tc is not None:
+        assert isinstance(tc, (int, float)) and tc > 0, "%s typicalConsignment must be a positive number" % c["id"]
+        assert tc >= (c.get("minimumBillable") or 0), "%s typicalConsignment is below its own minimum billable" % c["id"]
 
 # ---- import clearance: duty bands and the per-shipment fees, from the same one source
 cus = json.load(io.open(os.path.join(ROOT, "data", "customs.json"), encoding="utf-8"))

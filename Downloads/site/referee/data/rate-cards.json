@@ -14,7 +14,6 @@
     "Tiers are read as: the rate for the highest 'from' that the chargeable quantity reaches.",
     "All money is USD. All weights are kg, all volumes CBM, all dimensions cm."
   ],
-
   "cards": [
     {
       "id": "GARSOORE-CN-SOM-AIR-V1",
@@ -27,34 +26,58 @@
       "unit": "kg",
       "effectiveFrom": "2026-10-01",
       "effectiveUntil": "2026-12-31",
-
       "volumetricDivisor": 6000,
       "roundingUnit": 0.5,
       "minimumCharge": 12,
       "minimumBillable": 0.5,
       "tiers": [
-        { "from": 0,   "rate": 8.4 },
-        { "from": 45,  "rate": 7.2 },
-        { "from": 100, "rate": 6.5 },
-        { "from": 300, "rate": 5.9 }
+        {
+          "from": 0,
+          "rate": 8.4
+        },
+        {
+          "from": 45,
+          "rate": 7.2
+        },
+        {
+          "from": 100,
+          "rate": 6.5
+        },
+        {
+          "from": 300,
+          "rate": 5.9
+        }
       ],
-
       "transitMinDays": 7,
       "transitMaxDays": 14,
-
-      "includedSurcharges": ["fuel", "security screening", "origin handling", "export clearance", "airport transfer"],
-      "excludedSurcharges": ["Somali import duty and taxes", "destination customs clearance", "dangerous goods handling", "lithium battery certification", "storage beyond free period"],
-      "exceptionalEvents": ["airspace closure", "declared force majeure", "government-mandated fuel levy above 25%"],
-
+      "includedSurcharges": [
+        "fuel",
+        "security screening",
+        "origin handling",
+        "export clearance",
+        "airport transfer"
+      ],
+      "excludedSurcharges": [
+        "Somali import duty and taxes",
+        "destination customs clearance",
+        "dangerous goods handling",
+        "lithium battery certification",
+        "storage beyond free period"
+      ],
+      "exceptionalEvents": [
+        "airspace closure",
+        "declared force majeure",
+        "government-mandated fuel levy above 25%"
+      ],
       "capacityPerWeek": 2000,
       "capacityUnit": "kg",
       "rateChangeNoticeDays": 30,
       "claimsWindowDays": 14,
       "providerReference": null,
-
-      "notes": "Divisor 6000 is the IATA default and MUST be replaced with the contracted divisor on signature — a provider using 5000 raises the cost of every bulky item by 20%."
+      "notes": "Divisor 6000 is the IATA default and MUST be replaced with the contracted divisor on signature — a provider using 5000 raises the cost of every bulky item by 20%.",
+      "typicalConsignment": 50,
+      "_typicalConsignment": "The consignment a single order rides inside. Garsoore does not charter an aircraft for one power bank: a week of orders leaves as one consolidated shipment, so the minimum charge and the tier rate belong to THAT, not to whoever happens to be buying alone. An order larger than this prices on its own size instead. Set deliberately low at launch - if a week comes in lighter than this, Garsoore absorbs the difference, and that loss grows with the number you put here. Raise it from the calibration screen once real consignments show what the weekly volume actually is."
     },
-
     {
       "id": "GARSOORE-CN-SOM-SEA-V1",
       "status": "draft",
@@ -66,36 +89,61 @@
       "unit": "cbm",
       "effectiveFrom": "2026-10-01",
       "effectiveUntil": "2026-12-31",
-
       "volumetricDivisor": null,
       "roundingUnit": 0.01,
       "minimumCharge": 45,
       "minimumBillable": 0.25,
       "weightCapPerCbm": 500,
       "tiers": [
-        { "from": 0,  "rate": 165 },
-        { "from": 3,  "rate": 148 },
-        { "from": 10, "rate": 132 },
-        { "from": 25, "rate": 121 }
+        {
+          "from": 0,
+          "rate": 165
+        },
+        {
+          "from": 3,
+          "rate": 148
+        },
+        {
+          "from": 10,
+          "rate": 132
+        },
+        {
+          "from": 25,
+          "rate": 121
+        }
       ],
-
       "transitMinDays": 25,
       "transitMaxDays": 45,
-
-      "includedSurcharges": ["origin terminal handling", "export clearance", "bunker adjustment", "destination terminal handling", "port dues"],
-      "excludedSurcharges": ["Somali import duty and taxes", "destination customs clearance", "demurrage after free days", "dangerous goods handling", "inland delivery beyond Mogadishu"],
-      "exceptionalEvents": ["port closure", "declared force majeure", "war-risk surcharge imposed by underwriters", "canal transit suspension"],
-
+      "includedSurcharges": [
+        "origin terminal handling",
+        "export clearance",
+        "bunker adjustment",
+        "destination terminal handling",
+        "port dues"
+      ],
+      "excludedSurcharges": [
+        "Somali import duty and taxes",
+        "destination customs clearance",
+        "demurrage after free days",
+        "dangerous goods handling",
+        "inland delivery beyond Mogadishu"
+      ],
+      "exceptionalEvents": [
+        "port closure",
+        "declared force majeure",
+        "war-risk surcharge imposed by underwriters",
+        "canal transit suspension"
+      ],
       "capacityPerWeek": 40,
       "capacityUnit": "cbm",
       "rateChangeNoticeDays": 45,
       "claimsWindowDays": 21,
       "providerReference": null,
-
-      "notes": "weightCapPerCbm guards the revenue-tonne rule: cargo denser than this is charged on weight/1000 as CBM-equivalent, which is what every LCL contract does."
+      "notes": "weightCapPerCbm guards the revenue-tonne rule: cargo denser than this is charged on weight/1000 as CBM-equivalent, which is what every LCL contract does.",
+      "typicalConsignment": 5,
+      "_typicalConsignment": "The consignment a single order rides inside. Garsoore does not charter an aircraft for one power bank: a week of orders leaves as one consolidated shipment, so the minimum charge and the tier rate belong to THAT, not to whoever happens to be buying alone. An order larger than this prices on its own size instead. Set deliberately low at launch - if a week comes in lighter than this, Garsoore absorbs the difference, and that loss grows with the number you put here. Raise it from the calibration screen once real consignments show what the weekly volume actually is."
     }
   ],
-
   "packedDensity": {
     "_doc": [
       "Packed density (kg per CBM) per category, used to ESTIMATE cartoned volume when a product's real packed",
@@ -107,8 +155,16 @@
       "engine does not under-quote and hand the customer a surprise later. Garsoore absorbs the difference when the",
       "facility weighs and measures the real carton; the customer's locked price does not move."
     ],
-    "PHN": 180, "ELC": 200, "CMP": 180, "HOM": 170, "APL": 150,
-    "FRN": 110, "SOL": 250, "BLD": 350, "VEH": 300, "CLO": 120,
+    "PHN": 180,
+    "ELC": 200,
+    "CMP": 180,
+    "HOM": 170,
+    "APL": 150,
+    "FRN": 110,
+    "SOL": 250,
+    "BLD": 350,
+    "VEH": 300,
+    "CLO": 120,
     "_default": 175
   }
 }

@@ -314,12 +314,26 @@ export function shipCost(mode, kg, cbm, at, cardId) {
   let chargeable;
   if (card.mode === "air") chargeable = Math.max(kg, card.volumetricDivisor > 0 ? (cbm * 1e6) / card.volumetricDivisor : 0);
   else chargeable = Math.max(cbm, card.weightCapPerCbm > 0 ? kg / card.weightCapPerCbm : 0);
-  chargeable = Math.max(chargeable, card.minimumBillable || 0);
-  const step = card.roundingUnit || 0;
-  if (step > 0) chargeable = Math.ceil(chargeable / step - 1e-9) * step;
-  let rate = card.tiers[0].rate;
-  card.tiers.forEach(t => { if (chargeable >= t.from) rate = t.rate; });
-  const cost = Math.max(rate * chargeable, card.minimumCharge || 0);
+  /* Pooling — the mirror of assets/shipping.js bulk(). A shipment minimum belongs to the consignment a week of
+     orders leaves in, not to one customer's basket. These two calculations must agree to the cent or the price the
+     customer was shown and the price the order is written at will differ. */
+  const typical = +card.typicalConsignment || 0, pooled = typical > 0 && chargeable < typical;
+  let rate, cost;
+  if (pooled) {
+    const units = chargeable;
+    rate = card.tiers[0].rate;
+    card.tiers.forEach(t => { if (typical >= t.from) rate = t.rate; });
+    const consCost = Math.max(rate * typical, card.minimumCharge || 0);
+    cost = consCost * (units / typical);
+    chargeable = Math.round(units * 1000) / 1000;
+  } else {
+    chargeable = Math.max(chargeable, card.minimumBillable || 0);
+    const step = card.roundingUnit || 0;
+    if (step > 0) chargeable = Math.ceil(chargeable / step - 1e-9) * step;
+    rate = card.tiers[0].rate;
+    card.tiers.forEach(t => { if (chargeable >= t.from) rate = t.rate; });
+    cost = Math.max(rate * chargeable, card.minimumCharge || 0);
+  }
   return { cost: Math.round(cost * 100) / 100, chargeable: Math.round(chargeable * 1000) / 1000, rate, unit: card.unit,
     rateCardId: card.id, rateCardStatus: card.status, transitMin: card.transitMinDays, transitMax: card.transitMaxDays };
 }

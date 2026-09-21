@@ -129,6 +129,21 @@ function bulkHTML(p, v, pr, bp, qty, moq) {
     '<a class="btn ghost" href="' + href + '">Ku iibso jumlad →</a></div>' +
     '<small>Garsoore Ganacsi · isla alaabta, isla qiimaha, tiro badan</small></div>';
 }
+/* Someone can always reach a product page by link, so the gate that keeps freight-heavy goods out of the consumer
+   grid has to explain itself here rather than just quietly not existing. The item is not withdrawn — it is sold at
+   the quantity where its freight stops dominating, which is the business shop. */
+function freightHeavyHTML(p, v) {
+  if (window.SURFACE === "business" || !C.viability || p.fbg || p.oneoff) return "";
+  if (Math.max(1, Math.round(+p.moq || 1)) > 1) return "";      /* the MOQ notice already covers these */
+  var vb = C.viability(p, v, 1);
+  if (vb.ok) return "";
+  var href = (RF.sources ? RF.sources.crossHref("product.html?sku=" + encodeURIComponent(p.sku) + "&qty=10", "business") : "#");
+  return '<div class="g-bulk">⚖️ <b>Alaabtan way culus tahay marka loo eego qiimaheeda</b> — ' +
+    Math.round(vb.share * 100) + '% qiimaha waa rar. Hal xabbo si macquul ah uguma soo diri karno, ' +
+    'mana rabno inaan kuu iibinno wax rarkiisu ka qaali yahay alaabta.' +
+    '<div class="g-bulkrow"><span>Tiro badan ayay macquul ku tahay</span>' +
+    '<a class="btn ghost" href="' + href + '">Ku eeg jumlad →</a></div></div>';
+}
 function productView(p, host, quoteId) {
   /* The business shop opens at a wholesale quantity. Freight per unit is the entire reason a trader is on this page,
      and starting at 1 would show them the worst number this product can produce. A ?qty= carried over from the
@@ -186,6 +201,7 @@ function productView(p, host, quoteId) {
         'Garsoore kayd ma hayo, wuxuu iibsadaa markaad adigu iibsato, sidaa darteed ugu yaraantiisu waa taada. ' +
         'Hal xabbo ma iibsan kartid, laakiin waad <a href="china.html" style="color:var(--link);font-weight:700">codsan kartaa qiimo</a>.</div>' : "") +
       /* say why one costs what it does, once, exactly where the single-shipment minimum bites */
+      freightHeavyHTML(p, v) +
       bulkHTML(p, v, pr, bp, qty, moq) +
       (bp && bp.shipping ? '<div class="g-incl">✓ <b>' + money(bp.item) + ' alaabta + ' + money(bp.shipping) + ' gaarsiin = ' + money(lineTotal) + '</b> — ' +
         'gaarsiintu waxay ku jirtaa rarka Shiinaha → Muqdisho, canshuurta iyo gudbinta. Wax kale lagaama qaadayo. ' +
