@@ -96,8 +96,46 @@ function home(app) {
 
 /* ---------------------------------------------------------------- product (immersive + sticky buy bar) */
 var CUR = null;
+/* The freight minimum falls on a shipment, not on a unit, so one of something carries a whole shipment by itself.
+   That is not a number to hide — it is the best argument the business shop has. On the consumer page we say it
+   plainly and hand the customer over; on the business page we show the ladder instead of arguing. */
+function perUnit(p, v, n, mode) {
+  var L = C.basketPrice([{ product: p, variant: v, qty: n, mode: mode }]).lines[0];
+  return L && L.total != null ? L.total / n : null;
+}
+function bulkHTML(p, v, pr, bp, qty, moq) {
+  if (!bp || bp.total == null || moq > 1) return "";
+  if (window.SURFACE === "business") {
+    var one = perUnit(p, v, 1, pr.mode);
+    var rows = [1, 5, 10, 25, 50].map(function (n) {
+      var u = perUnit(p, v, n, pr.mode);
+      if (u == null) return "";
+      var save = one ? Math.round(100 * (1 - u / one)) : 0;
+      return '<tr' + (n === qty ? ' class="on"' : "") + '><td>' + n + ' xabbo</td><td><b>' + money(Math.round(u)) + '</b> midkii</td>' +
+        '<td>' + money(Math.round(u * n)) + '</td><td>' + (save > 0 ? '<span class="ok">−' + save + '%</span>' : "—") + '</td></tr>';
+    }).join("");
+    return '<div class="g-bulk"><b>📉 Qiimaha jumlada</b> — rarku hal shixnad ayuu ku baxaa, ee ma aha hal xabbo. ' +
+      'Sidaa darteed mid kastaa wuu raqiisanayaa marka tiradu kordho.' +
+      '<table class="g-ladder"><tr><th>Tirada</th><th>Halkii</th><th>Wadarta</th><th>Kaydsi</th></tr>' + rows + '</table></div>';
+  }
+  /* consumer: only when the shipment minimum is genuinely what is hurting */
+  if (qty !== 1 || !(bp.freight >= 10)) return "";
+  var u10 = perUnit(p, v, 10, pr.mode);
+  if (u10 == null || !(u10 < bp.total * 0.8)) return "";
+  var href = (RF.sources ? RF.sources.crossHref("product.html?sku=" + encodeURIComponent(p.sku) + "&qty=10", "business") : "#");
+  return '<div class="g-bulk">😅 <b>Rarka hal xabbo waa ' + money(bp.shipping) + '</b> — isla shixnaddaas ayaa qaadi karta 10. ' +
+    'Iibso 10 oo 9-da sii saaxiibbadaa… lacag yar dul saar :)' +
+    '<div class="g-bulkrow"><span>10 xabbo = <b>' + money(Math.round(u10)) + '</b> midkii</span>' +
+    '<a class="btn ghost" href="' + href + '">Ku iibso jumlad →</a></div>' +
+    '<small>Garsoore Ganacsi · isla alaabta, isla qiimaha, tiro badan</small></div>';
+}
 function productView(p, host, quoteId) {
-  var vi = 0, qty = C.moqOf(p, p.variants[0]), mode = null;   /* start at the supplier's minimum; null mode = cheaper lane */
+  /* The business shop opens at a wholesale quantity. Freight per unit is the entire reason a trader is on this page,
+     and starting at 1 would show them the worst number this product can produce. A ?qty= carried over from the
+     consumer nudge wins, so the quantity somebody was pitched is the quantity they land on. */
+  var BULK_START = 10;
+  var vi = 0, mode = null;
+  var qty = Math.max(C.moqOf(p, p.variants[0]), (+qs("qty") || 0) || (window.SURFACE === "business" ? BULK_START : 0));
   function render() {
     /* launch mode: products whose cost nobody has checked yet are sold via a staff quote, never at a placeholder price */
     var gate = RF.api && RF.api.config && RF.api.config.requireVerified && !p.oneoff && p.verified !== true;
@@ -148,9 +186,7 @@ function productView(p, host, quoteId) {
         'Garsoore kayd ma hayo, wuxuu iibsadaa markaad adigu iibsato, sidaa darteed ugu yaraantiisu waa taada. ' +
         'Hal xabbo ma iibsan kartid, laakiin waad <a href="china.html" style="color:var(--link);font-weight:700">codsan kartaa qiimo</a>.</div>' : "") +
       /* say why one costs what it does, once, exactly where the single-shipment minimum bites */
-      (bp && bp.freight >= 10 && qty === 1 && moq === 1 ?
-        '<div class="g-bulk">📦 Rarku hal shixnad ayuu ku baxaa — haddii aad laba ama ka badan iibsato, mid kastaa wuu raqiisanayaa. ' +
-        'Tusaale: 3 xabbo = ' + money(Math.round(C.basketPrice([{ product: p, variant: v, qty: 3, mode: pr.mode }]).lines[0].total / 3)) + ' midkii.</div>' : "") +
+      bulkHTML(p, v, pr, bp, qty, moq) +
       (bp && bp.shipping ? '<div class="g-incl">✓ <b>' + money(bp.item) + ' alaabta + ' + money(bp.shipping) + ' gaarsiin = ' + money(lineTotal) + '</b> — ' +
         'gaarsiintu waxay ku jirtaa rarka Shiinaha → Muqdisho, canshuurta iyo gudbinta. Wax kale lagaama qaadayo. ' +
         'Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +

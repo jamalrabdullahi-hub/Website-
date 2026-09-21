@@ -251,6 +251,14 @@ RF.sources = { urlOf: urlOf, hostOf: hostOf, label: label, ADAPTERS: A, VENDORS:
   search: search, landed: landed, tierCost: tierCost, procure: procure,
   SURFACES: SURFACES, surfaceOf: surfaceOf, platformsFor: platformsFor, allowedOn: allowedOn, here: here,
   /* the other site's address for this same link, so a misplaced paste is one tap from being handled */
+  /* A link to the SAME page on the other shop. crossLink below is for handing a pasted supplier link over; this is
+     for ordinary pages, where only the host changes. Locally the two shops are folders, not hosts. */
+  crossHref: function (path, surface) {
+    var root = (location.hostname.split(".").slice(-2).join(".") || "buurwen.com");
+    if (/^(localhost|127\.|\[)/.test(location.hostname) || location.protocol === "file:")
+      return (surface === "business" ? "business/" : "../") + path;
+    return location.protocol + "//" + (surface === "business" ? "business." + root : root) + "/" + path;
+  },
   crossLink: function (url, surface) {
     var root = (location.hostname.split(".").slice(-2).join(".") || "buurwen.com"), q = "china.html?u=" + encodeURIComponent(url);
     if (/^(localhost|127\.|\[)/.test(location.hostname) || location.protocol === "file:")
