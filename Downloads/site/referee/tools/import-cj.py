@@ -78,23 +78,35 @@ def cat_of(name):
                 return c
     return None
 
-def get(path, params):
+def get(path, params, tries=4):
+    """A long import is thousands of calls over half an hour, so a single dropped connection must not be fatal.
+    Retries with backoff and, when it finally gives up, returns an empty result so the caller skips that item
+    instead of losing every row gathered so far."""
     q = urllib.parse.urlencode(params)
-    req = urllib.request.Request(API + path + "?" + q, headers={"CJ-Access-Token": TOKEN})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return json.loads(r.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")[:300]
-        # never echo the token back, even in an error
-        sys.exit("CJ API %s on %s: %s" % (e.code, path, body))
+    for attempt in range(tries):
+        req = urllib.request.Request(API + path + "?" + q, headers={"CJ-Access-Token": TOKEN})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")[:300]
+            if e.code in (429, 500, 502, 503, 504) and attempt < tries - 1:
+                time.sleep(3 * (attempt + 1)); continue
+            # never echo the token back, even in an error
+            sys.exit("CJ API %s on %s: %s" % (e.code, path, body))
+        except Exception as ex:                      # timeouts, resets, DNS - all transient on a long run
+            if attempt < tries - 1:
+                time.sleep(3 * (attempt + 1)); continue
+            print("  ! giving up on %s after %d tries (%s)" % (path, tries, type(ex).__name__))
+            return {}
+    return {}
 
 rows, seen = [], set()
 
 def detail(pid):
     """CJ's search feed carries no weight and no category path, and freight cannot be priced without a weight.
     Both live on /product/query, so every candidate costs a second call. CJ allows roughly one a second."""
-    j = get("/product/query", {"pid": pid})
+    j = get("/product/query", {"pid": pid}) or {}
     time.sleep(1.1)
     return j.get("data") if isinstance(j.get("data"), dict) else None
 
