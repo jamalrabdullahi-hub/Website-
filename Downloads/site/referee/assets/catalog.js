@@ -186,13 +186,14 @@ function surfaceOfProduct(p) {
 function retailOK(p) {
   if (!p) return false;
   if (p.fbg || p.oneoff) return true;
-  if (surfaceOfProduct(p) !== "consumer") return false;
+  /* a null surface means the source serves both shops (SUNSKY), so only an explicitly wholesale source is refused */
+  if (surfaceOfProduct(p) === "business") return false;
   if (Math.max(1, Math.round(+p.moq || 1)) > 1) return false;
   return viability(p, p.variants && p.variants[0], 1).ok;
 }
 /* The wholesale side of the same split. Kept as its own function so the business grid states what it wants rather
    than listing what it does not. */
-function wholesaleOK(p) { return !!p && !p.fbg && !p.oneoff && surfaceOfProduct(p) === "business"; }
+function wholesaleOK(p) { return !!p && !p.fbg && !p.oneoff && surfaceOfProduct(p) !== "consumer"; }
 
 /* ---------------------------------------------------------------- is this thing worth shipping at all?
    Flying a $5 object 8,000 km costs more than the object. That is physics, not a pricing bug, and no rate card

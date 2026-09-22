@@ -70,6 +70,11 @@ var A = {
              url: function (id) { return "https://cjdropshipping.com/product/-p-" + id + ".html"; } },
   /* SHEIN — retail fashion, sold by the piece. The goods id is the -p-NNNNNN segment of any regional host
      (us.shein.com, m.shein.com, www.shein.com/ar, …), so the region is dropped and the id kept. */
+  /* SUNSKY — Shenzhen electronics wholesaler, MOQ 1 with tiered wholesale pricing, so it is the one source that
+     genuinely belongs on BOTH shops: a person buys one phone case, a trader buys three hundred. Item numbers look
+     like EDA008394601A. */
+  sunsky:  { name: "SUNSKY", zh: "", retail: true, re: /sunsky-online\.com\/(?:[a-z]{2}\/)?p(?:roduct)?\/[^?#]*?([A-Z]{2,4}\d{6,}[A-Z0-9]*)/i,
+             url: function (id) { return "https://www.sunsky-online.com/p/" + id + ".htm"; } },
   shein:   { name: "SHEIN", zh: "希音", retail: true, re: /shein\.com\/.*?-p-(\d{5,})/i, url: function (id) { return "https://us.shein.com/-p-" + id + ".html"; } },
   pdd:     { name: "Pinduoduo", zh: "拼多多", retail: true, re: /(?:yangkeduo|pinduoduo)\.com\/.*?goods_id=(\d{5,})/i, url: function (id) { return "https://mobile.yangkeduo.com/goods.html?goods_id=" + id; } },
   alibaba: { name: "Alibaba.com", zh: "阿里巴巴国际站", retail: false, re: /alibaba\.com\/product-detail\/[^?#]*?_(\d{6,})\.html/i, url: function (id) { return "https://www.alibaba.com/product-detail/_" + id + ".html"; } },
@@ -90,11 +95,15 @@ var A = {
    committing to a 1688 carton is exactly what a trader should do — but it says plainly that retail pricing applies.
    "web" (any other product page) is allowed on both: a link is a link. */
 var SURFACES = {
-  consumer: { platforms: ["jd", "taobao", "pdd", "aliexpress", "cj", "shein"], kind: "retail", so: "Tafaariiq", en: "Retail" },
-  business: { platforms: ["1688", "alibaba", "mic"],    kind: "wholesale", so: "Jumlad",    en: "Wholesale" }
+  consumer: { platforms: ["jd", "taobao", "pdd", "aliexpress", "cj", "shein", "sunsky"], kind: "retail", so: "Tafaariiq", en: "Retail" },
+  business: { platforms: ["1688", "alibaba", "mic", "sunsky"],    kind: "wholesale", so: "Jumlad",    en: "Wholesale" }
 };
+/* Platforms that sell single units AND cartons from the same catalogue sit on both shops. SUNSKY is the case this
+   exists for: MOQ 1 with wholesale tiers above it, so refusing it to one side or the other would be an arbitrary
+   choice about a supplier that genuinely serves both customers. */
+var BOTH = ["web", "sunsky"];
 function surfaceOf(platform) {
-  if (platform === "web") return null;                                   // belongs to neither, welcome on both
+  if (BOTH.indexOf(platform) >= 0) return null;                          // welcome on both
   return SURFACES.business.platforms.indexOf(platform) >= 0 ? "business" : "consumer";
 }
 function platformsFor(surface) { return (SURFACES[surface] || SURFACES.consumer).platforms.slice(); }
@@ -249,7 +258,7 @@ function procure(o, qty, buyer) {
 
 RF.sources = { urlOf: urlOf, hostOf: hostOf, label: label, ADAPTERS: A, VENDORS: VENDORS, config: config, identify: identify, fetchOffer: fetchOffer, toProduct: toProduct,
   search: search, landed: landed, tierCost: tierCost, procure: procure,
-  SURFACES: SURFACES, surfaceOf: surfaceOf, platformsFor: platformsFor, allowedOn: allowedOn, here: here,
+  SURFACES: SURFACES, BOTH: BOTH, surfaceOf: surfaceOf, platformsFor: platformsFor, allowedOn: allowedOn, here: here,
   /* the other site's address for this same link, so a misplaced paste is one tap from being handled */
   /* A link to the SAME page on the other shop. crossLink below is for handing a pasted supplier link over; this is
      for ordinary pages, where only the host changes. Locally the two shops are folders, not hosts. */

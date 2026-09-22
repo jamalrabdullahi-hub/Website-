@@ -1542,6 +1542,7 @@ document.addEventListener("DOMContentLoaded", function () {
   else if (window.BOARD === "logi") logiPage();
   /* the calculator and the sourcing desk are standalone pages: they do not load the whole shop bundle, so they
      dispatch before the RF.shopUI branch rather than through it */
+  else if (window.SHOP === "bulk" && RF.bulkUI) RF.bulkUI(document.getElementById("app"));
   else if (window.SHOP === "calculator" && RF.calcUI) RF.calcUI(document.getElementById("app"));
   else if (window.SHOP === "pro" && RF.proUI) RF.api.ready.then(function () { RF.proUI(document.getElementById("app")); });
   else if (window.SHOP === "sourcing" && RF.sourcingUI) RF.api.ready.then(function () { RF.sourcingUI(document.getElementById("app")); });
