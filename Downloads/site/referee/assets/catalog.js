@@ -171,12 +171,28 @@ function moqOf(p, v) {
    So the line is the minimum, not the platform. A thing you can buy one of belongs in front of consumers; a thing
    sold by the carton belongs on business.buurwen.com, where MOQ and tier pricing are what the buyer came for.
    FBG stock and one-off pasted links are always single-unit, so they always qualify. */
+/* Which shop a product belongs to, decided by where it was sourced. CJ, AliExpress and the other retail platforms
+   sell single units to a person; 1688, Made-in-China and Alibaba sell cartons to a trader. Those are two different
+   customers who want two different pages, so the source decides the surface rather than the MOQ happening to be 1.
+   FBG stock and pasted one-offs are always single-unit, so they are always retail. */
+function surfaceOfProduct(p) {
+  if (!p) return null;
+  if (p.fbg || p.oneoff) return "consumer";
+  var ch = p.sources && p.sources[0] && p.sources[0].channel;
+  if (!ch) return "consumer";
+  if (RF.sources && RF.sources.surfaceOf) return RF.sources.surfaceOf(ch);
+  return ["1688", "alibaba", "mic"].indexOf(ch) >= 0 ? "business" : "consumer";
+}
 function retailOK(p) {
   if (!p) return false;
   if (p.fbg || p.oneoff) return true;
+  if (surfaceOfProduct(p) !== "consumer") return false;
   if (Math.max(1, Math.round(+p.moq || 1)) > 1) return false;
   return viability(p, p.variants && p.variants[0], 1).ok;
 }
+/* The wholesale side of the same split. Kept as its own function so the business grid states what it wants rather
+   than listing what it does not. */
+function wholesaleOK(p) { return !!p && !p.fbg && !p.oneoff && surfaceOfProduct(p) === "business"; }
 
 /* ---------------------------------------------------------------- is this thing worth shipping at all?
    Flying a $5 object 8,000 km costs more than the object. That is physics, not a pricing bug, and no rate card
@@ -268,7 +284,7 @@ function card(p) {
 
 RF.catalog = {
   CATS: CATS, products: P, isChina: isChina, price: price, sameVariant: sameVariant, card: card, _breakdown: breakdown,
-  seller: seller, eligible: eligible, moqOf: moqOf, retailOK: retailOK, viability: viability, SHIP_RATIO_MAX: SHIP_RATIO_MAX, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
+  seller: seller, eligible: eligible, moqOf: moqOf, retailOK: retailOK, wholesaleOK: wholesaleOK, surfaceOfProduct: surfaceOfProduct, viability: viability, SHIP_RATIO_MAX: SHIP_RATIO_MAX, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
   get: function (sku) { return P.filter(function (p) { return p.sku === sku; })[0]; },
   search: function (q, opts) {
     opts = opts || {}; q = (q || "").toLowerCase().trim();

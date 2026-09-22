@@ -58,7 +58,7 @@ function home(app) {
     '<div class="g-filters"><label>Kala saar <select id="fSort"><option value="">Ku habboon</option><option value="lo">Qiimaha ↑</option><option value="hi">Qiimaha ↓</option><option value="fast">Ugu dhakhsaha badan</option></select></label>' +
       '<label>Ugu badnaan $ <input id="fMax" type="number" min="0" step="10" placeholder="—"></label>' +
       '<label class="g-chk"><input type="checkbox" id="fToday"> Diyaar maanta</label>' +
-      '<label class="g-chk"><input type="checkbox" id="fOne"> Tus jumlada sidoo kale</label><span class="g-eta" id="fCount"></span></div>' +
+      '<a class="g-chk" id="fBiz" href="#">🏢 Jumlad ma raadinaysaa? → Garsoore Ganacsi</a><span class="g-eta" id="fCount"></span></div>' +
     '<div class="g-grid" id="grid"></div>' +
     (RF.recent.list().length ? '<div class="g-sec"><h2>Aad dhowaan eegtay</h2></div><div class="g-grid g-row" id="recent"></div>' : "") +
     '<section class="g-bizband"><div><h3>Garsoore <span>Ganacsi</span></h3><p>Jumlad, qandaraas, adeegyo ganacsi iyo iibsi Shiinaha oo badan.</p></div>' +
@@ -67,11 +67,11 @@ function home(app) {
   var PAGE_N = 30, shown = PAGE_N, filt = "";
   function draw() {
     var list = C.search(q, { cat: cat || null, china: filt === "cn" ? true : filt === "lo" ? false : undefined });
-    var sort = $("fSort").value, max = +$("fMax").value, today = $("fToday").checked, bulk = $("fOne").checked;
+    var sort = $("fSort").value, max = +$("fMax").value, today = $("fToday").checked;
     /* The consumer shop shows what a consumer can buy: one of. Wholesale lots live on business.buurwen.com, where
        MOQ and tiers are the point. The checkbox lets a shopper opt INTO seeing bulk rather than having to filter it
        out — the default should be the shop they came for. */
-    if (!bulk) list = list.filter(C.retailOK);
+    list = list.filter(C.retailOK);
     if (max > 0 || today || sort) {
       var withP = list.map(function (p) { return { p: p, c: C.card(p) }; }).filter(function (x) { return (!(max > 0) || (x.c.total != null && x.c.total <= max)) && (!today || !x.c.china); });
       if (sort) withP.sort(function (a, b) { return sort === "lo" ? a.c.total - b.c.total : sort === "hi" ? b.c.total - a.c.total : (a.c.etaDays || 0) - (b.c.etaDays || 0); });
@@ -86,7 +86,8 @@ function home(app) {
     if ($("moreBtn")) $("moreBtn").onclick = function () { shown += PAGE_N; draw(); };
   }
   draw();
-  ["fSort", "fMax", "fToday", "fOne"].forEach(function (id) { $(id).onchange = $(id).oninput = function () { shown = PAGE_N; draw(); }; });
+  ["fSort", "fMax", "fToday"].forEach(function (id) { $(id).onchange = $(id).oninput = function () { shown = PAGE_N; draw(); }; });
+  if ($("fBiz") && RF.sources) $("fBiz").href = RF.sources.crossHref("index.html", "business");
   if ($("recent")) $("recent").innerHTML = RF.recent.list().map(C.get).filter(Boolean).slice(0, 6).map(cardHTML).join("");
   $("seg").onclick = function (ev) { var sp = ev.target.closest("span"); if (!sp) return; [].forEach.call(this.children, function (x) { x.classList.toggle("on", x === sp); }); filt = sp.dataset.v; shown = PAGE_N; draw(); };
   $("sForm").onsubmit = function (ev) { ev.preventDefault(); var v = $("sQ").value, u = RF.sources && RF.sources.urlOf(v);
@@ -692,7 +693,7 @@ function bizChina(app) {
     function draw() {
       var cat = $("bcCat").value, maxMoq = +$("bcMoq").value, maxUnit = +$("bcMax").value;
       var list = C.products.filter(function (p) {
-        if (p.fbg || p.oneoff) return false;                 /* FBG stock and pasted one-offs are not the catalogue */
+        if (!C.wholesaleOK(p)) return false;                /* 1688 / Made-in-China / Alibaba only: this is the wholesale catalogue */
         if (cat && p.cat !== cat) return false;
         var m = C.moqOf(p, p.variants[0]);
         if (maxMoq > 0 && m > maxMoq) return false;
