@@ -14,7 +14,7 @@ var call = null, app = null, view = "money";
 var NAV = [
   ["money", "💰", "Money"], ["accounts", "👥", "Accounts"], ["business", "🏢", "Businesses"],
   ["buy", "🛒", "Buying"], ["fbg", "📦", "FBG"], ["agents", "🤝", "Agents"], ["catalogue", "🏷", "Catalogue"],
-  ["shipping", "🛩", "Shipping"], ["calibration", "🎯", "Calibration"], ["ops", "⚙", "Operations"], ["log", "📜", "Log"]
+  ["shipping", "🛩", "Shipping"], ["treasury", "💱", "Treasury"], ["calibration", "🎯", "Calibration"], ["ops", "⚙", "Operations"], ["log", "📜", "Log"]
 ];
 var ROLE = { consumer: "Consumer", business: "Business", agent: "Agent", staff: "Staff", admin: "Admin" };
 var STATE = { AWAITING_PAYMENT: "Awaiting payment", PAYMENT_REVIEW: "Payment review", PLACED: "Paid", CONFIRMED: "Confirmed", SOURCING: "Sourcing", IN_TRANSIT: "In transit", ARRIVED: "Arrived", READY: "Ready", COMPLETED: "Completed", CANCELLED: "Cancelled", EXPIRED: "Expired" };
@@ -86,7 +86,98 @@ function render() {
   location.hash = view;
   [].forEach.call(app.querySelectorAll(".cs-side nav a"), function (a) { a.classList.toggle("on", a.dataset.v === view); });
   panel('<div class="cs-boot">⏳</div>');
-  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, calibration: calibration, ops: ops, log: log }[view] || money_)();
+  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, treasury: treasury, calibration: calibration, ops: ops, log: log }[view] || money_)();
+}
+
+/* ---------------------------------------------------------------- treasury
+   Somalia has no card rails, so money arrives as USD over USSD and leaves as CNY in China, days apart
+   and through a hawala. Those are two pools, not one balance, and the questions worth answering are:
+   what did we collect, what is sitting in China, what can we buy right now, and what is the transfer
+   really costing us against the FX the catalogue was priced at. */
+function treasury() {
+  head("Treasury", '<button class="chip" id="tRemit">+ Remittance to China</button>');
+  call("GET", "/ops/treasury").then(function (t) {
+    var b = t.balances, q = t.queue, fx = t.fx;
+    var fxBad = fx.variancePct != null && Math.abs(fx.variancePct) > 2;
+    panel('<div class="cs-kpis">' +
+        card("Somalia", money(b.soUsd), "collected, not yet sent", b.soUsd < 0 ? "bad" : "") +
+        card("China float", "¥" + b.cnCny.toLocaleString(), b.cnUsdAt != null ? "≈ " + money(b.cnUsdAt) : "ready to buy with", b.cnCny < 0 ? "bad" : "") +
+        card("Escrow held", money(t.escrowHeld), "owed back if orders fail") +
+        card("Buy now", q.fundableNow + " / " + q.count, "POs the float covers", q.fundableNow < q.count ? "bad" : "good") +
+        card("Need", "¥" + q.needCny.toLocaleString(), "to clear the queue") +
+        card("Short by", "¥" + q.shortfallCny.toLocaleString(), "next remittance", q.shortfallCny > 0 ? "bad" : "good") +
+      '</div>' +
+
+      '<h2>Exchange rate</h2>' +
+      (fx.actual == null
+        ? '<div class="cs-note2">No remittance has landed yet. Every price in the shop assumes <b>¥' + fx.catalogue + ' per $1</b>. ' +
+          'Until a real transfer confirms that, the goods cost in every order is an assumption.</div>'
+        : '<div class="cs-kv">' + kv("Catalogue assumes", "¥" + fx.catalogue + " / $1") + kv("Actually received", "¥" + fx.actual + " / $1") +
+          kv("Variance", (fx.variancePct > 0 ? "+" : "") + fx.variancePct + "%") + kv("Measured over", money(fx.sampleUsd)) + '</div>' +
+          (fxBad ? '<div class="cs-warn" style="margin-top:10px"><b>The catalogue is priced at the wrong rate</b><div>' +
+            (fx.actual < fx.catalogue
+              ? 'Each dollar buys ¥' + (fx.catalogue - fx.actual).toFixed(2) + ' less than the shop assumes, so every order loses about ' +
+                Math.abs(fx.variancePct) + '% of its goods cost. Change FX in deploy/api.js and assets/catalog.js together, then rebuild.'
+              : 'Each dollar buys more than the shop assumes, so the catalogue is leaving about ' + fx.variancePct + '% on the table.') +
+            '</div></div>' : '')) +
+
+      '<h2>Waiting on money</h2>' +
+      (q.tasks.length
+        ? '<table class="cs-tbl"><tr><th>PO</th><th>Item</th><th>Qty</th><th>Needs</th><th></th></tr>' +
+          q.tasks.map(function (x) {
+            return '<tr><td><code>' + e(x.id) + '</code></td><td>' + e(x.title) + '</td><td>' + x.qty + '</td>' +
+              '<td>¥' + (x.needCny || 0).toLocaleString() + '</td>' +
+              '<td>' + (x.fundable ? '<span class="g-pill">buy now</span>' : '<span class="g-pill gold">waiting</span>') + '</td></tr>';
+          }).join("") + '</table>'
+        : '<div class="cs-note2">Nothing queued. Every paid order has been bought.</div>') +
+
+      '<h2>Remittances</h2>' +
+      (t.remittances.length
+        ? '<table class="cs-tbl"><tr><th>Ref</th><th>Sent</th><th>Fee</th><th>Received</th><th>Rate</th><th>State</th><th></th></tr>' +
+          t.remittances.map(function (r) {
+            return '<tr><td><code>' + e(r.id) + '</code><div class="cs-note2">' + e(r.channel || "") + (r.reference ? " · " + e(r.reference) : "") + '</div></td>' +
+              '<td>' + money(r.usdSent) + '</td><td>' + (r.feeUsd ? money(r.feeUsd) : "—") + '</td>' +
+              '<td>' + (r.cnyReceived ? "¥" + r.cnyReceived.toLocaleString() : "—") + '</td>' +
+              '<td>' + (r.fx ? "¥" + r.fx : "—") + '</td><td>' + e(r.state) + '</td>' +
+              '<td>' + (r.state === "SENT" ? '<button class="chip" data-landed="' + r.id + '">Landed</button> <button class="chip" data-failed="' + r.id + '">Failed</button>' : "") + '</td></tr>';
+          }).join("") + '</table>'
+        : '<div class="cs-note2">No money has been sent to China yet.</div>') +
+
+      '<h2>Ledger</h2>' +
+      '<table class="cs-tbl"><tr><th>When</th><th>Account</th><th>Kind</th><th>Amount</th><th>Ref</th></tr>' +
+      t.ledger.map(function (x) {
+        var cur = x.account === "CN_CNY" ? "¥" : "$";
+        return '<tr><td>' + e((x.at || "").slice(0, 16).replace("T", " ")) + '</td><td>' + e(x.account) + '</td><td>' + e(x.kind) + '</td>' +
+          '<td class="' + (x.amount < 0 ? "bad" : "good") + '">' + (x.amount > 0 ? "+" : "−") + cur + Math.abs(x.amount).toLocaleString() + '</td>' +
+          '<td><code>' + e(x.ref || "") + '</code> <span class="cs-note2">' + e(x.note || "") + '</span></td></tr>';
+      }).join("") + '</table>');
+
+    [].forEach.call($("csBody").querySelectorAll("[data-landed]"), function (btn) {
+      btn.onclick = function () {
+        var cny = prompt("How many yuan actually arrived? (¥)");
+        if (!cny) return;
+        call("POST", "/ops/treasury/remit/" + btn.dataset.landed + "/landed", { cny: +cny })
+          .then(function (r) { toast("Rate: ¥" + r.fx + " / $1 (catalogue assumes ¥" + r.catalogueFx + ")"); render(); })
+          .catch(function (x) { toast(x.message); });
+      };
+    });
+    [].forEach.call($("csBody").querySelectorAll("[data-failed]"), function (btn) {
+      btn.onclick = function () {
+        if (!confirm("Mark this transfer failed and return the money to the Somali pool?")) return;
+        call("POST", "/ops/treasury/remit/" + btn.dataset.failed + "/failed", { note: prompt("What happened?") || "" })
+          .then(function () { render(); }).catch(function (x) { toast(x.message); });
+      };
+    });
+    $("tRemit").onclick = function () {
+      var usd = prompt("How many dollars are you sending to China? ($)");
+      if (!usd) return;
+      var fee = prompt("Transfer fee, if any ($)") || 0;
+      var ref = prompt("Hawala / bank reference") || "";
+      call("POST", "/ops/treasury/remit", { usd: +usd, fee: +fee, reference: ref, channel: "hawala" })
+        .then(function () { toast("Recorded. Mark it landed when China confirms."); render(); })
+        .catch(function (x) { toast(x.message); });
+    };
+  }).catch(function (x) { panel('<div class="cs-warn">' + e(x.message) + '</div>'); });
 }
 
 /* ---------------------------------------------------------------- calibration: what the guesses got wrong

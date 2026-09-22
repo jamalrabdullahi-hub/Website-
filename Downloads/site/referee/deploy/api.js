@@ -1090,6 +1090,88 @@ export async function handleApi(req, env, url) {
        paid, and the reference code for the carton. After that the goods drive the order forward by themselves. */
     if (path.startsWith("/ops/procurement")) {
       if (!staff) return err("Shaqaalaha Garsoore oo keliya.", 403);
+      /* ---------------------------------------------------------------- treasury
+         Two pools of money in two currencies, days apart: USD collected in Mogadishu by USSD, and
+         CNY sitting in China ready to buy with. This answers the only questions that matter between
+         them — how much have we collected, how much is in China, what can we buy right now, and what
+         is the remittance actually costing us against the rate the catalogue was priced at. */
+      if (path === "/ops/treasury" && M === "GET") {
+        const bal = async (acct) => (await env.DB.prepare("SELECT COALESCE(SUM(amount),0) s FROM treasury WHERE account = ?").bind(acct).first()).s;
+        const [so, cn] = [await bal("SO_USD"), await bal("CN_CNY")];
+        /* purchases waiting on money. A PO is buyable now only if the China float covers it; anything
+           past that is the size of the next remittance, not a queue to stare at. */
+        const queue = (await env.DB.prepare(`SELECT id, order_id, title, qty, target_cny, state FROM procurement
+          WHERE state = 'QUEUED' ORDER BY created_at ASC LIMIT 200`).all()).results;
+        let running = 0;
+        const tasks = queue.map(q => {
+          const need = +q.target_cny || 0;
+          const fundable = need > 0 && running + need <= cn;
+          if (fundable) running += need;
+          return { id: q.id, orderId: q.order_id, title: q.title, qty: q.qty, needCny: need, fundable };
+        });
+        const needCny = tasks.reduce((a, x) => a + x.needCny, 0);
+        const rem = (await env.DB.prepare("SELECT * FROM remittances ORDER BY created_at DESC LIMIT 50").all()).results;
+        /* the FX the catalogue assumed vs what remittances really returned, weighted by size. A gap
+           here is margin leaving on every order and nobody deciding that it should. */
+        const landed = rem.filter(r => r.state === "LANDED" && r.cny_received > 0 && r.usd_sent > 0);
+        const sentUsd = landed.reduce((a, r) => a + r.usd_sent + (r.fee_usd || 0), 0);
+        const gotCny = landed.reduce((a, r) => a + r.cny_received, 0);
+        const realFx = sentUsd > 0 ? gotCny / sentUsd : null;
+        const held = (await env.DB.prepare("SELECT COALESCE(SUM(total),0) s FROM orders WHERE escrow = 'held'").first()).s;
+        const led = (await env.DB.prepare("SELECT * FROM treasury ORDER BY at DESC LIMIT 60").all()).results;
+        return json({
+          balances: { soUsd: +so.toFixed(2), cnCny: +cn.toFixed(2), cnUsdAt: realFx ? +(cn / realFx).toFixed(2) : null },
+          escrowHeld: +held.toFixed(2),
+          queue: { count: tasks.length, needCny: +needCny.toFixed(2), fundableNow: tasks.filter(t => t.fundable).length,
+                   shortfallCny: +Math.max(0, needCny - cn).toFixed(2), tasks: tasks.slice(0, 50) },
+          fx: { catalogue: FX, actual: realFx ? +realFx.toFixed(4) : null,
+                variancePct: realFx ? +(((realFx - FX) / FX) * 100).toFixed(2) : null, sampleUsd: +sentUsd.toFixed(2) },
+          remittances: rem.map(r => ({ id: r.id, usdSent: r.usd_sent, feeUsd: r.fee_usd, fx: r.fx, cnyReceived: r.cny_received,
+            channel: r.channel, reference: r.reference, state: r.state, note: r.note, at: r.created_at })),
+          ledger: led.map(x => ({ id: x.id, at: x.at, account: x.account, kind: x.kind, amount: x.amount, ref: x.ref, note: x.note, by: x.by }))
+        });
+      }
+      /* Money leaves Somalia. It does NOT arrive in China until somebody confirms it did, because a
+         hawala can fail and a float that counts unconfirmed money buys things it cannot pay for. */
+      if (path === "/ops/treasury/remit" && M === "POST") {
+        const b = await body(req), t = now();
+        const usd = +b.usd, fee = Math.max(0, +b.fee || 0);
+        if (!(usd > 0)) return err("Ku qor lacagta aad dirayso ($).");
+        const id = rid("RM-", 6);
+        await env.DB.batch([
+          env.DB.prepare(`INSERT INTO remittances (id,usd_sent,fee_usd,channel,reference,state,note,by,created_at,updated_at)
+            VALUES (?,?,?,?,?, 'SENT', ?,?,?,?)`).bind(id, +usd.toFixed(2), +fee.toFixed(2),
+            ["hawala", "bank", "agent", "cash"].includes(b.channel) ? b.channel : "hawala",
+            String(b.reference || "").slice(0, 60), String(b.note || "").slice(0, 200), user.name, t, t),
+          env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'SO_USD', 'remit_out', ?,?,?,?)")
+            .bind(rid("TR-", 6), t, -(+(usd + fee).toFixed(2)), id, "u dir Shiinaha", user.name)
+        ]);
+        return json({ id });
+      }
+      if ((m = path.match(/^\/ops\/treasury\/remit\/(RM-[A-Z0-9]+)\/(landed|failed)$/)) && M === "POST") {
+        const r = await env.DB.prepare("SELECT * FROM remittances WHERE id = ?").bind(m[1]).first();
+        if (!r) return err("Lama helin.", 404);
+        if (r.state !== "SENT") return err("Xawaaladdan horey ayaa loo xidhay.");
+        const b = await body(req), t = now();
+        if (m[2] === "failed") {
+          await env.DB.batch([
+            env.DB.prepare("UPDATE remittances SET state = 'FAILED', note = ?, updated_at = ? WHERE id = ?").bind(String(b.note || "").slice(0, 200), t, r.id),
+            /* the money never left, so put it back rather than leaving a hole in the Somali pool */
+            env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'SO_USD', 'adjust', ?,?,?,?)")
+              .bind(rid("TR-", 6), t, +(r.usd_sent + (r.fee_usd || 0)).toFixed(2), r.id, "xawaalad guuldareysatay", user.name)
+          ]);
+          return json({ ok: true });
+        }
+        const cny = +b.cny;
+        if (!(cny > 0)) return err("Ku qor lacagta la helay (¥).");
+        const fx = +(cny / (r.usd_sent + (r.fee_usd || 0))).toFixed(4);
+        await env.DB.batch([
+          env.DB.prepare("UPDATE remittances SET state = 'LANDED', cny_received = ?, fx = ?, updated_at = ? WHERE id = ?").bind(+cny.toFixed(2), fx, t, r.id),
+          env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'CN_CNY', 'remit_in', ?,?,?,?)")
+            .bind(rid("TR-", 6), t, +cny.toFixed(2), r.id, "waa la helay Shiinaha", user.name)
+        ]);
+        return json({ ok: true, fx, catalogueFx: FX });
+      }
       if (path === "/ops/procurement" && M === "GET") {
         const rows = (await env.DB.prepare(`SELECT p.*, o.state o_state, o.total o_total, u.name u_name, u.phone u_phone
           FROM procurement p JOIN orders o ON o.id = p.order_id JOIN users u ON u.id = p.user_id
@@ -1107,6 +1189,9 @@ export async function handleApi(req, env, url) {
           await env.DB.batch([
             env.DB.prepare("UPDATE procurement SET state = 'ORDERED', paid_cny = ?, tracking = ?, supplier = ?, history = ?, updated_at = ? WHERE id = ?")
               .bind(paid, String(b.tracking || "").slice(0, 60), String(b.supplier || "").slice(0, 120), push("ORDERED"), t, p.id),
+            /* what the agent actually spent, out of the China float rather than out of a guess */
+            env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'CN_CNY', 'purchase', ?,?,?,?)")
+              .bind(rid("TR-", 6), t, -(+paid.toFixed(2)), p.id, p.title, user.name),
             env.DB.prepare("UPDATE orders SET state = CASE WHEN state = 'PLACED' THEN 'SOURCING' ELSE state END, history = json_insert(history, '$[#]', json(?)), updated_at = ? WHERE id = ? AND state = 'PLACED'")
               .bind(JSON.stringify({ state: "SOURCING", at: t, by: user.name }), t, p.order_id)
           ]);
@@ -1483,7 +1568,11 @@ export async function handleApi(req, env, url) {
         if (b.ok) {
           h.push({ state: "PLACED", at: t, by });
           const stmts = [env.DB.prepare("UPDATE orders SET state = 'PLACED', escrow = 'held', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id),
-            notify(env, o.user_id, "order", "Lacagtaadu waa la hubiyay", o.title + " — Garsoore ayaa lacagta hayn doona ilaa aad alaabta qaadato.", "orders.html")];
+            notify(env, o.user_id, "order", "Lacagtaadu waa la hubiyay", o.title + " — Garsoore ayaa lacagta hayn doona ilaa aad alaabta qaadato.", "orders.html"),
+            /* the mobile-money payment is now real cash in the Somali pool. Escrow says whose it is;
+               the treasury says where it physically sits, and those are different questions. */
+            env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'SO_USD', 'collection', ?,?,?,?)")
+              .bind(rid("TR-", 6), t, +(+o.total).toFixed(2), o.id, (o.pay || "mobile money") + " · " + (o.pay_txn || ""), by)];
           /* a paid China order becomes a purchase task for the buying agent (FBG stock and local goods need none) */
           if (o.flow === "china" && !o.fbg_id) {
             const cat = CATALOG[o.sku], v = cat && cat.variants.filter(x => x.vsku === o.vsku)[0];
@@ -1514,7 +1603,13 @@ export async function handleApi(req, env, url) {
       }
       if (m[2] === "refunded") {
         if (o.escrow !== "refund_due") return err("Lacag celin lama sugayo.");
-        await env.DB.prepare("UPDATE orders SET escrow = 'refunded', updated_at = ? WHERE id = ?").bind(t, o.id).run();
+        await env.DB.batch([
+          env.DB.prepare("UPDATE orders SET escrow = 'refunded', updated_at = ? WHERE id = ?").bind(t, o.id),
+          /* refunded money has left the Somali pool for real; a refund that only changes a status is
+             a refund the books cannot see */
+          env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'SO_USD', 'refund', ?,?,?,?)")
+            .bind(rid("TR-", 6), t, -(+(+o.total).toFixed(2)), o.id, "lacag celin", by)
+        ]);
         return json({ ok: true });
       }
       const d = J(o.dispute); if (!d || d.status !== "open") return err("Cabasho furan ma jirto.");
