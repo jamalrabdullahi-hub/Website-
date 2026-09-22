@@ -97,3 +97,45 @@ Question 2 is the one that decides whether a supplier can be sold instantly or o
 
 **Do not stack agents.** Every layer takes a margin, and being the layer is Garsoore's entire
 business. An agent who buys from another agent is a customer, not a competitor.
+
+---
+
+## API access gates — what each source actually asks for
+
+Checked against the platforms' own documentation, not their marketing.
+
+| Source | Gate | Verdict |
+|---|---|---|
+| **CJdropshipping** | email + API key | open, integrated |
+| **SUNSKY** | account + Open API key | open, probe written |
+| **AliExpress** | developer application | applied |
+| **1688** | **Alipay with enterprise real-name verification** | needs a Chinese entity |
+| **JD** | Chinese business entity | needs a Chinese entity |
+| **Taobao / Pinduoduo** | Chinese entity | needs a Chinese entity |
+
+### 1688 Open Platform, in detail
+
+From `open.1688.com/doc/appJoin.htm` (updated 2026-08-19), developer registration needs **both**:
+
+1. an Alibaba China account, and
+2. an Alipay account that has passed **enterprise real-name verification** (企业实名认证) —
+   enterprise developers additionally need merchant certification (商家认证).
+
+Requirement 2 needs a Chinese business licence. Everything after it is straightforward: register
+an app for an appKey and a 5,000-call cap, pick WEB authorisation for self-use, submit for review,
+and Alibaba answers within a week. Apps built purely for our own use are **explicitly permitted** —
+they are approved and simply never listed in the app market. On approval the cap rises to 100,000
+calls, which is ample for a catalogue importer.
+
+Necessary but not sufficient: individual API groups generally need their own permission
+application, and the platform has paid-service rules. Clearing the entity hurdle does not by itself
+hand over a product feed. The documentation is Chinese-only and the signing scheme is Alibaba's own.
+
+### The pattern worth seeing
+
+Paying Chinese suppliers, buying on JD, and the 1688 API are all gated behind **the same single
+thing**: a Chinese legal entity. The Guangzhou counterpart is not only someone who pays suppliers —
+they are the legal person who can hold the enterprise Alipay and register the developer account.
+
+That makes the counterpart the highest-leverage item on this list, and the 1688 API one of the
+lowest: its payoff is an automated feed, and 421 wholesale products were imported without one.
