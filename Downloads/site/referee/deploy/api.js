@@ -6,6 +6,7 @@
        reference; staff match it against the merchant statement, then the money is "held" (escrow) until pickup.
      - An order completes only when staff enter the customer's 6-digit pickup code (staff never see the code).
 */
+import { provider, providers, normState } from "./logistics.js";
 import { CATALOG, PRICING } from "./catalog.gen.js";
 import { RATES } from "./rates.gen.js";
 
@@ -309,6 +310,7 @@ async function waafiPurchase(env, { phone, amount, reference, description }) {
 
    UN numbers follow the battery status: UN3480 is a loose cell or a power bank, UN3481 is a battery inside or
    packed with equipment. Nothing here guesses which: it reads what a person recorded against the product. */
+const STATES_OK = ["CREATED", "BOOKED", "PICKED_UP", "IN_TRANSIT", "CUSTOMS", "ARRIVED", "DELIVERED", "CANCELLED", "FAILED"];
 const UN_FOR = { standalone: "UN3480", in_equipment: "UN3481", with_equipment: "UN3481" };
 
 function manifestFromOrder(env, o, t) {
@@ -1333,6 +1335,114 @@ export async function handleApi(req, env, url) {
          CNY sitting in China ready to buy with. This answers the only questions that matter between
          them — how much have we collected, how much is in China, what can we buy right now, and what
          is the remittance actually costing us against the rate the catalogue was priced at. */
+      /* ---------------------------------------------------------------- shipments
+         A handover: manifest lines leave the China facility with a carrier. Provider-agnostic on purpose, so the
+         carrier can be decided after this is built rather than before. */
+      if (path === "/ops/shipments" && M === "GET") {
+        const rows = (await env.DB.prepare("SELECT * FROM shipments ORDER BY created_at DESC LIMIT 100").all()).results;
+        return json({
+          providers: providers(env),
+          shipments: rows.map(s => ({
+            id: s.id, provider: s.provider, providerOrder: s.provider_order, tracking: s.tracking_no,
+            labelUrl: s.label_url, routing: s.routing, service: s.service,
+            dest: { name: s.dest_name, phone: s.dest_phone, address: s.dest_address, city: s.dest_city, country: s.dest_country },
+            packages: s.packages, weightKg: s.weight_kg, cbm: s.cbm,
+            declaredValue: s.declared_value, currency: s.currency,
+            state: s.state, lastEvent: s.last_event, events: J(s.events) || [], pickup: s.pickup,
+            note: s.note, at: s.created_at, updatedAt: s.updated_at
+          }))
+        });
+      }
+      /* Create one from manifest lines. Refuses while any line carries an unresolved battery status, because that
+         is the declaration a carrier will reject and an airport will hold - better to fail here than on a dock. */
+      if (path === "/ops/shipments" && M === "POST") {
+        const b = await body(req), t = now();
+        const ids = (Array.isArray(b.lines) ? b.lines : []).slice(0, 200).map(String);
+        if (!ids.length) return err("Dooro xariiqyada manifest-ka.");
+        const lines = (await env.DB.prepare(
+          `SELECT * FROM manifest_lines WHERE shipment IS NULL AND id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all()).results;
+        if (!lines.length) return err("Xariiqyadan horey ayaa loo diray.");
+        const unresolved = lines.filter(l => l.battery === "unknown");
+        if (unresolved.length && !b.force)
+          return err(unresolved.length + " xariiq oo xaaladda baytarigoodu aan la garanayn. Dejiso ka hor inta aan la dirin.", 409);
+
+        const P = provider(b.provider || "manual");
+        if (!P.configured(env)) return err("Adeeg bixiyahan weli lama furin.", 503);
+        const id = rid("SH-", 6);
+        const sum = (f) => +lines.reduce((a, l) => a + (+l[f] || 0), 0).toFixed(3);
+        const shipment = {
+          id, service: ["air", "sea", "express"].includes(b.service) ? b.service : "sea",
+          origin: chinaAddress(env, "<consolidation>"),
+          dest_name: String(b.destName || "Garsoore Mogadishu").slice(0, 120),
+          dest_phone: String(b.destPhone || "").slice(0, 30),
+          dest_address: String(b.destAddress || "Km4, Mogadishu").slice(0, 200),
+          dest_city: "Mogadishu", dest_country: "SO",
+          packages: lines.reduce((a, l) => a + (+l.packages || 1), 0),
+          weight_kg: sum("weight_kg"), cbm: sum("actual_cbm"),
+          declared_value: sum("declared_value"), currency: "USD"
+        };
+        let res;
+        try { res = await P.create(env, shipment, lines); }
+        catch (e) { return err("Adeeg bixiyuhu ma jawaabin: " + String(e.message || e).slice(0, 120), 502); }
+
+        const stmts = [env.DB.prepare(`INSERT INTO shipments
+          (id,consignment,provider,provider_order,tracking_no,label_url,routing,service,origin,
+           dest_name,dest_phone,dest_address,dest_city,dest_country,packages,weight_kg,cbm,declared_value,currency,
+           state,last_event,events,pickup,raw,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'USD', ?,?,?,?,?,?,?)`).bind(
+          id, b.consignment || null, P.id, res.providerOrder || null, res.tracking || null, res.labelUrl || null,
+          typeof res.routing === "string" ? res.routing : (res.routing ? JSON.stringify(res.routing) : null),
+          shipment.service, shipment.origin, shipment.dest_name, shipment.dest_phone, shipment.dest_address,
+          shipment.dest_city, shipment.dest_country, shipment.packages, shipment.weight_kg, shipment.cbm,
+          shipment.declared_value, normState(res.state), null, "[]",
+          res.pickup ? (typeof res.pickup === "string" ? res.pickup : JSON.stringify(res.pickup)) : null,
+          res.raw ? JSON.stringify(res.raw).slice(0, 4000) : null, t, t)];
+        for (const l of lines) stmts.push(
+          env.DB.prepare("UPDATE manifest_lines SET shipment = ?, state = 'DECLARED', updated_at = ? WHERE id = ?").bind(id, t, l.id));
+        await env.DB.batch(stmts);
+        return json({ id, provider: P.id, tracking: res.tracking, labelUrl: res.labelUrl, state: normState(res.state), lines: lines.length });
+      }
+      /* Refresh from the carrier, or record by hand what a forwarder said on WhatsApp. Both write the same
+         event stream, so the customer's order page cannot tell which kind of carrier is behind it. */
+      if ((m = path.match(/^\/ops\/shipments\/(SH-[A-Z0-9]+)$/)) && M === "POST") {
+        const s = await env.DB.prepare("SELECT * FROM shipments WHERE id = ?").bind(m[1]).first();
+        if (!s) return err("Lama helin.", 404);
+        const b = await body(req), t = now();
+        let events = J(s.events) || [], state = s.state, last = s.last_event;
+
+        if (b.refresh) {
+          const P = provider(s.provider);
+          const r = await P.track(env, s).catch(e => ({ state: s.state, events: [], raw: String(e.message || e) }));
+          if (r.events && r.events.length) {
+            const seen = new Set(events.map(x => (x.at || "") + "|" + (x.text || "")));
+            r.events.forEach(x => { if (!seen.has((x.at || "") + "|" + (x.text || ""))) events.push(x); });
+            last = r.events[r.events.length - 1].text || last;
+          }
+          state = normState(r.state);
+        }
+        if (b.event) {   /* typed in by staff from a forwarder's message */
+          events.push({ at: t, code: String(b.event.code || "manual").slice(0, 30),
+                        text: String(b.event.text || "").slice(0, 200), place: String(b.event.place || "").slice(0, 80) });
+          last = String(b.event.text || "").slice(0, 200);
+        }
+        const set = ["events = ?", "last_event = ?", "updated_at = ?"], vals = [JSON.stringify(events.slice(-100)), last, t];
+        if (b.state && STATES_OK.includes(b.state)) { set.push("state = ?"); vals.push(b.state); state = b.state; }
+        else if (b.refresh) { set.push("state = ?"); vals.push(state); }
+        [["tracking", "tracking_no"], ["labelUrl", "label_url"], ["routing", "routing"], ["pickup", "pickup"], ["note", "note"], ["providerOrder", "provider_order"]]
+          .forEach(([k, col]) => { if (b[k] != null) { set.push(col + " = ?"); vals.push(String(b[k]).slice(0, 400)); } });
+        await env.DB.prepare(`UPDATE shipments SET ${set.join(", ")} WHERE id = ?`).bind(...vals, s.id).run();
+
+        /* the customer only ever sees their own order move; the carrier behind it is Garsoore's business */
+        if (state === "ARRIVED" || state === "DELIVERED") {
+          const mls = (await env.DB.prepare("SELECT DISTINCT order_id FROM manifest_lines WHERE shipment = ? AND order_id IS NOT NULL").bind(s.id).all()).results;
+          for (const r of mls) {
+            await env.DB.prepare(`UPDATE orders SET state = CASE WHEN state IN ('PLACED','SOURCING','IN_TRANSIT') THEN 'ARRIVED' ELSE state END,
+              history = json_insert(history, '$[#]', json(?)), updated_at = ? WHERE id = ?`)
+              .bind(JSON.stringify({ state: "ARRIVED", at: t, by: "logistics" }), t, r.order_id).run();
+          }
+        }
+        return json({ ok: true, state });
+      }
       if (path === "/ops/manifest" && M === "GET") {
         const cons = url.searchParams.get("consignment");
         const m = cons ? await manifestOut(env, "WHERE consignment = ?", [cons])
