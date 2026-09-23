@@ -14,7 +14,7 @@ var call = null, app = null, view = "money";
 var NAV = [
   ["money", "💰", "Money"], ["accounts", "👥", "Accounts"], ["business", "🏢", "Businesses"],
   ["buy", "🛒", "Buying"], ["fbg", "📦", "FBG"], ["agents", "🤝", "Agents"], ["catalogue", "🏷", "Catalogue"],
-  ["shipping", "🛩", "Shipping"], ["treasury", "💱", "Treasury"], ["calibration", "🎯", "Calibration"], ["ops", "⚙", "Operations"], ["log", "📜", "Log"]
+  ["shipping", "🛩", "Shipping"], ["treasury", "💱", "Treasury"], ["manifest", "📋", "Manifest"], ["calibration", "🎯", "Calibration"], ["ops", "⚙", "Operations"], ["log", "📜", "Log"]
 ];
 var ROLE = { consumer: "Consumer", business: "Business", agent: "Agent", staff: "Staff", admin: "Admin" };
 var STATE = { AWAITING_PAYMENT: "Awaiting payment", PAYMENT_REVIEW: "Payment review", PLACED: "Paid", CONFIRMED: "Confirmed", SOURCING: "Sourcing", IN_TRANSIT: "In transit", ARRIVED: "Arrived", READY: "Ready", COMPLETED: "Completed", CANCELLED: "Cancelled", EXPIRED: "Expired" };
@@ -86,7 +86,7 @@ function render() {
   location.hash = view;
   [].forEach.call(app.querySelectorAll(".cs-side nav a"), function (a) { a.classList.toggle("on", a.dataset.v === view); });
   panel('<div class="cs-boot">⏳</div>');
-  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, treasury: treasury, calibration: calibration, ops: ops, log: log }[view] || money_)();
+  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, treasury: treasury, manifest: manifest, calibration: calibration, ops: ops, log: log }[view] || money_)();
 }
 
 /* ---------------------------------------------------------------- treasury
@@ -176,6 +176,66 @@ function treasury() {
       call("POST", "/ops/treasury/remit", { usd: +usd, fee: +fee, reference: ref, channel: "hawala" })
         .then(function () { toast("Recorded. Mark it landed when China confirms."); render(); })
         .catch(function (x) { toast(x.message); });
+    };
+  }).catch(function (x) { panel('<div class="cs-warn">' + e(x.message) + '</div>'); });
+}
+
+/* ---------------------------------------------------------------- manifest
+   What the forwarder and the customs broker receive, and — more usefully — what is still missing from it.
+
+   The ordering here is deliberate: gaps first, lines second. A manifest is only interesting when it is incomplete,
+   and the single field that stops a consignment at an airport is an unresolved battery status. */
+function manifest() {
+  head("Manifest", '<button class="chip" id="mCsv">⬇ CSV for the forwarder</button>');
+  call("GET", "/ops/manifest").then(function (m) {
+    var g = m.gaps, T = m.totals;
+    var BAT = [["unknown", "not yet known"], ["none", "no battery"], ["in_equipment", "battery inside (UN3481)"],
+               ["with_equipment", "battery packed with (UN3481)"], ["standalone", "loose battery / power bank (UN3480)"]];
+    panel('<div class="cs-kpis">' +
+        card("Lines", T.lines, "open, not yet consigned") +
+        card("Units", T.qty, "total quantity") +
+        card("Declared", money(T.declaredValue), "goods value, " + T.currency) +
+        card("Weight", T.weightKg + " kg", "declared") +
+        card("Battery unknown", g.battery, "must be resolved", g.battery ? "bad" : "good") +
+        card("DG undeclared", g.dgUndeclared, "needs a declaration", g.dgUndeclared ? "bad" : "good") +
+      '</div>' +
+
+      (m.ready
+        ? '<div class="cs-note2">Every line has a battery status and an HS code. This manifest can go to the forwarder.</div>'
+        : '<div class="cs-warn"><b>This manifest is not ready to send</b><div>' +
+          [g.battery ? g.battery + ' line(s) with an unresolved battery status' : "",
+           g.hsCode ? g.hsCode + ' without an HS code' : "",
+           g.dgUndeclared ? g.dgUndeclared + ' dangerous goods with no declaration' : "",
+           g.dimensions ? g.dimensions + ' without dimensions' : "",
+           g.packages ? g.packages + ' without a carton count' : ""].filter(Boolean).join(' · ') +
+          '. A battery status nobody has set is the field that stops a consignment at the airport — it is not a formality.</div></div>') +
+
+      '<h2>Lines</h2>' +
+      (m.lines.length
+        ? '<table class="cs-tbl"><tr><th>SKU</th><th>Description</th><th>Qty</th><th>Weight</th><th>Declared</th><th>HS</th><th>Battery</th></tr>' +
+          m.lines.map(function (l) {
+            var bad = l.battery === "unknown";
+            return '<tr><td><code>' + e(l.sku) + '</code><div class="cs-note2">' + e(l.orderId || "") + '</div></td>' +
+              '<td>' + e((l.description || "").slice(0, 46)) + '</td><td>' + l.qty + '</td>' +
+              '<td>' + (l.weightKg != null ? l.weightKg + " kg" : '<span class="bad">—</span>') + '</td>' +
+              '<td>' + (l.declaredValue != null ? money(l.declaredValue) : '<span class="bad">—</span>') + '</td>' +
+              '<td>' + (l.hsCode ? e(l.hsCode) : '<span class="bad">—</span>') + '</td>' +
+              '<td><select data-bat="' + l.id + '">' + BAT.map(function (b) {
+                return '<option value="' + b[0] + '"' + (l.battery === b[0] ? " selected" : "") + '>' + b[1] + '</option>';
+              }).join("") + '</select>' + (l.unNumber ? ' <span class="g-pill gold">' + e(l.unNumber) + '</span>' : "") +
+              (bad ? ' <span class="g-pill gold">set this</span>' : "") + '</td></tr>';
+          }).join("") + '</table>'
+        : '<div class="cs-note2">No open manifest lines. They appear here as soon as an order is paid.</div>'));
+
+    [].forEach.call($("csBody").querySelectorAll("[data-bat]"), function (sel) {
+      sel.onchange = function () {
+        call("POST", "/ops/manifest/" + sel.dataset.bat, { battery: sel.value })
+          .then(function () { render(); }).catch(function (x) { toast(x.message); });
+      };
+    });
+    $("mCsv").onclick = function () {
+      /* the console is on admin.buurwen.com, so the CSV comes from the same origin with the session cookie */
+      window.open("/api/ops/manifest?format=csv", "_blank");
     };
   }).catch(function (x) { panel('<div class="cs-warn">' + e(x.message) + '</div>'); });
 }

@@ -17,6 +17,9 @@ for (const p of C.products) {
   const src = p.sources[0] || {};
   out[p.sku] = {
     title: ((p.brand ? p.brand + " " : "") + p.model).trim(), icon: p.icon, cat: p.cat, kg: p.kg || 0,
+    /* carried into the Worker so the server prices the same lanes the browser did, and so a manifest can be
+       built from the order alone without going back to the CSV */
+    ship: p.ship || { battery: "unknown", origin: "CN" },
     /* the supplier's minimum order. Garsoore holds no stock, so an order below this is one we cannot place:
        the server refuses it rather than taking the money and discovering the problem in Guangzhou. */
     moq: Math.max(1, Math.round(+p.moq || 1)),

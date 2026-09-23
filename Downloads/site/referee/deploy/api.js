@@ -299,6 +299,94 @@ async function waafiPurchase(env, { phone, amount, reference, description }) {
   };
 }
 
+/* ---------------------------------------------------------------- shipping manifest
+   What a forwarder and a customs broker ask for, per line, per consignment.
+
+   A manifest line is created the moment an order is paid, from the catalogue's own record of the goods, so the
+   declaration is built from what we sold rather than reconstructed months later from memory. Everything the
+   catalogue does not know arrives as null or "unknown" and is visible as a gap, because the alternative — filling
+   it with a plausible default — is inventing a customs declaration.
+
+   UN numbers follow the battery status: UN3480 is a loose cell or a power bank, UN3481 is a battery inside or
+   packed with equipment. Nothing here guesses which: it reads what a person recorded against the product. */
+const UN_FOR = { standalone: "UN3480", in_equipment: "UN3481", with_equipment: "UN3481" };
+
+function manifestFromOrder(env, o, t) {
+  const c = CATALOG[o.sku] || {};
+  const sh = c.ship || {};
+  const d = sh.dims || [];
+  const battery = sh.battery || "unknown";
+  /* Declared value is the goods value, not what the customer paid. Duty is assessed on the goods plus freight,
+     and declaring the retail price would have Garsoore paying duty on its own margin. */
+  const v = (c.variants || []).filter(x => x.vsku === o.vsku)[0];
+  const declared = v && v.cny ? +((v.cny / FX) * o.qty).toFixed(2) : null;
+  return env.DB.prepare(`INSERT INTO manifest_lines
+    (id,consignment,order_id,po_id,sku,product_id,description,category,hs_code,origin,qty,packages,unit,
+     weight_kg,length_cm,width_cm,height_cm,declared_value,currency,battery,un_number,hazmat,state,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'USD', ?,?,?, 'DRAFT', ?,?)`).bind(
+    rid("ML-", 6), null, o.id, null, o.sku, c.ref || null,
+    (sh.desc || c.title || o.title).slice(0, 200), c.cat || null, sh.hs || null, sh.origin || "CN",
+    o.qty, null, "pieces",
+    c.kg ? +(c.kg * o.qty).toFixed(3) : null,
+    d[0] || null, d[1] || null, d[2] || null,
+    declared, battery, UN_FOR[battery] || null,
+    (sh.hazmat || []).join("|") || null, t, t);
+}
+
+/* The manifest as the forwarder receives it. Also the screen that shows what is NOT yet known, because a line
+   with an unresolved battery status is the one that stops a consignment at the airport. */
+async function manifestOut(env, where, binds) {
+  const rows = (await env.DB.prepare(
+    `SELECT * FROM manifest_lines ${where} ORDER BY created_at ASC LIMIT 500`).bind(...binds).all()).results;
+  const lines = rows.map(r => ({
+    id: r.id, consignment: r.consignment, orderId: r.order_id, sku: r.sku, productId: r.product_id,
+    description: r.description, category: r.category, hsCode: r.hs_code, origin: r.origin,
+    qty: r.qty, packages: r.packages, unit: r.unit,
+    weightKg: r.weight_kg, dims: (r.length_cm && r.width_cm && r.height_cm) ? [r.length_cm, r.width_cm, r.height_cm] : null,
+    declaredValue: r.declared_value, currency: r.currency,
+    actualKg: r.actual_kg, actualCbm: r.actual_cbm, actualPackages: r.actual_packages,
+    battery: r.battery, unNumber: r.un_number, hazmat: r.hazmat ? r.hazmat.split("|") : [],
+    dgDeclared: !!r.dg_declared, state: r.state, note: r.note, at: r.created_at
+  }));
+  const gaps = {
+    battery: lines.filter(l => l.battery === "unknown").length,
+    hsCode: lines.filter(l => !l.hsCode).length,
+    dimensions: lines.filter(l => !l.dims).length,
+    weight: lines.filter(l => !l.weightKg).length,
+    packages: lines.filter(l => !l.packages).length,
+    declaredValue: lines.filter(l => l.declaredValue == null).length,
+    dgUndeclared: lines.filter(l => l.unNumber && !l.dgDeclared).length
+  };
+  return {
+    lines,
+    totals: {
+      lines: lines.length,
+      qty: lines.reduce((a, l) => a + (l.qty || 0), 0),
+      declaredValue: +lines.reduce((a, l) => a + (l.declaredValue || 0), 0).toFixed(2),
+      weightKg: +lines.reduce((a, l) => a + (l.weightKg || 0), 0).toFixed(3),
+      currency: "USD"
+    },
+    gaps,
+    /* One sentence an operator can act on, rather than seven counters they have to interpret. */
+    ready: gaps.battery === 0 && gaps.hsCode === 0 && gaps.dgUndeclared === 0
+  };
+}
+
+/* CSV in the shape a forwarder will actually accept, because every one of them wants a spreadsheet. */
+function manifestCsv(m) {
+  const head = ["sku", "product_id", "description", "category", "hs_code", "origin", "qty", "unit", "packages",
+    "weight_kg", "length_cm", "width_cm", "height_cm", "declared_value", "currency",
+    "battery", "un_number", "hazmat", "order_id"];
+  const esc = s => {
+    const v = s == null ? "" : String(s);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  };
+  const body = m.lines.map(l => [l.sku, l.productId, l.description, l.category, l.hsCode, l.origin, l.qty, l.unit,
+    l.packages, l.weightKg, l.dims ? l.dims[0] : "", l.dims ? l.dims[1] : "", l.dims ? l.dims[2] : "",
+    l.declaredValue, l.currency, l.battery, l.unNumber, l.hazmat.join("|"), l.orderId].map(esc).join(","));
+  return [head.join(","), ...body].join("\n");
+}
+
 /* Everything that happens the moment money is confirmed, in one place.
    Two paths reach it now - a member of staff verifying a payment by eye, and WaafiPay telling us the wallet
    debited - and they must do exactly the same thing. When this logic lived inside the staff handler, an automatic
@@ -322,6 +410,10 @@ async function placeStmts(env, o, t, by) {
       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'QUEUED', ?, ?, ?)`).bind(rid("PO-", 6), o.id, o.user_id, o.sku, o.vsku, o.title, o.qty,
       cat ? cat.channel : (o.quote_id ? "quote" : "web"), cat ? cat.url || "" : "", cat ? cat.seller : "",
       v && v.cny ? +(v.cny * o.qty).toFixed(2) : null, JSON.stringify([{ state: "QUEUED", at: t, by }]), t, t));
+    /* and the declaration the forwarder will need, built now from what we actually sold rather than
+       reconstructed from memory when the cartons are already on a dock */
+    const hasML = await env.DB.prepare("SELECT 1 FROM manifest_lines WHERE order_id = ?").bind(o.id).first();
+    if (!hasML) stmts.push(manifestFromOrder(env, o, t));
   }
   return stmts;
 }
@@ -1241,6 +1333,45 @@ export async function handleApi(req, env, url) {
          CNY sitting in China ready to buy with. This answers the only questions that matter between
          them — how much have we collected, how much is in China, what can we buy right now, and what
          is the remittance actually costing us against the rate the catalogue was priced at. */
+      if (path === "/ops/manifest" && M === "GET") {
+        const cons = url.searchParams.get("consignment");
+        const m = cons ? await manifestOut(env, "WHERE consignment = ?", [cons])
+                       : await manifestOut(env, "WHERE consignment IS NULL AND state != 'CLEARED'", []);
+        if (url.searchParams.get("format") === "csv")
+          return new Response(manifestCsv(m), { headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "cache-control": "no-store",
+            "Content-Disposition": `attachment; filename="garsoore-manifest-${cons || "open"}.csv"` } });
+        return json(m);
+      }
+      /* Fill in what the catalogue could not know. Staff set the battery status once per product and it is the
+         single most important field here: an unresolved one is what stops a consignment at the airport. */
+      if ((m = path.match(/^\/ops\/manifest\/(ML-[A-Z0-9]+)$/)) && M === "POST") {
+        const row = await env.DB.prepare("SELECT * FROM manifest_lines WHERE id = ?").bind(m[1]).first();
+        if (!row) return err("Lama helin.", 404);
+        const b = await body(req), t = now(), set = [], vals = [];
+        const BAT = ["unknown", "none", "in_equipment", "with_equipment", "standalone"];
+        if (b.battery != null) {
+          if (!BAT.includes(b.battery)) return err("Xaaladda baytariga ma saxna.");
+          set.push("battery = ?", "un_number = ?"); vals.push(b.battery, UN_FOR[b.battery] || null);
+        }
+        [["hsCode", "hs_code"], ["description", "description"], ["origin", "origin"], ["note", "note"]].forEach(([k, col]) => {
+          if (b[k] != null) { set.push(col + " = ?"); vals.push(String(b[k]).slice(0, 200)); }
+        });
+        [["packages", "packages"], ["actualPackages", "actual_packages"]].forEach(([k, col]) => {
+          if (b[k] != null) { set.push(col + " = ?"); vals.push(Math.max(0, Math.round(+b[k] || 0))); }
+        });
+        [["weightKg", "weight_kg"], ["actualKg", "actual_kg"], ["actualCbm", "actual_cbm"],
+         ["declaredValue", "declared_value"], ["lengthCm", "length_cm"], ["widthCm", "width_cm"], ["heightCm", "height_cm"]]
+          .forEach(([k, col]) => { if (b[k] != null) { set.push(col + " = ?"); vals.push(+b[k] || null); } });
+        if (b.dgDeclared != null) { set.push("dg_declared = ?"); vals.push(b.dgDeclared ? 1 : 0); }
+        if (b.consignment != null) { set.push("consignment = ?"); vals.push(String(b.consignment).slice(0, 40) || null); }
+        if (b.state != null && ["DRAFT", "DECLARED", "SHIPPED", "CLEARED"].includes(b.state)) { set.push("state = ?"); vals.push(b.state); }
+        if (!set.length) return err("Waxba lama beddelin.");
+        set.push("updated_at = ?"); vals.push(t);
+        await env.DB.prepare(`UPDATE manifest_lines SET ${set.join(", ")} WHERE id = ?`).bind(...vals, row.id).run();
+        return json({ ok: true });
+      }
       if (path === "/ops/treasury" && M === "GET") {
         const bal = async (acct) => (await env.DB.prepare("SELECT COALESCE(SUM(amount),0) s FROM treasury WHERE account = ?").bind(acct).first()).s;
         const [so, cn] = [await bal("SO_USD"), await bal("CN_CNY")];

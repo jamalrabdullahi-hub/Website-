@@ -11,6 +11,7 @@ Rows that break a rule are reported and skipped; nothing is silently guessed."""
 import csv, json, re, sys, collections
 
 CATS = {"PHN", "CMP", "APL", "FRN", "VEH", "ELC", "SOL", "HOM", "CLO", "BLD"}
+BATTERY = {"unknown", "none", "in_equipment", "with_equipment", "standalone"}
 PLATS = {"mic", "jd", "1688", "taobao", "pdd", "alibaba", "aliexpress", "shein", "cj", "sunsky"}
 ICON = {"PHN": "📱", "CMP": "💻", "SOL": "☀️", "APL": "🧊", "HOM": "🍳", "FRN": "🪑", "CLO": "👘", "BLD": "🔧", "VEH": "🛺", "ELC": "🎧"}
 PLAT_NAME = {"mic": "Made-in-China", "jd": "JD", "1688": "1688", "taobao": "Taobao", "pdd": "Pinduoduo", "alibaba": "Alibaba", "aliexpress": "AliExpress", "shein": "SHEIN", "cj": "CJdropshipping", "sunsky": "SUNSKY"}
@@ -20,6 +21,13 @@ def ref_from_url(u, plat=""):
         return (u or "").split("?")[0]
     m = re.search(r"(?:/|id=|goods_id=|sku=|_)(\d{5,})", u or "")
     return m.group(1) if m else ""
+
+def num(v):
+    try:
+        n = float(str(v).strip())
+        return n if n > 0 else None
+    except (TypeError, ValueError):
+        return None
 
 def specs_of(r):
     """Consumer-facing specs: the supplier's own attributes, then model. Supplier identity and cost stay internal
@@ -40,6 +48,8 @@ with open("data/catalog.csv", encoding="utf-8-sig", newline="") as f:
         try:
             if r["cat"] not in CATS: raise ValueError("unknown cat " + r["cat"])
             if r["source_platform"] not in PLATS: raise ValueError("unknown platform " + r["source_platform"])
+            bat = (r.get("battery") or "unknown").strip().lower()
+            if bat not in BATTERY: raise ValueError("battery must be one of " + "/".join(sorted(BATTERY)) + ", got " + bat)
             cost, kg, moq = float(r["cost_cny"]), float(r["kg"]), int(float(r["moq"] or 1))
             if cost <= 0 or kg <= 0: raise ValueError("cost/kg must be > 0")
         except Exception as ex:
@@ -53,6 +63,19 @@ with open("data/catalog.csv", encoding="utf-8-sig", newline="") as f:
                 "specs": specs_of(r),
                 "variants": [], "sources": [{"channel": r["source_platform"], "ref": ref_from_url(r["source_url"], r["source_platform"]), "seller": r["supplier"], "url": r["source_url"]}],
                 "verified": r["cost_verified"].strip().lower() == "yes", "core": True}
+            # ---- what a forwarder and a customs broker need, carried through untouched.
+            # battery is never inferred from a product name: a dangerous-goods declaration is a legal statement,
+            # and "probably fine" is not one. Rows arrive as "unknown" and stay there until a person decides.
+            ship = {}
+            L, W, H = num(r.get("length_cm")), num(r.get("width_cm")), num(r.get("height_cm"))
+            if L and W and H: ship["dims"] = [L, W, H]
+            if r.get("hs_code"): ship["hs"] = r["hs_code"].strip()
+            ship["battery"] = (r.get("battery") or "unknown").strip().lower()
+            haz = [x.strip().lower() for x in (r.get("hazmat") or "").split("|") if x.strip()]
+            if haz: ship["hazmat"] = haz
+            ship["origin"] = (r.get("origin") or "CN").strip().upper()
+            if r.get("customs_desc"): ship["desc"] = r["customs_desc"].strip()
+            p["ship"] = ship
             if r.get("image"): p["image"] = r["image"]
             if r.get("captured"): p["captured"] = r["captured"]
             if r.get("moq_unit"): p["moqUnit"] = r["moq_unit"]

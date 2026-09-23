@@ -249,8 +249,19 @@ function price(p, v, mode) {
   if (v.price != null) return { total: v.price, etaDays: 0, local: true, seller: seller(p) };
   if (!(v.cost > 0)) return { total: null, etaDays: 20, local: false, unknown: true, quote: true, reason: "no-purchase-price", seller: seller(p) };
 
+  /* ---- dangerous goods.
+     A loose lithium battery is UN3480: forbidden as cargo on passenger aircraft and, on freighters, only with a
+     dangerous-goods declaration, state-of-charge limits and approved packaging. A marketplace this size has no
+     business flying them, so the air lane is simply not offered and the customer sees sea without being told a
+     story about it. Batteries inside equipment (UN3481) are a lesser case and still fly.
+
+     Products whose battery status nobody has confirmed are NOT treated as safe here. They keep both lanes so the
+     shop keeps working, and they are listed as unresolved on the manifest instead, where a person sees them
+     before the cartons reach an aircraft. */
+  var lanes = ["air", "sea"];
+  if (p.ship && p.ship.battery === "standalone") lanes = ["sea"];
   var opts = {}, any = false;
-  ["air", "sea"].forEach(function (m) {
+  lanes.forEach(function (m) {
     var b = breakdown(v.cost, p.kg, p.cat, m, 1);
     if (b) { opts[m] = b; any = true; }
   });
