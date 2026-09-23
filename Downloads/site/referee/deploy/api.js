@@ -751,8 +751,22 @@ export async function handleApi(req, env, url) {
       const phone = b.phone || rows[0].pay_phone || user.phone;
       const reference = String(rows[0].basket || rows[0].id);
 
+      /* Claim the orders BEFORE asking the wallet for money. Two taps arriving together would otherwise both see
+         AWAITING_PAYMENT and both debit the customer. Moving them to PAYMENT_REVIEW first means the second request
+         finds nothing to charge; if this Worker dies mid-flight the orders sit in a state staff already handle,
+         which is a visible problem rather than a silent double charge. */
+      const claim = await env.DB.prepare(
+        `UPDATE orders SET state = 'PAYMENT_REVIEW', updated_at = ? WHERE user_id = ? AND state = 'AWAITING_PAYMENT' AND id IN (${ids.map(() => "?").join(",")})`
+      ).bind(t, user.id, ...ids).run();
+      if (!claim.meta || !claim.meta.changes) return err("Dalabkan horey ayaa la bixiyay ama waa la bixinayaa.");
+
       const res = await waafiPurchase(env, { phone, amount, reference, description: "Garsoore " + reference });
       if (!res.ok) {
+        /* hand them back so the customer can try again or pay the manual way - unless we genuinely do not know
+           whether the wallet debited, in which case they stay claimed for staff to settle against the statement */
+        if (!res.unknown) await env.DB.prepare(
+          `UPDATE orders SET state = 'AWAITING_PAYMENT', updated_at = ? WHERE user_id = ? AND state = 'PAYMENT_REVIEW' AND id IN (${ids.map(() => "?").join(",")})`
+        ).bind(now(), user.id, ...ids).run();
         await env.DB.prepare("INSERT INTO events (name, sid, at) VALUES ('pay_fail', ?, ?)").bind(String(b.sid || "").slice(0, 40), t).run();
         return err(res.message, res.unknown ? 502 : 402);
       }

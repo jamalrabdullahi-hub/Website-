@@ -376,6 +376,10 @@ function payStepAuto(r) {
           '<div class="g-eta">Codsi ayaa taleefankaaga kuu soo baxaya. PIN-kaaga <b>halkan ma qorto</b> — waxaad ku qortaa taleefankaaga.</div>' +
           (msg ? '<div class="g-err sm">' + e(msg) + '</div>' : "") +
           '<button class="btn g-buy full" id="evcGo">Bixi ' + money(r.amount) + '</button>' +
+          /* A declined wallet must not be a dead end. Empty balance, a wallet on another number, a gateway having
+             a bad day - the customer can still pay the old way and staff check it, which is strictly better than
+             losing the order. */
+          (msg ? '<a class="btn ghost full" style="margin-top:8px;text-align:center" href="#" id="evcManual">Ama bixi adigoo isticmaalaya lambarka macaamilka</a>' : "") +
           '<a class="btn ghost full" style="margin-top:8px;text-align:center" href="orders.html?new=' + r.ids.join(",") + '">Mar dambe</a>') +
       '<div class="g-escrow">🔒 Lacagtu waxay taagan tahay Garsoore — iibiyaha lama siinayo ilaa aad alaabta qaadato.</div></div>';
     if ($("evcGo")) $("evcGo").onclick = function () {
@@ -386,12 +390,13 @@ function payStepAuto(r) {
         .then(function () { location.href = "orders.html?new=" + r.ids.join(","); })
         .catch(function (x) { draw("form", x.message); });
     };
+    if ($("evcManual")) $("evcManual").onclick = function (ev) { ev.preventDefault(); payStep(r, true); };
   }
   draw("form");
 }
-function payStep(r) {
+function payStep(r, manual) {
   var A = RF.api;
-  if (A && A.config && A.config.autoPay && r.pay !== "Premier Wallet") return payStepAuto(r);
+  if (!manual && A && A.config && A.config.autoPay && r.pay !== "Premier Wallet") return payStepAuto(r);
   var box = $("modalBox");
   box.innerHTML = '<div class="g-co"><h2>Hal tallaabo oo kale</h2><div class="g-sku">Dalabka ' + e(r.reference) + ' waa la kaydiyay · waxaa loo hayaa ' + r.expiresHours + ' saac</div>' +
     '<div class="g-paybox"><div class="g-lbl" style="margin:0">U dir ' + e(r.pay) + '</div><b class="g-amt">' + money(r.amount) + '</b>' +
