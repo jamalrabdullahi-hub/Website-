@@ -227,6 +227,105 @@ function chinaAddress(env, suite) {
 }
 const FX = 7.2;                       // CNY per USD — the rate the catalogue prices were built with
 
+/* ---------------------------------------------------------------- WaafiPay (EVC Plus, ZAAD, SAHAL, WAAFI)
+   Somalia has no card rails, so payment is a USSD wallet. WaafiPay pushes a PIN prompt to the customer's own
+   handset and tells us whether the wallet debited.
+
+   GARSOORE NEVER SEES A PIN. We send an amount and a phone number; the customer types their PIN into their own
+   phone, in their wallet's own prompt. That property is the reason to use this rather than anything that asks a
+   customer to type a secret into our page, and it must not be traded away for convenience.
+
+   Credentials live in Worker secrets, never in wrangler.jsonc, which is committed:
+     npx wrangler secret put WAAFI_MERCHANT_UID
+     npx wrangler secret put WAAFI_API_USER
+     npx wrangler secret put WAAFI_API_KEY
+   With any of them missing the feature stays dark and checkout keeps using the manual transaction-ID flow. */
+const waafiOn = env => !!(env.WAAFI_MERCHANT_UID && env.WAAFI_API_USER && env.WAAFI_API_KEY);
+
+/* 252611111111 - full international, no plus, no leading zero. A number that looks right to a Somali reader is
+   not what the gateway accepts, so normalise rather than trusting what was typed. */
+function msisdn(raw) {
+  let d = String(raw || "").replace(/[^0-9]/g, "");
+  if (d.startsWith("00")) d = d.slice(2);
+  if (d.startsWith("252")) d = d.slice(3);
+  d = d.replace(/^0+/, "");
+  return d.length >= 7 && d.length <= 12 ? "252" + d : null;
+}
+
+async function waafiPurchase(env, { phone, amount, reference, description }) {
+  const acct = msisdn(phone);
+  if (!acct) return { ok: false, message: "Lambarka taleefanku ma sax aha." };
+  const body = {
+    schemaVersion: "1.0",
+    requestId: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    channelName: "WEB",
+    serviceName: "API_PURCHASE",
+    serviceParams: {
+      merchantUid: env.WAAFI_MERCHANT_UID,
+      apiUserId: env.WAAFI_API_USER,
+      apiKey: env.WAAFI_API_KEY,
+      paymentMethod: "MWALLET_ACCOUNT",
+      payerInfo: { accountNo: acct },
+      transactionInfo: {
+        referenceId: String(reference).slice(0, 50),
+        invoiceId: String(reference).slice(0, 50),
+        amount: (+amount).toFixed(2),
+        currency: "USD",
+        description: String(description || "Garsoore").slice(0, 255)
+      }
+    }
+  };
+  let r, j;
+  try {
+    r = await fetch((env.WAAFI_BASE || "https://api.waafipay.net") + "/asm", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+    });
+    j = await r.json();
+  } catch (e) {
+    /* The customer may well have approved it on their handset before this failed, so nothing here may retry:
+       a blind retry is how one order gets charged twice. Staff resolve it against the wallet statement. */
+    return { ok: false, unknown: true, message: "Lacag bixintu ma dhammaystirmin. Ha dib u bixin — la xidhiidh Garsoore." };
+  }
+  const p = (j && j.params) || {};
+  const approved = String(p.state || "").toUpperCase() === "APPROVED";
+  return {
+    ok: approved,
+    unknown: false,
+    state: p.state || null,
+    txn: p.transactionId || p.issuerTransactionId || null,
+    charges: p.merchantCharges != null ? +p.merchantCharges : null,
+    message: approved ? "" : (j && (j.responseMsg || j.errorMsg)) || "Lacag bixintu ma guulaysan."
+  };
+}
+
+/* Everything that happens the moment money is confirmed, in one place.
+   Two paths reach it now - a member of staff verifying a payment by eye, and WaafiPay telling us the wallet
+   debited - and they must do exactly the same thing. When this logic lived inside the staff handler, an automatic
+   payment would have quietly skipped the treasury entry and the purchase order. */
+async function placeStmts(env, o, t, by) {
+  const h = J(o.history) || [];
+  h.push({ state: "PLACED", at: t, by });
+  const stmts = [
+    env.DB.prepare("UPDATE orders SET state = 'PLACED', escrow = 'held', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id),
+    notify(env, o.user_id, "order", "Lacagtaadu waa la hubiyay", o.title + " — Garsoore ayaa lacagta hayn doona ilaa aad alaabta qaadato.", "orders.html"),
+    /* the mobile-money payment is now real cash in the Somali pool. Escrow says whose it is;
+       the treasury says where it physically sits, and those are different questions. */
+    env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'SO_USD', 'collection', ?,?,?,?)")
+      .bind(rid("TR-", 6), t, +(+o.total).toFixed(2), o.id, (o.pay || "mobile money") + " · " + (o.pay_txn || ""), by)
+  ];
+  /* a paid China order becomes a purchase task for the buying agent (FBG stock and local goods need none) */
+  if (o.flow === "china" && !o.fbg_id) {
+    const cat = CATALOG[o.sku], v = cat && cat.variants.filter(x => x.vsku === o.vsku)[0];
+    const done = await env.DB.prepare("SELECT 1 FROM procurement WHERE order_id = ?").bind(o.id).first();
+    if (!done) stmts.push(env.DB.prepare(`INSERT INTO procurement (id,order_id,user_id,sku,vsku,title,qty,platform,source_url,supplier,target_cny,state,history,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?, 'QUEUED', ?, ?, ?)`).bind(rid("PO-", 6), o.id, o.user_id, o.sku, o.vsku, o.title, o.qty,
+      cat ? cat.channel : (o.quote_id ? "quote" : "web"), cat ? cat.url || "" : "", cat ? cat.seller : "",
+      v && v.cny ? +(v.cny * o.qty).toFixed(2) : null, JSON.stringify([{ state: "QUEUED", at: t, by }]), t, t));
+  }
+  return stmts;
+}
+
 /* ---- what a shipment actually costs Garsoore under the contracted rate card.
    This is the same arithmetic as assets/shipping.js, against the same generated cards, and it exists because the
    consignment ledger must be costed at the contracted rate rather than at the FBG price list. Those are different
@@ -489,7 +588,7 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
-    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING, plans: PLANS,
+    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", autoPay: waafiOn(env), agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING, plans: PLANS,
       /* the lanes a customer may choose, and nothing about who flies or sails them */
       shipping: { lanes: RATES.cards.filter(c => c.status !== "expired").map(c => ({ mode: c.mode, transitMin: c.transitMinDays, transitMax: c.transitMaxDays })),
         facility: "Garsoore China Facility · Guangzhou" }, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
@@ -633,7 +732,40 @@ export async function handleApi(req, env, url) {
       stmts.push(env.DB.prepare("INSERT INTO events (name, sid, at) VALUES ('order', ?, ?)").bind(String(b.sid || "").slice(0, 40), t));
       await env.DB.batch(stmts);
       const amount = sub - Math.min(Math.round(sub * pct), cap) + fee - creditTotal;
-      return json({ ids: orders, basket, amount, pay: b.pay, merchant: merchants(env)[b.pay] || "", reference: basket || orders[0], expiresHours: ECON.unpaidHours });
+      return json({ ids: orders, basket, amount, pay: b.pay, merchant: merchants(env)[b.pay] || "", reference: basket || orders[0], expiresHours: ECON.unpaidHours, payPhone: b.payPhone || "" });
+    }
+    /* Automatic wallet payment. Replaces the whole PAYMENT_REVIEW detour when it is switched on: the wallet
+       either debited or it did not, so there is no transaction ID for anyone to invent and nothing for staff to
+       check by eye. Falls back to the manual flow whenever the credentials are absent. */
+    if (path === "/orders/evc" && M === "POST") {
+      if (!waafiOn(env)) return err("Lacag bixinta tooska ah weli lama furin.", 503);
+      const b = await body(req), t = now();
+      const ids = (Array.isArray(b.ids) ? b.ids : []).slice(0, 20).map(String);
+      if (!ids.length) return err("Dalab lama helin.");
+      const rows = (await env.DB.prepare(
+        `SELECT * FROM orders WHERE user_id = ? AND state = 'AWAITING_PAYMENT' AND id IN (${ids.map(() => "?").join(",")})`
+      ).bind(user.id, ...ids).all()).results;
+      if (!rows.length) return err("Dalabkan horey ayaa la bixiyay ama lama helin.");
+      const amount = rows.reduce((a, o) => a + (+o.total || 0), 0);
+      if (!(amount > 0)) return err("Qiimaha dalabku ma saxna.");
+      const phone = b.phone || rows[0].pay_phone || user.phone;
+      const reference = String(rows[0].basket || rows[0].id);
+
+      const res = await waafiPurchase(env, { phone, amount, reference, description: "Garsoore " + reference });
+      if (!res.ok) {
+        await env.DB.prepare("INSERT INTO events (name, sid, at) VALUES ('pay_fail', ?, ?)").bind(String(b.sid || "").slice(0, 40), t).run();
+        return err(res.message, res.unknown ? 502 : 402);
+      }
+      /* one wallet debit covers the basket, so tag every order in it with the same gateway transaction */
+      const stmts = [];
+      for (const o of rows) {
+        o.pay_txn = res.txn;
+        stmts.push(env.DB.prepare("UPDATE orders SET pay_txn = ? WHERE id = ?").bind(res.txn, o.id));
+        stmts.push(...(await placeStmts(env, o, t, "WaafiPay")));
+      }
+      stmts.push(env.DB.prepare("INSERT INTO events (name, sid, at) VALUES ('paid', ?, ?)").bind(String(b.sid || "").slice(0, 40), t));
+      await env.DB.batch(stmts);
+      return json({ ok: true, txn: res.txn, ids: rows.map(o => o.id), amount: +amount.toFixed(2) });
     }
     if (path === "/orders/paid" && M === "POST") {
       const b = await body(req), txn = String(b.txn || "").trim();
@@ -1566,23 +1698,7 @@ export async function handleApi(req, env, url) {
       if (m[2] === "verify") {
         if (o.state !== "PAYMENT_REVIEW") return err("Dalabkan ma sugayo hubinta lacagta.");
         if (b.ok) {
-          h.push({ state: "PLACED", at: t, by });
-          const stmts = [env.DB.prepare("UPDATE orders SET state = 'PLACED', escrow = 'held', history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id),
-            notify(env, o.user_id, "order", "Lacagtaadu waa la hubiyay", o.title + " — Garsoore ayaa lacagta hayn doona ilaa aad alaabta qaadato.", "orders.html"),
-            /* the mobile-money payment is now real cash in the Somali pool. Escrow says whose it is;
-               the treasury says where it physically sits, and those are different questions. */
-            env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'SO_USD', 'collection', ?,?,?,?)")
-              .bind(rid("TR-", 6), t, +(+o.total).toFixed(2), o.id, (o.pay || "mobile money") + " · " + (o.pay_txn || ""), by)];
-          /* a paid China order becomes a purchase task for the buying agent (FBG stock and local goods need none) */
-          if (o.flow === "china" && !o.fbg_id) {
-            const cat = CATALOG[o.sku], v = cat && cat.variants.filter(x => x.vsku === o.vsku)[0];
-            const done = await env.DB.prepare("SELECT 1 FROM procurement WHERE order_id = ?").bind(o.id).first();
-            if (!done) stmts.push(env.DB.prepare(`INSERT INTO procurement (id,order_id,user_id,sku,vsku,title,qty,platform,source_url,supplier,target_cny,state,history,created_at,updated_at)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?, 'QUEUED', ?, ?, ?)`).bind(rid("PO-", 6), o.id, o.user_id, o.sku, o.vsku, o.title, o.qty,
-              cat ? cat.channel : (o.quote_id ? "quote" : "web"), cat ? cat.url || "" : "", cat ? cat.seller : "",
-              v && v.cny ? +(v.cny * o.qty).toFixed(2) : null, JSON.stringify([{ state: "QUEUED", at: t, by }]), t, t));
-          }
-          await env.DB.batch(stmts);
+          await env.DB.batch(await placeStmts(env, o, t, by));
         }
         else { h.push({ state: "AWAITING_PAYMENT", at: t, by, note: "lacag lama helin" }); await env.DB.prepare("UPDATE orders SET state = 'AWAITING_PAYMENT', pay_txn = NULL, history = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(h), t, o.id).run(); }
         return json({ ok: true });
