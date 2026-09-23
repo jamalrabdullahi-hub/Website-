@@ -29,6 +29,8 @@ ap.add_argument("--keywords", default="power bank,rechargeable fan,women dress,b
 ap.add_argument("--per", type=int, default=40, help="products per keyword (max 100)")
 ap.add_argument("--max-price", type=float, default=200.0, help="skip anything dearer than this, in USD")
 ap.add_argument("--dry", action="store_true", help="print the rows, write nothing")
+ap.add_argument("--force", action="store_true",
+                help="write even when the run looks degraded (see the guard below) - use only when the shrinkage is real")
 a = ap.parse_args()
 
 # CJ issues a long-lived API key, which is NOT what the product endpoints accept. The key is exchanged for a
@@ -98,10 +100,12 @@ def get(path, params, tries=4):
             if attempt < tries - 1:
                 time.sleep(3 * (attempt + 1)); continue
             print("  ! giving up on %s after %d tries (%s)" % (path, tries, type(ex).__name__))
+            FAILED.append(path)
             return {}
     return {}
 
 rows, seen, skipped_foreign = [], set(), 0
+FAILED = []   # every call that exhausted its retries; a long run on a bad line can lose dozens of products
 
 def detail(pid):
     """CJ's search feed carries no weight and no category path, and freight cannot be priced without a weight.
@@ -209,6 +213,19 @@ for r in rows[:6]:
 
 if a.dry:
     print("\n--dry: nothing written."); sys.exit(0)
+
+# ---- do not let a bad network quietly shrink the catalogue.
+# A run that lost calls to timeouts produces fewer products, and because this importer REPLACES its own block,
+# writing that result would silently delete good rows. One flaky afternoon cost 60 products exactly this way.
+# So a run that both failed calls and came back materially smaller refuses to write unless it is forced.
+prev_cj = len([r for r in existing if r.get("source_platform") == "cj"])
+if FAILED and prev_cj and len(rows) < prev_cj * 0.8 and not a.dry and not a.force:
+    sys.exit("REFUSING TO WRITE. This run gathered %d products but the catalogue already holds %d, and %d call(s) "
+             "failed after retries - that looks like a bad connection, not a smaller catalogue. "
+             "Nothing was changed. Re-run it, or pass --force if the shrinkage is genuine."
+             % (len(rows), prev_cj, len(FAILED)))
+if FAILED:
+    print("note: %d call(s) failed after retries; some products were skipped" % len(FAILED))
 
 # rewrite our own CJ block each run, exactly as the 1688 importer does, so re-running never duplicates
 keep = [r for r in existing if r.get("source_platform") != "cj"]
