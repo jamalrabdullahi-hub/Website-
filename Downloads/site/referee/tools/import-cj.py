@@ -101,7 +101,7 @@ def get(path, params, tries=4):
             return {}
     return {}
 
-rows, seen = [], set()
+rows, seen, skipped_foreign = [], set(), 0
 
 def detail(pid):
     """CJ's search feed carries no weight and no category path, and freight cannot be priced without a weight.
@@ -109,6 +109,28 @@ def detail(pid):
     j = get("/product/query", {"pid": pid}) or {}
     time.sleep(1.1)
     return j.get("data") if isinstance(j.get("data"), dict) else None
+
+def first_variant(pid):
+    """Variants carry the vid needed to ask where the stock physically is, and a per-variant weight that is more
+    specific than the product-level one."""
+    j = get("/product/variant/query", {"pid": pid}) or {}
+    time.sleep(1.1)
+    d = j.get("data")
+    return d[0] if isinstance(d, list) and d else None
+
+def china_stock(vid):
+    """Garsoore consolidates in Guangzhou, so a product held only in CJ's US or EU warehouse is no use: buying it
+    would mean shipping goods INTO China before exporting them again.
+
+    countryCode on /product/listV2 is accepted and then ignored - CN and US return identical results - so the
+    warehouse has to be read per variant from the stock endpoint, which is the only place that tells the truth.
+    Returns the units available in China, 0 if the stock is anywhere else."""
+    j = get("/product/stock/queryByVid", {"vid": vid}) or {}
+    time.sleep(1.1)
+    for r in (j.get("data") or []):
+        if str(r.get("countryCode") or "").upper() == "CN":
+            return int(r.get("totalInventoryNum") or r.get("storageNum") or 0)
+    return 0
 
 def usd(v):
     """sellPrice is a string, and on variant products it is a range like "10.00-12.00". Take the low end: it is the
@@ -131,6 +153,13 @@ for kw in [k.strip() for k in a.keywords.split(",") if k.strip()]:
         if not (pid and sku) or sku in seen: continue
         price = usd(it.get("nowPrice") or it.get("sellPrice"))
         if not (0 < price <= a.max_price): continue
+        # where the goods physically are, checked BEFORE the detail call so foreign stock costs one call, not two
+        var = first_variant(pid)
+        if not var: continue
+        cn = china_stock(var.get("vid"))
+        if cn <= 0:
+            skipped_foreign += 1
+            continue
         d = detail(pid)
         if not d: continue
         name = (d.get("productNameEn") or it.get("nameEn") or "").strip()
@@ -155,6 +184,9 @@ for kw in [k.strip() for k in a.keywords.split(",") if k.strip()]:
             "captured": time.strftime("%Y-%m-%d"), "search": name[:80],
         })
     print("  %-28s %d kept" % (kw, kept))
+
+print("")
+print("skipped %d product(s) whose stock is not in China" % skipped_foreign)
 
 if not rows:
     sys.exit("nothing usable came back — check the keywords, or the token's permissions")
