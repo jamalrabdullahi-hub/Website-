@@ -52,7 +52,6 @@ var local = {
     return P({ ids: ids, local: true });
   },
   paid: function () { return P({ ok: true }); },
-  evc: function () { return P({ ok: true, txn: "DEMO" }); },
   cancel: function (id, why) { return P(RF.orders.cancel(id, why)); },
   dispute: function (id, r) { return P(RF.orders.dispute(id, r)); },
   review: function (id, s, t) { return P(RF.orders.review(id, s, t)); },
@@ -78,8 +77,6 @@ var remote = {
       delivery: st.delivery, address: st.address, pay: st.pay, payPhone: st.payPhone, promo: st.discCode || "", useCredit: !!st.useCredit, sid: sid() });
   },
   paid: function (ids, txn) { return call("POST", "/orders/paid", { ids: ids, txn: txn, sid: sid() }); },
-  /* the wallet pushes a PIN prompt to the customer's own handset; we only ever send an amount and a number */
-  evc: function (ids, phone) { return call("POST", "/orders/evc", { ids: ids, phone: phone, sid: sid() }); },
   cancel: function (id, why) { return call("POST", "/orders/" + id + "/cancel", { why: why }); },
   dispute: function (id, r) { return call("POST", "/orders/" + id + "/dispute", { reason: r }); },
   review: function (id, s, t) { return call("POST", "/orders/" + id + "/review", { stars: s, text: t }); },

@@ -7,6 +7,7 @@
      - An order completes only when staff enter the customer's 6-digit pickup code (staff never see the code).
 */
 import { provider, providers, normState } from "./logistics.js";
+import * as ENG from "./logistics-engine.js";
 import { CATALOG, PRICING } from "./catalog.gen.js";
 import { RATES } from "./rates.gen.js";
 
@@ -221,84 +222,15 @@ export const FBG = {
   commissionPct: 10,         // Garsoore's cut when FBG stock sells on the marketplace
   chinaCity: "Guangzhou"
 };
+/* The forwarder's China receiving warehouse — the consolidation point. Garsoore does not own it: the forwarder
+   gives us an address and we put our client code (the `suite`) on the label, so the supermarket supplier ships to
+   their shed, they consolidate, and one AWB/BL carries the batch. */
 function chinaAddress(env, suite) {
   return env.FBG_CHINA_ADDRESS
     ? String(env.FBG_CHINA_ADDRESS).replace("{suite}", suite)
-    : "(dev) Cinwaanka bakhaarka Shiinaha weli lama dejin — ha dirin alaab. Kood: " + suite;
+    : "(dev) Cinwaanka bakhaarka forwarder-ka Shiinaha lama dejin — ha dirin alaab. Kood: " + suite;
 }
 const FX = 7.2;                       // CNY per USD — the rate the catalogue prices were built with
-
-/* ---------------------------------------------------------------- WaafiPay (EVC Plus, ZAAD, SAHAL, WAAFI)
-   Somalia has no card rails, so payment is a USSD wallet. WaafiPay pushes a PIN prompt to the customer's own
-   handset and tells us whether the wallet debited.
-
-   GARSOORE NEVER SEES A PIN. We send an amount and a phone number; the customer types their PIN into their own
-   phone, in their wallet's own prompt. That property is the reason to use this rather than anything that asks a
-   customer to type a secret into our page, and it must not be traded away for convenience.
-
-   Credentials live in Worker secrets, never in wrangler.jsonc, which is committed:
-     npx wrangler secret put WAAFI_MERCHANT_UID
-     npx wrangler secret put WAAFI_API_USER
-     npx wrangler secret put WAAFI_API_KEY
-   With any of them missing the feature stays dark and checkout keeps using the manual transaction-ID flow. */
-const waafiOn = env => !!(env.WAAFI_MERCHANT_UID && env.WAAFI_API_USER && env.WAAFI_API_KEY);
-
-/* 252611111111 - full international, no plus, no leading zero. A number that looks right to a Somali reader is
-   not what the gateway accepts, so normalise rather than trusting what was typed. */
-function msisdn(raw) {
-  let d = String(raw || "").replace(/[^0-9]/g, "");
-  if (d.startsWith("00")) d = d.slice(2);
-  if (d.startsWith("252")) d = d.slice(3);
-  d = d.replace(/^0+/, "");
-  return d.length >= 7 && d.length <= 12 ? "252" + d : null;
-}
-
-async function waafiPurchase(env, { phone, amount, reference, description }) {
-  const acct = msisdn(phone);
-  if (!acct) return { ok: false, message: "Lambarka taleefanku ma sax aha." };
-  const body = {
-    schemaVersion: "1.0",
-    requestId: crypto.randomUUID(),
-    timestamp: new Date().toISOString(),
-    channelName: "WEB",
-    serviceName: "API_PURCHASE",
-    serviceParams: {
-      merchantUid: env.WAAFI_MERCHANT_UID,
-      apiUserId: env.WAAFI_API_USER,
-      apiKey: env.WAAFI_API_KEY,
-      paymentMethod: "MWALLET_ACCOUNT",
-      payerInfo: { accountNo: acct },
-      transactionInfo: {
-        referenceId: String(reference).slice(0, 50),
-        invoiceId: String(reference).slice(0, 50),
-        amount: (+amount).toFixed(2),
-        currency: "USD",
-        description: String(description || "Garsoore").slice(0, 255)
-      }
-    }
-  };
-  let r, j;
-  try {
-    r = await fetch((env.WAAFI_BASE || "https://api.waafipay.net") + "/asm", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-    });
-    j = await r.json();
-  } catch (e) {
-    /* The customer may well have approved it on their handset before this failed, so nothing here may retry:
-       a blind retry is how one order gets charged twice. Staff resolve it against the wallet statement. */
-    return { ok: false, unknown: true, message: "Lacag bixintu ma dhammaystirmin. Ha dib u bixin — la xidhiidh Garsoore." };
-  }
-  const p = (j && j.params) || {};
-  const approved = String(p.state || "").toUpperCase() === "APPROVED";
-  return {
-    ok: approved,
-    unknown: false,
-    state: p.state || null,
-    txn: p.transactionId || p.issuerTransactionId || null,
-    charges: p.merchantCharges != null ? +p.merchantCharges : null,
-    message: approved ? "" : (j && (j.responseMsg || j.errorMsg)) || "Lacag bixintu ma guulaysan."
-  };
-}
 
 /* Compare secrets without leaking their length or prefix through timing. Any string that guards money gets this,
    even when the realistic attacker is not measuring microseconds. */
@@ -505,9 +437,9 @@ function manifestCsv(m) {
 }
 
 /* Everything that happens the moment money is confirmed, in one place.
-   Two paths reach it now - a member of staff verifying a payment by eye, and WaafiPay telling us the wallet
-   debited - and they must do exactly the same thing. When this logic lived inside the staff handler, an automatic
-   payment would have quietly skipped the treasury entry and the purchase order. */
+   Two paths reach it now - the SMS feed matching an incoming operator confirmation, and a member of staff
+   verifying a payment by eye - and they must do exactly the same thing. When this logic lived inside the staff
+   handler, an automatic credit would have quietly skipped the treasury entry and the purchase order. */
 async function placeStmts(env, o, t, by) {
   const h = J(o.history) || [];
   h.push({ state: "PLACED", at: t, by });
@@ -536,6 +468,64 @@ async function placeStmts(env, o, t, by) {
     if (!hasML) stmts.push(manifestFromOrder(env, o, t));
   }
   return stmts;
+}
+
+/* ---------------------------------------------------------------- consignments
+   The freight spine. A consignment is the batch several paid orders ride in: what the forwarder receives,
+   consolidates, and carries on one AWB/BL, and what clears customs once. Child orders only move forward from the
+   batch's state, and the state machine lives in logistics-engine.js so no route re-invents it. */
+const consOut = r => ({ id: r.id, forwarder: r.forwarder, mode: r.mode, arrivalPort: r.arrival_port,
+  warehouseCode: r.warehouse_code, receiveCode: r.receive_code, docType: r.doc_type, docNo: r.doc_no,
+  reference: r.reference, packages: r.packages, chargeableKg: r.chargeable_kg, cbm: r.cbm,
+  declaredValue: r.declare_value, costUsd: r.cost_usd, state: r.state, cutOff: r.cut_off,
+  departedAt: r.departed_at, eta: r.eta, arrivedAt: r.arrived_at, clearedAt: r.cleared_at, collectedAt: r.collected_at,
+  note: r.note, createdAt: r.created_at, updatedAt: r.updated_at, history: J(r.history) || [] });
+
+/* a human sentence per leg, kept beside the mapping so the console and the notification cannot say different things */
+const ORDER_LEG = {
+  IN_TRANSIT: ["Alaabtaadu way soo socotaa", "raraha ayaa wadaa — waxaan kuu sheegi doonaa markay Muqdisho timaaddo."],
+  ARRIVED:    ["Alaabtaadu Muqdisho ayay timid", "hadda waxay maraysaa dehnaanta — waad qaadan doontaa marka la sii daayo."],
+  READY:      ["Alaabtaadu waa diyaar — kaalay qaado", "imow xarunta Km4 oo la imow koodhkaaga 6-ta lambar."]
+};
+
+/* Move a consignment one step and carry its children with it, or refuse and say why — one batch, always. A half-moved
+   consignment is an order whose customer sees a state the goods are not in. */
+async function moveConsignment(env, id, to, t, by) {
+  const row = await env.DB.prepare("SELECT * FROM consignments WHERE id = ?").bind(id).first();
+  if (!row) return { ok: false, why: "Shixnaddan lama helin.", code: 404 };
+  const r = ENG.advance(Object.assign({}, row, { history: J(row.history) || [] }), to, { at: t, by });
+  if (!r.ok) return { ok: false, why: r.why, code: 409 };
+  const c = r.cons;
+  const stmts = [env.DB.prepare("UPDATE consignments SET state=?, departed_at=?, arrived_at=?, cleared_at=?, collected_at=?, history=?, updated_at=? WHERE id=?")
+    .bind(c.state, c.departed_at || null, c.arrived_at || null, c.cleared_at || null, c.collected_at || null, JSON.stringify(c.history || []), t, id)];
+  const procState = ENG.procStateFor(c.state), orderState = ENG.orderStateFor(c.state);
+  const pos = (await env.DB.prepare("SELECT id, order_id FROM procurement WHERE consignment = ?").bind(id).all()).results;
+  if (procState) for (const po of pos) stmts.push(env.DB.prepare("UPDATE procurement SET state=?, updated_at=? WHERE id=?").bind(procState, t, po.id));
+  if (orderState) {
+    const seen = new Set(), tgt = FLOW.china.indexOf(orderState);
+    for (const po of pos) {
+      if (!po.order_id || seen.has(po.order_id)) continue;
+      seen.add(po.order_id);
+      const o = await env.DB.prepare("SELECT id, state, title, user_id, history FROM orders WHERE id = ?").bind(po.order_id).first();
+      if (!o) continue;
+      const cur = FLOW.china.indexOf(o.state);
+      if (tgt < 0 || cur < 0 || tgt <= cur) continue;                 // never drag an order backwards
+      const h = J(o.history) || []; h.push({ state: orderState, at: t, by });
+      stmts.push(env.DB.prepare("UPDATE orders SET state=?, history=?, updated_at=? WHERE id=?").bind(orderState, JSON.stringify(h), t, o.id));
+      const leg = ORDER_LEG[orderState];
+      if (leg) stmts.push(notify(env, o.user_id, "order", leg[0], o.title + " — " + leg[1], "orders.html"));
+    }
+  }
+  await env.DB.batch(stmts);
+  return { ok: true, state: c.state };
+}
+
+/* Which batch an inbound tracking event belongs to. The forwarder may only echo our reference, or only a tracking
+   number, so both are tried before an event is filed against nothing. */
+async function consignmentForEvent(env, reference, tracking) {
+  if (reference) { const c = await env.DB.prepare("SELECT * FROM consignments WHERE id = ? OR reference = ?").bind(reference, reference).first(); if (c) return c; }
+  if (tracking) { const c = await env.DB.prepare("SELECT * FROM consignments WHERE doc_no = ?").bind(tracking).first(); if (c) return c; }
+  return null;
 }
 
 /* ---- what a shipment actually costs Garsoore under the contracted rate card.
@@ -800,10 +790,10 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
-    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", autoPay: waafiOn(env), agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING, plans: PLANS,
+    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING, plans: PLANS,
       /* the lanes a customer may choose, and nothing about who flies or sails them */
       shipping: { lanes: RATES.cards.filter(c => c.status !== "expired").map(c => ({ mode: c.mode, transitMin: c.transitMinDays, transitMax: c.transitMaxDays })),
-        facility: "Garsoore China Facility · Guangzhou" }, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
+        facility: "Garsoore · Guangzhou (consolidation)" }, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
     if (path === "/me" && M === "GET") return json({ user: pubUser(user) });
 
     /* ---- auth: phone + PIN (SMS/WhatsApp OTP is a launch item once a provider is contracted) */
@@ -872,6 +862,27 @@ export async function handleApi(req, env, url) {
       }
       await env.DB.batch(stmts);
       return json({ ok: true, id, state: mr.state, why: mr.why, ref, orders: mr.orders.map(o => o.id) });
+    }
+
+    /* Inbound tracking push from a forwarder. Public by necessity — a webhook cannot hold a session — so the HMAC
+       signature is the only thing standing between a stranger and moving somebody's goods. An unverified body is
+       dropped, and every event that lands is written to shipment_events verbatim before anything is acted on. */
+    if ((m = path.match(/^\/webhooks\/forwarder\/([a-z0-9_-]+)$/)) && M === "POST") {
+      const P = provider(m[1]);
+      if (!P.verifyWebhook) return err("Not found", 404);
+      const raw = await req.text();
+      const v = await P.verifyWebhook(env, req, raw);
+      if (!v.ok) return err("Saadka (signature) ma saxna: " + v.why, 401);
+      const t = now();
+      const cons = await consignmentForEvent(env, v.consignment, v.tracking);
+      if (!cons) return json({ ok: true, ignored: "no consignment for " + (v.consignment || "?") });
+      const ev = v.event || {};
+      await env.DB.prepare("INSERT INTO shipment_events (id,consignment,at,code,text,place,source,raw,created_at) VALUES (?,?,?,?,?,?, 'webhook', ?,?)")
+        .bind(rid("EV-", 6), cons.id, ev.at || t, String(ev.code || "").slice(0, 40), String(ev.text || "").slice(0, 300), String(ev.place || "").slice(0, 80), raw.slice(0, 4000), t).run();
+      const applied = ENG.applyEvent(Object.assign({}, cons, { history: J(cons.history) || [] }), ev);
+      let moved = null;
+      if (applied.moved) moved = await moveConsignment(env, cons.id, applied.cons.state, t, "webhook");
+      return json({ ok: true, leg: applied.leg, moved: !!(moved && moved.ok), state: moved && moved.state });
     }
 
     /* "I forgot my PIN". Deliberately says the same thing whether or not the number has an account: answering
@@ -947,7 +958,19 @@ export async function handleApi(req, env, url) {
     if (path === "/orders" && M === "GET") {
       await expireUnpaid(env);
       const r = await env.DB.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 200").bind(user.id).all();
-      return json({ orders: r.results.map(x => orderOut(x, false)) });
+      const orders = r.results.map(x => orderOut(x, false));
+      /* the real legs: the tracking events of the consignment each order was batched into. Internal references — the
+         rate card, the forwarder, our cost — never reach a customer; a place, a sentence and a time do. */
+      try {
+        const evs = (await env.DB.prepare(`SELECT p.order_id AS oid, e.at, e.text, e.place
+          FROM procurement p JOIN shipment_events e ON e.consignment = p.consignment
+          WHERE p.consignment IS NOT NULL AND p.order_id IN (SELECT id FROM orders WHERE user_id = ?)
+          ORDER BY e.at ASC LIMIT 2000`).bind(user.id).all()).results;
+        const by = {};
+        for (const ev of evs) (by[ev.oid] = by[ev.oid] || []).push({ at: ev.at, text: ev.text, place: ev.place });
+        for (const o of orders) if (by[o.id]) o.track = by[o.id];
+      } catch (e) { /* consignments not migrated yet — the timeline simply carries no events */ }
+      return json({ orders });
     }
     if (path === "/orders" && M === "POST") {
       const b = await body(req);
@@ -1007,53 +1030,6 @@ export async function handleApi(req, env, url) {
       }
       const amount = sub - Math.min(Math.round(sub * pct), cap) + fee - creditTotal;
       return json({ ids: orders, basket, amount, pay: b.pay, merchant: merchants(env)[b.pay] || "", reference: basket || orders[0], expiresHours: ECON.unpaidHours, payPhone: b.payPhone || "" });
-    }
-    /* Automatic wallet payment. Replaces the whole PAYMENT_REVIEW detour when it is switched on: the wallet
-       either debited or it did not, so there is no transaction ID for anyone to invent and nothing for staff to
-       check by eye. Falls back to the manual flow whenever the credentials are absent. */
-    if (path === "/orders/evc" && M === "POST") {
-      if (!waafiOn(env)) return err("Lacag bixinta tooska ah weli lama furin.", 503);
-      const b = await body(req), t = now();
-      const ids = (Array.isArray(b.ids) ? b.ids : []).slice(0, 20).map(String);
-      if (!ids.length) return err("Dalab lama helin.");
-      const rows = (await env.DB.prepare(
-        `SELECT * FROM orders WHERE user_id = ? AND state = 'AWAITING_PAYMENT' AND id IN (${ids.map(() => "?").join(",")})`
-      ).bind(user.id, ...ids).all()).results;
-      if (!rows.length) return err("Dalabkan horey ayaa la bixiyay ama lama helin.");
-      const amount = rows.reduce((a, o) => a + (+o.total || 0), 0);
-      if (!(amount > 0)) return err("Qiimaha dalabku ma saxna.");
-      const phone = b.phone || rows[0].pay_phone || user.phone;
-      const reference = String(rows[0].basket || rows[0].id);
-
-      /* Claim the orders BEFORE asking the wallet for money. Two taps arriving together would otherwise both see
-         AWAITING_PAYMENT and both debit the customer. Moving them to PAYMENT_REVIEW first means the second request
-         finds nothing to charge; if this Worker dies mid-flight the orders sit in a state staff already handle,
-         which is a visible problem rather than a silent double charge. */
-      const claim = await env.DB.prepare(
-        `UPDATE orders SET state = 'PAYMENT_REVIEW', updated_at = ? WHERE user_id = ? AND state = 'AWAITING_PAYMENT' AND id IN (${ids.map(() => "?").join(",")})`
-      ).bind(t, user.id, ...ids).run();
-      if (!claim.meta || !claim.meta.changes) return err("Dalabkan horey ayaa la bixiyay ama waa la bixinayaa.");
-
-      const res = await waafiPurchase(env, { phone, amount, reference, description: "Garsoore " + reference });
-      if (!res.ok) {
-        /* hand them back so the customer can try again or pay the manual way - unless we genuinely do not know
-           whether the wallet debited, in which case they stay claimed for staff to settle against the statement */
-        if (!res.unknown) await env.DB.prepare(
-          `UPDATE orders SET state = 'AWAITING_PAYMENT', updated_at = ? WHERE user_id = ? AND state = 'PAYMENT_REVIEW' AND id IN (${ids.map(() => "?").join(",")})`
-        ).bind(now(), user.id, ...ids).run();
-        await env.DB.prepare("INSERT INTO events (name, sid, at) VALUES ('pay_fail', ?, ?)").bind(String(b.sid || "").slice(0, 40), t).run();
-        return err(res.message, res.unknown ? 502 : 402);
-      }
-      /* one wallet debit covers the basket, so tag every order in it with the same gateway transaction */
-      const stmts = [];
-      for (const o of rows) {
-        o.pay_txn = res.txn;
-        stmts.push(env.DB.prepare("UPDATE orders SET pay_txn = ? WHERE id = ?").bind(res.txn, o.id));
-        stmts.push(...(await placeStmts(env, o, t, "WaafiPay")));
-      }
-      stmts.push(env.DB.prepare("INSERT INTO events (name, sid, at) VALUES ('paid', ?, ?)").bind(String(b.sid || "").slice(0, 40), t));
-      await env.DB.batch(stmts);
-      return json({ ok: true, txn: res.txn, ids: rows.map(o => o.id), amount: +amount.toFixed(2) });
     }
     if (path === "/orders/paid" && M === "POST") {
       const b = await body(req), txn = String(b.txn || "").trim();
@@ -2118,6 +2094,112 @@ export async function handleApi(req, env, url) {
     /* ---------------------------------------------------------------- staff */
     if (!path.startsWith("/ops/")) return err("Not found", 404);
     if (!staff) return err("Shaqaalaha Garsoore oo keliya.", 403);
+
+    /* ---------------------------------------------------------------- consignments — the freight spine.
+       Group paid POs into a batch, hand it to the forwarder, and drive the child orders from the batch. */
+    if (path === "/ops/consignments" && M === "GET") {
+      const rows = (await env.DB.prepare("SELECT * FROM consignments ORDER BY created_at DESC LIMIT 200").all()).results;
+      const open = (await env.DB.prepare(`SELECT p.*, o.state o_state, o.total o_total, u.name u_name
+        FROM procurement p JOIN orders o ON o.id = p.order_id LEFT JOIN users u ON u.id = p.user_id
+        WHERE p.consignment IS NULL AND p.state NOT IN ('CANCELLED') ORDER BY p.created_at ASC LIMIT 200`).all()).results;
+      const fw = (await env.DB.prepare("SELECT * FROM forwarders WHERE active = 1 ORDER BY id").all()).results;
+      return json({ providers: providers(env),
+        forwarders: fw.map(f => ({ id: f.id, label: f.label, receivingAddress: f.receiving_address, tracking: f.tracking, terms: f.terms })),
+        consignments: rows.map(consOut), open: open.map(procOut) });
+    }
+    if (path === "/ops/consignments" && M === "POST") {
+      const b = await body(req), t = now();
+      const pos = (Array.isArray(b.pos) ? b.pos : []).slice(0, 200).map(String);
+      if (!pos.length) return err("Dooro xariiqyada la isku darayo.");
+      const mode = b.mode === "sea" ? "sea" : "air";
+      const forwarder = String(b.forwarder || "manual").slice(0, 40);
+      const rows = (await env.DB.prepare(`SELECT * FROM procurement WHERE id IN (${pos.map(() => "?").join(",")}) AND consignment IS NULL`).bind(...pos).all()).results;
+      if (!rows.length) return err("Xariiqyadan horey ayaa loo dirtay.");
+      const id = rid("CN-", 6);
+      const cost = ENG.consignmentCost(rows.map(p => ({ sku: p.sku, qty: p.qty, kg: p.kg, cbm: p.cbm,
+        value: p.target_cny ? p.target_cny / FX : 0, cat: (CATALOG[p.sku] || {}).cat })), mode, t);
+      const stmts = [env.DB.prepare(`INSERT INTO consignments
+        (id,forwarder,receive_code,mode,arrival_port,state,chargeable_kg,cbm,declare_value,cost_usd,cut_off,created_at,updated_at)
+        VALUES (?,?,?,?,?, 'OPEN', ?,?,?,?,?,?,?)`).bind(id, forwarder, id, mode,
+        mode === "sea" ? "PORT_MOGADISHU" : "AIRPORT_MGQ",
+        cost.ok ? cost.chargeable : null, cost.ok ? cost.cbm : null,
+        cost.ok ? +rows.reduce((a, p) => a + (p.target_cny ? p.target_cny / FX : 0), 0).toFixed(2) : null,
+        cost.ok ? cost.total : null, b.cutOff || null, t, t)];
+      for (const p of rows) stmts.push(env.DB.prepare("UPDATE procurement SET consignment = ?, updated_at = ? WHERE id = ?").bind(id, t, p.id));
+      await env.DB.batch(stmts);
+      return json({ ok: true, id, mode, forwarder, lines: rows.length,
+        cost: cost.ok ? { freight: cost.freight, clearance: cost.clearance, duty: cost.duty, total: cost.total } : null });
+    }
+    if ((m = path.match(/^\/ops\/consignments\/(CN-[A-Z0-9]+)$/)) && M === "POST") {
+      const b = await body(req), t = now();
+      const cons = await env.DB.prepare("SELECT * FROM consignments WHERE id = ?").bind(m[1]).first();
+      if (!cons) return err("Shixnaddan lama helin.", 404);
+      if (b.action === "seal") { const r = await moveConsignment(env, m[1], "SEALED", t, user.name); return r.ok ? json({ ok: true, state: r.state }) : err(r.why, r.code); }
+      if (b.action === "collect") { const r = await moveConsignment(env, m[1], "COLLECTED", t, user.name); return r.ok ? json({ ok: true, state: r.state }) : err(r.why, r.code); }
+      if (b.action === "handover") {
+        const pros = (await env.DB.prepare("SELECT * FROM procurement WHERE consignment = ?").bind(m[1]).all()).results;
+        const lines = pros.map(p => ({ sku: p.sku, description: p.title, qty: p.qty, weight_kg: p.kg,
+          hs_code: (CATALOG[p.sku] && CATALOG[p.sku].ship && CATALOG[p.sku].ship.hs) || null, origin: "CN",
+          declared_value: p.target_cny ? +(p.target_cny / FX).toFixed(2) : null,
+          battery: (CATALOG[p.sku] && CATALOG[p.sku].ship && CATALOG[p.sku].ship.battery) || "unknown" }));
+        const P = provider(cons.forwarder);
+        let res = {};
+        try {
+          res = await P.create(env, { id: cons.id, service: cons.mode === "sea" ? "sea" : "air",
+            receive_code: cons.receive_code, warehouse_code: cons.warehouse_code, arrival_port: cons.arrival_port,
+            origin: chinaAddress(env, cons.warehouse_code || "<consolidation>"),
+            packages: cons.packages || lines.length, weight_kg: cons.chargeable_kg, cbm: cons.cbm,
+            declared_value: cons.declare_value, dest_city: "Mogadishu", dest_country: "SO" }, lines);
+        } catch (e) { return err("Forwarder-ku ma jawaabin: " + String(e.message || e).slice(0, 120), 502); }
+        if (cons.state === "OPEN") { const s = await moveConsignment(env, m[1], "SEALED", t, user.name); if (!s.ok) return err(s.why, s.code); }
+        await env.DB.prepare("UPDATE consignments SET reference=?, doc_type=?, doc_no=?, carrier=?, packages=?, updated_at=? WHERE id=?")
+          .bind(res.providerOrder || null, res.docType || null, res.tracking || null, String(b.carrier || "").slice(0, 60) || null, lines.length, t, m[1]).run();
+        const moved = await moveConsignment(env, m[1], "HANDED_OVER", t, user.name);
+        return moved.ok ? json({ ok: true, provider: P.id, tracking: res.tracking, labelUrl: res.labelUrl, state: moved.state }) : err(moved.why, moved.code);
+      }
+      if (b.action === "refresh") {
+        const P = provider(cons.forwarder);
+        let r = { events: [] };
+        try { r = await P.track(env, { id: cons.id, provider_order: cons.reference, tracking_no: cons.doc_no, state: cons.state }); } catch (e) { /* keep the operator's screen alive */ }
+        const stmts = [];
+        for (const ev of (r.events || [])) stmts.push(env.DB.prepare("INSERT INTO shipment_events (id,consignment,at,code,text,place,source,created_at) VALUES (?,?,?,?,?,?, 'poll', ?)")
+          .bind(rid("EV-", 6), cons.id, ev.at || t, String(ev.code || "").slice(0, 40), String(ev.text || "").slice(0, 300), String(ev.place || "").slice(0, 80), t));
+        if (stmts.length) await env.DB.batch(stmts);
+        return json({ ok: true, events: (r.events || []).length, state: cons.state });
+      }
+      if (b.action === "event") {
+        const ev = { at: t, code: String(b.code || "manual").slice(0, 30), text: String(b.text || "").slice(0, 200), place: String(b.place || "").slice(0, 80) };
+        await env.DB.prepare("INSERT INTO shipment_events (id,consignment,at,code,text,place,source,created_at) VALUES (?,?,?,?,?,?, 'manual', ?)")
+          .bind(rid("EV-", 6), cons.id, t, ev.code, ev.text, ev.place, t).run();
+        const applied = ENG.applyEvent(Object.assign({}, cons, { history: J(cons.history) || [] }), ev);
+        let moved = null;
+        if (applied.moved) moved = await moveConsignment(env, cons.id, applied.cons.state, t, user.name);
+        if (b.state && ENG.CONSIGNMENT.includes(b.state)) { const forced = await moveConsignment(env, cons.id, b.state, t, user.name); if (forced.ok) moved = forced; }
+        return json({ ok: true, leg: applied.leg, moved: !!(moved && moved.ok), state: moved && moved.state });
+      }
+      return err("Ficil aan la aqoon.");
+    }
+    if ((m = path.match(/^\/ops\/consignments\/(CN-[A-Z0-9]+)\/clearance$/)) && M === "POST") {
+      const b = await body(req), t = now();
+      const cons = await env.DB.prepare("SELECT * FROM consignments WHERE id = ?").bind(m[1]).first();
+      if (!cons) return err("Shixnaddan lama helin.", 404);
+      const ex = await env.DB.prepare("SELECT * FROM clearance WHERE consignment = ?").bind(m[1]).first();
+      const duty = +b.duty || 0, terminal = +b.terminal || 0, handling = +b.handling || 0, other = +b.other || 0;
+      const total = +(duty + terminal + handling + other).toFixed(2);
+      const state = b.release ? "RELEASED" : (["DRAFT", "SUBMITTED", "ASSESSED", "RELEASED", "HELD"].includes(b.state) ? b.state : (ex ? ex.state : "DRAFT"));
+      const id = ex ? ex.id : rid("CL-", 6);
+      if (ex) await env.DB.prepare("UPDATE clearance SET entry_no=?,broker=?,declared_value=?,duty_usd=?,terminal_usd=?,handling_usd=?,other_usd=?,total_usd=?,state=?,released_at=?,note=?,by=?,updated_at=? WHERE id=?")
+        .bind(b.entryNo || ex.entry_no, b.broker || ex.broker, b.declaredValue != null ? +b.declaredValue : ex.declared_value, duty, terminal, handling, other, total, state, b.release ? t : ex.released_at, String(b.note || ex.note || "").slice(0, 300), user.name, t, id).run();
+      else await env.DB.prepare("INSERT INTO clearance (id,consignment,entry_no,broker,declared_value,duty_usd,terminal_usd,handling_usd,other_usd,total_usd,state,released_at,note,by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id, m[1], b.entryNo || null, b.broker || null, b.declaredValue != null ? +b.declaredValue : cons.declare_value, duty, terminal, handling, other, total, state, b.release ? t : null, String(b.note || "").slice(0, 300), user.name, t, t).run();
+      let moved = null;
+      if (cons.state === "ARRIVED_PORT") await moveConsignment(env, m[1], "IN_CLEARANCE", t, user.name);
+      if (b.release) moved = await moveConsignment(env, m[1], "CLEARED", t, user.name);
+      /* clearance is real money out of the Somali pool: duty, broker and terminal are paid here, not on paper */
+      if (state === "RELEASED" && total > 0) await env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'SO_USD', 'fee', ?,?,?,?)")
+        .bind(rid("TR-", 6), t, -total, m[1], "Canshuur/deked · " + m[1], user.name).run();
+      return json({ ok: true, id, total, state, consignmentState: moved && moved.state });
+    }
 
     if (path === "/ops/orders" && M === "GET") {
       await expireUnpaid(env);

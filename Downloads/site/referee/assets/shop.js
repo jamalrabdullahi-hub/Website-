@@ -354,49 +354,11 @@ function checkout(items, fromCart) {
   render();
   $("modal").classList.add("on");
 }
-/* step 2: pay the Garsoore merchant number, type the reference from the confirmation SMS. Staff match it, then escrow is held. */
-/* When WaafiPay is live the customer never leaves this screen: they tap once, their own phone asks for their PIN,
-   and the order is paid before the sheet closes. With it dark we fall back to the manual transaction-ID flow, which
-   is why both live here rather than in two screens that could drift apart.
-
-   The PIN is never typed into Garsoore. It is typed into the customer's own handset, in their wallet's own prompt,
-   and the page says so out loud — a payment screen that asks for a secret is the exact shape of the scam this
-   market already has plenty of. */
-function payStepAuto(r) {
-  var box = $("modalBox"), phone = r.payPhone || "";
-  function draw(state, msg) {
-    box.innerHTML = '<div class="g-co"><h2>Bixi ' + e(r.pay) + '</h2>' +
-      '<div class="g-sku">Dalabka ' + e(r.reference) + '</div>' +
-      '<div class="g-paybox"><div class="g-lbl" style="margin:0">Wadarta</div><b class="g-amt">' + money(r.amount) + '</b></div>' +
-      (state === "waiting"
-        ? '<ol class="g-steps v"><li><b>Fiiri taleefankaaga hadda</b> — codsi ayaa kuu soo baxaya.</li>' +
-          '<li>Geli <b>PIN-kaaga ' + e(r.pay) + '</b>.</li><li>Sug — shaashaddan ayaa is beddelaysa.</li></ol>' +
-          '<div class="g-eta" style="text-align:center;padding:14px 0">⏳ Waan sugaynaa…</div>'
-        : '<input class="g-in" id="evcPhone" inputmode="tel" autocomplete="tel" placeholder="Lambarka ' + e(r.pay) + ' (61 5xx xxxx)" value="' + e(phone) + '">' +
-          '<div class="g-eta">Codsi ayaa taleefankaaga kuu soo baxaya. PIN-kaaga <b>halkan ma qorto</b> — waxaad ku qortaa taleefankaaga.</div>' +
-          (msg ? '<div class="g-err sm">' + e(msg) + '</div>' : "") +
-          '<button class="btn g-buy full" id="evcGo">Bixi ' + money(r.amount) + '</button>' +
-          /* A declined wallet must not be a dead end. Empty balance, a wallet on another number, a gateway having
-             a bad day - the customer can still pay the old way and staff check it, which is strictly better than
-             losing the order. */
-          (msg ? '<a class="btn ghost full" style="margin-top:8px;text-align:center" href="#" id="evcManual">Ama bixi adigoo isticmaalaya lambarka macaamilka</a>' : "") +
-          '<a class="btn ghost full" style="margin-top:8px;text-align:center" href="orders.html?new=' + r.ids.join(",") + '">Mar dambe</a>') +
-      '<div class="g-escrow">🔒 Lacagtu waxay taagan tahay Garsoore — iibiyaha lama siinayo ilaa aad alaabta qaadato.</div></div>';
-    if ($("evcGo")) $("evcGo").onclick = function () {
-      phone = $("evcPhone").value.trim();
-      if (!RF.phoneOk(phone)) return draw("form", "Ku qor lambar " + r.pay + " sax ah.");
-      draw("waiting");
-      RF.backend.evc(r.ids, phone)
-        .then(function () { location.href = "orders.html?new=" + r.ids.join(","); })
-        .catch(function (x) { draw("form", x.message); });
-    };
-    if ($("evcManual")) $("evcManual").onclick = function (ev) { ev.preventDefault(); payStep(r, true); };
-  }
-  draw("form");
-}
-function payStep(r, manual) {
-  var A = RF.api;
-  if (!manual && A && A.config && A.config.autoPay && r.pay !== "Premier Wallet") return payStepAuto(r);
+/* step 2: the customer sends the money by USSD (EVC Plus / ZAAD / Sahal / Premier "send money") to the Garsoore
+   number, copies the transaction ID out of the confirmation SMS, and pastes it here. Staff match it against the
+   statement by eye, then the money is held in escrow. There is no card rail and no merchant API to call — this is
+   the only way money arrives, so it is a first-class flow, not a fallback. */
+function payStep(r) {
   var box = $("modalBox");
   box.innerHTML = '<div class="g-co"><h2>Hal tallaabo oo kale</h2><div class="g-sku">Dalabka ' + e(r.reference) + ' waa la kaydiyay · waxaa loo hayaa ' + r.expiresHours + ' saac</div>' +
     '<div class="g-paybox"><div class="g-lbl" style="margin:0">U dir ' + e(r.pay) + '</div><b class="g-amt">' + money(r.amount) + '</b>' +
@@ -589,6 +551,8 @@ function drawOrders(app, all, quotes) {
          o.state === "AWAITING_PAYMENT" ? '<div class="g-eta" style="margin-top:10px">⏳ Sugaya lacag bixintaada</div>' :
          o.state === "PAYMENT_REVIEW" ? '<div class="g-eta" style="margin-top:10px">⏳ Lacagta waa la hubinayaa' + (o.payTxn ? " · macaamil " + e(o.payTxn) : "") + ' — badanaa 30 daqiiqo</div>' :
         '<div class="g-track">' + f.map(function (s, k) { return '<div class="' + (k < i ? "d" : k === i ? "n" : "") + '"><i></i>' + RF.orders.STATE_SO[s] + (hist[s] ? '<small>' + when(hist[s]) + '</small>' : "") + '</div>'; }).join("") + '</div>') +
+        (o.track && o.track.length ? '<div style="margin-top:8px"><b>Raadraaca shixnadda · Shipment tracking</b>' +
+          o.track.map(function (ev) { return '<div class="g-eta">📍 ' + e(ev.text || "") + (ev.place ? ' · ' + e(ev.place) : "") + ' · ' + when(ev.at) + '</div>'; }).join("") + '</div>' : "") +
         (o.state === "READY" && o.code ? '<div class="g-code"><div><div class="g-lbl" style="margin:0">Koodhka qaadashada</div><b>' + o.code.replace(/(\d{3})(\d{3})/, "$1 $2") + '</b></div><div class="g-eta">Tus koodhkan ' + (o.pickup.indexOf("guriga") >= 0 ? "wadaha" : "xarunta Km4") + ' marka aad alaabta hubiso. Koodhka ha u dirin cid kale — iibiyaha lacagta lama siinayo ilaa aad bixiso.</div></div>' : "") +
         '<div class="g-orow"><span class="g-eta">' + (o.state === "PAYMENT_REVIEW" ? "" : ESC[o.escrow] || "") +
           (!done(o) && o.flow === "china" && o.escrow === "held" ? " · la filayo ~" + due.toLocaleDateString("so-SO", { day: "numeric", month: "short" }) : "") + '</span><span class="g-oacts">' +

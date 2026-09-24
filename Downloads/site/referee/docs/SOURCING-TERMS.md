@@ -17,8 +17,8 @@ They do not want to learn the answers. They want somebody to do it. That is the 
 1. The trader sends a link (Alibaba, 1688, Made-in-China) or just describes the goods.
 2. A Garsoore agent contacts the supplier, verifies the listing is real, and negotiates.
 3. Garsoore comes back with **one price** — goods and shipping named separately, nothing else to pay.
-4. On acceptance it becomes a normal Garsoore order and runs the existing procurement rail: factory → Garsoore China
-   facility → consolidation → freight → Mogadishu → the trader's hands.
+4. On acceptance it becomes a normal Garsoore order and runs the existing procurement rail: factory → forwarder's China
+   warehouse → consolidation → one AWB/BL → Mogadishu (port or MGQ) → clearance → the trader's hands.
 
 The trader never speaks to the factory, never books freight, never files a customs entry.
 
@@ -72,7 +72,7 @@ money with you is how a marketplace stays empty.
 
 | | |
 |---|---|
-| **FBG suite** | A China address of their own, plus space in the facility and in our consolidations |
+| **FBG suite** | A China receiving address of their own (the forwarder's code), plus space in our consolidations |
 | **No sourcing deposit** | An agent works the request on trust instead of against money held |
 
 Both are reserved whether or not the member uses them in a given month, which is what a subscription is for. FBG's

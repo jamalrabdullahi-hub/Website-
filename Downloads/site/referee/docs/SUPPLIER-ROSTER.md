@@ -2,8 +2,8 @@
 
 The model this roster serves:
 
-> Garsoore sells → the supplier sources and fulfils → goods arrive at the Garsoore China
-> facility in Guangzhou → one consolidated shipment to Mogadishu.
+> Garsoore sells → the supplier sources and fulfils → goods arrive at the forwarder's China
+> warehouse in Guangzhou → one consolidated AWB/BL → Mogadishu (Port of Mogadishu or Aden Adde/MGQ).
 
 ## The thing that changes the shortlist
 

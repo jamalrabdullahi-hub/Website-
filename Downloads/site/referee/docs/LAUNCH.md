@@ -26,8 +26,11 @@ launch is mostly **business setup**, listed below in the order it blocks money.
    the `source_url`, confirm unit price at your quantity, packed weight and lead time, update `data/catalog.csv`, set
    `cost_verified = yes`, run `python tools/import-catalog.py`. Start with 50–100 best sellers. Turn on
    `REQUIRE_VERIFIED = "1"` for launch — everything else still sells, via a staff quote.
-3. **Supply chain contracts**: a buying agent / consolidator in Guangzhou (or Yiwu), an air + sea forwarder to MGQ, a
-   customs broker, and the Km4 pickup counter. Their real rates replace the assumptions in `assets/catalog.js → RULES`.
+3. **Supply chain contracts**: **one** China→Somalia freight forwarder that provides a Guangzhou/Yiwu receiving
+   warehouse + consolidation + main carriage (air to MGQ / sea to the Port of Mogadishu), a customs broker for the
+   clearance *Garsoore* runs, and the Km4 pickup counter. Configure the forwarder with `FORWARDER_API_BASE` /
+   `FORWARDER_API_KEY` / `FORWARDER_WEBHOOK_SECRET` (see `deploy/logistics.js`); their real rates replace the
+   assumptions in `assets/catalog.js → RULES`.
 4. **Domestic sellers**: signed agreements with the commission (8% in `ECON.commission`) and payout terms
    (on pickup‑code release).
 5. **Legal pages**: terms of sale, returns (7 days), privacy (we store phone, name, orders), company registration.
@@ -35,8 +38,8 @@ launch is mostly **business setup**, listed below in the order it blocks money.
    then have them register on the site.
 7. **Security hygiene**: rotate every credential pasted into chats (Cloudflare tokens, R2 keys, server SSH key);
    move to the production account/domain (garsoore.com) per the plan to swap servers before launch.
-8. **Later (not blocking)**: SMS/WhatsApp OTP instead of PIN‑only sign‑in; automatic payment confirmation via the
-   operators' merchant APIs; Apify token for live China prices (`wrangler secret put APIFY_TOKEN` on the proxy).
+8. **Later (not blocking)**: SMS/WhatsApp OTP instead of PIN‑only sign‑in; Apify token for live China prices
+   (`wrangler secret put APIFY_TOKEN` on the proxy).
 
 ## Unit economics (from `deploy/api.js → ECON` and `assets/catalog.js → RULES`)
 

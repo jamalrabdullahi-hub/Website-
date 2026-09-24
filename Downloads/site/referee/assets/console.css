@@ -1,73 +1,188 @@
-/* Garsoore Console (admin.<domain>) — a working surface, not a shopfront: dense, calm, no marketing. */
-body.console{background:var(--bg);margin:0;min-height:100vh}
-body.console #app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
-.cs-boot{padding:60px;text-align:center;color:var(--muted)}
+/* Garsoore Console (admin.<domain>) — a clean, dense working surface.
+   Self-contained on purpose: this file does NOT load the shop theme. The console is a tool, not a storefront, so it
+   carries its own neutral design tokens, its own controls, and only the handful of shared bits the sign-in sheet and
+   the account modal borrow. Nothing here is warm cream, nothing is a shop. */
+body.console{
+  --bg:#f6f7f9;            /* page */
+  --panel:#ffffff;         /* cards, sidebar, tables */
+  --surface:#f2f4f7;       /* table headers, hovers, insets */
+  --line:#e4e7ec;          /* borders */
+  --line-2:#eef0f3;        /* lighter separators */
+  --fg:#101828;            /* text */
+  --muted:#667085;         /* secondary text */
+  --faint:#98a2b3;         /* tertiary */
+  --accent:#1d4ed8;        /* single accent — active nav, focus, primary */
+  --accent-soft:#eef2ff;   /* accent tint */
+  --on-accent:#ffffff;
+  --up:#067647;            /* good */
+  --down:#b42318;          /* bad */
+  --warn:#b54708;          /* degraded / needs attention */
+  --radius:8px;
+  --radius-lg:12px;
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+
+  margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+body.console *{box-sizing:border-box}
+body.console h1,body.console h2,body.console h3{margin:0;font-weight:650;letter-spacing:-.01em;line-height:1.25}
+body.console h2{font-size:15px;margin:26px 0 10px;text-transform:none}
+body.console a{color:var(--accent);text-decoration:none}
+body.console code{font-family:var(--mono);font-size:.92em;background:var(--surface);border:1px solid var(--line-2);border-radius:5px;padding:.5px 5px;color:var(--fg)}
+body.console hr{border:0;border-top:1px solid var(--line);margin:18px 0}
+
+/* ---- shell */
+body.console #app{display:grid;grid-template-columns:228px 1fr;min-height:100vh}
+.cs-boot{padding:60px;text-align:center;color:var(--faint);grid-column:1/-1}
 
 /* ---- sign-in gate */
-.cs-gate{max-width:420px;margin:0 auto;padding:16vh 24px;text-align:center}
-.cs-logo{font-size:44px;margin-bottom:10px}
-.cs-gate h1{font-family:var(--fd);font-size:30px;margin:0 0 8px}
-.cs-gate p{color:var(--muted);line-height:1.6;margin-bottom:20px}
-.cs-foot{margin-top:28px;font-size:11px;color:var(--faint)}
+.cs-gate{max-width:400px;margin:0 auto;padding:16vh 24px;text-align:center}
+.cs-logo{font-size:40px;color:var(--accent);line-height:1;margin-bottom:12px}
+.cs-gate h1{font-size:26px;margin:0 0 8px}
+.cs-gate p{color:var(--muted);line-height:1.6;margin:0 0 20px}
+.cs-foot{margin-top:28px;font-size:11px;color:var(--faint);font-family:var(--mono)}
 
 /* ---- sidebar */
-.cs-side{background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
-.cs-brand{font-family:var(--fd);font-size:19px;padding:18px 18px 14px;border-bottom:1px solid var(--line-2)}
-.cs-side nav{padding:10px 8px;display:grid;gap:2px;flex:1;overflow:auto}
-.cs-side nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;font-size:14px;font-weight:600;color:var(--fg);text-decoration:none}
-.cs-side nav a i{font-style:normal;width:20px;text-align:center;opacity:.85}
+.cs-side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.cs-brand{font-size:15px;font-weight:700;padding:16px 18px;border-bottom:1px solid var(--line)}
+.cs-brand b{letter-spacing:-.01em}
+.cs-side nav{padding:8px;display:grid;gap:1px;flex:1;overflow:auto;align-content:start}
+.cs-side nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);font-size:13.5px;font-weight:600;color:var(--fg)}
+.cs-side nav a i{font-style:normal;width:18px;text-align:center;opacity:.7;font-size:14px}
 .cs-side nav a:hover{background:var(--surface)}
-.cs-side nav a.on{background:var(--pri);color:var(--pri-ink)}
-.cs-side nav em{margin-left:auto;font-style:normal;background:var(--down);color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:800}
+.cs-side nav a.on{background:var(--accent-soft);color:var(--accent)}
+.cs-side nav a.on i{opacity:1}
+.cs-side nav em{margin-left:auto;font-style:normal;background:var(--down);color:#fff;border-radius:20px;padding:0 7px;font-size:11px;font-weight:700;line-height:17px;min-width:17px;text-align:center}
 .cs-side nav em:empty{display:none}
-.cs-me{padding:12px 18px;border-top:1px solid var(--line-2);font-size:12px;display:grid;gap:2px}
-.cs-me b{font-size:13px}.cs-me span{color:var(--muted)}
-.cs-me a{color:var(--link);font-weight:700;text-decoration:none;margin-top:2px}
-.cs-build{padding:8px 18px 14px;font-size:10px;color:var(--faint)}
+.cs-me{padding:12px 18px;border-top:1px solid var(--line);font-size:12px;display:grid;gap:1px}
+.cs-me b{font-size:13px;font-weight:650}
+.cs-me span{color:var(--muted)}
+.cs-me a{font-weight:600;margin-top:3px;font-size:12px}
+.cs-build{padding:8px 18px 14px;font-size:10px;color:var(--faint);font-family:var(--mono)}
 
-/* ---- main */
-.cs-main{min-width:0;padding:0 26px 60px}
-.cs-top{display:flex;align-items:center;gap:12px;padding:20px 0 16px;position:sticky;top:0;background:var(--bg);z-index:5;border-bottom:1px solid var(--line-2);flex-wrap:wrap}
-.cs-top h1{font-family:var(--fd);font-size:25px;margin:0;flex:1}
-.cs-top #csTools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.cs-main h2{font-family:var(--fd);font-size:18px;margin:26px 0 10px}
-.cs-in{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;padding:8px 10px;font:inherit;font-size:13px}
-.cs-in.sm{padding:5px 7px;font-size:12px;width:100%}
-.btn.sm{padding:5px 9px;font-size:12px;margin-right:4px}
+/* ---- main + topbar */
+.cs-main{min-width:0;padding:0 28px 64px}
+.cs-top{display:flex;align-items:center;gap:10px;padding:16px 0;position:sticky;top:0;background:var(--bg);z-index:5;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.cs-top h1{font-size:19px;flex:1;min-width:120px}
+.cs-top #csTools{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+/* ---- inputs */
+.cs-in,.g-in{font-family:inherit;font-size:13px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:7px 9px;outline:none}
+.cs-in:focus,.g-in:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.cs-in.sm{padding:4px 7px;font-size:12px;width:100%}
+select.cs-in,select.g-in{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:26px}
 
 /* ---- kpis */
-.cs-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px;margin-top:16px}
-.cs-kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
-.cs-kpi span{display:block;font-size:11.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
-.cs-kpi b{display:block;font-size:24px;margin:3px 0;font-variant-numeric:tabular-nums}
+.cs-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-top:16px}
+.cs-kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);padding:13px 15px}
+.cs-kpi span{display:block;font-size:11px;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.04em}
+.cs-kpi b{display:block;font-size:23px;margin:4px 0 2px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .cs-kpi em{font-style:normal;font-size:11.5px;color:var(--muted)}
-.cs-kpi.good b{color:var(--up)}.cs-kpi.bad b{color:var(--down)}
+.cs-kpi.good b{color:var(--up)}
+.cs-kpi.bad b{color:var(--down)}
 
-/* ---- tables */
-.cs-tbl{border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13px;background:var(--line)}
-.cs-th,.cs-tr{display:grid;grid-template-columns:var(--cols);gap:12px;padding:9px 12px;background:var(--card);align-items:center}
-.cs-th{background:var(--surface);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800}
-.cs-tr{border-top:1px solid var(--line-2)}
+/* ---- tables (div grid pattern) */
+.cs-tbl{border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;font-size:13px;background:var(--panel)}
+.cs-tbl>.cs-th,.cs-tbl>.cs-tr,.cs-tbl>.cs-empty{border-top:1px solid var(--line-2)}
+.cs-tbl>.cs-th:first-child,.cs-tbl>.cs-empty:first-child{border-top:0}
+.cs-th,.cs-tr{display:grid;grid-template-columns:var(--cols);gap:12px;padding:9px 13px;align-items:center}
+.cs-th{background:var(--surface);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;border-top:0}
+.cs-tr:hover{background:var(--surface)}
 .cs-tr>span{min-width:0;overflow-wrap:anywhere}
-.cs-dim{font-style:normal;color:var(--muted);font-size:11.5px}
-.cs-ok{color:var(--up);font-weight:700}.cs-warn{color:var(--gold);font-weight:700}.cs-bad{color:var(--down);font-weight:700}
-.cs-empty{background:var(--card);padding:18px;text-align:center;color:var(--muted)}
-.cs-note{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--muted);margin-top:10px}
-.cs-note code{background:var(--surface);padding:1px 5px;border-radius:5px;font-size:12px;color:var(--fg)}
-.cs-chips{display:flex;flex-wrap:wrap;gap:8px}
-.cs-chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;color:var(--muted)}
-.cs-chip b{color:var(--fg);margin-left:3px}
-.cs-funnel{display:grid;gap:6px;max-width:680px}
-.cs-funnel div{display:grid;grid-template-columns:90px 1fr 46px 42px;align-items:center;gap:10px;font-size:13px}
-.cs-funnel i{height:13px;border-radius:7px;background:var(--gold);display:block}
-.cs-funnel em{font-style:normal;color:var(--muted);font-size:11.5px}
+.cs-empty{padding:18px;text-align:center;color:var(--muted)}
 
+/* ---- tables (real <table class="cs-tbl">) */
+table.cs-tbl{border-collapse:collapse;width:100%}
+table.cs-tbl th,table.cs-tbl td{text-align:left;padding:9px 13px;border-top:1px solid var(--line-2);vertical-align:top}
+table.cs-tbl tr:first-child th{border-top:0}
+table.cs-tbl th{background:var(--surface);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+table.cs-tbl tbody tr:hover,table.cs-tbl tr:hover{background:var(--surface)}
+table.cs-tbl td .cs-note2{display:block;margin-top:2px}
+
+/* ---- text / states (inline) */
+.cs-dim{font-style:normal;color:var(--muted);font-size:11.5px}
+.cs-ok{color:var(--up);font-weight:650}
+.cs-warn{color:var(--warn);font-weight:650}
+.cs-bad{color:var(--down);font-weight:650}
+td.good,.good{color:var(--up);font-weight:650}
+td.bad,.bad{color:var(--down);font-weight:650}
+.muted{color:var(--muted)}
+
+/* ---- notes / banners / cards / kv / chips / funnel.
+   The banner styles are scoped to `div.cs-*` because the same class names are also used inline on spans inside
+   table cells (`<span class="cs-ok">active</span>`); a plain `.cs-ok{display:block}` would blow the cells apart. */
+.cs-note{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);padding:12px 15px;font-size:13px;line-height:1.65;color:var(--muted);margin-top:10px}
+.cs-note b,.cs-note2 b{color:var(--fg)}
+.cs-note2{color:var(--muted);font-size:12px;line-height:1.55;margin-top:6px}
+div.cs-warn{background:#fffaeb;border:1px solid #fde9c8;color:var(--warn);border-radius:var(--radius-lg);padding:12px 15px;font-size:13px;line-height:1.6;margin-top:12px;font-weight:400}
+div.cs-warn b{color:var(--warn);font-weight:650}
+div.cs-ok{background:#ecfdf3;border:1px solid #cdecd8;color:var(--up);border-radius:var(--radius-lg);padding:12px 15px;font-size:13px;margin-top:12px;font-weight:400}
+.cs-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px 16px;margin-top:12px}
+.cs-cardh{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:8px}
+.cs-cardh b{font-size:13.5px}
+.cs-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:2px 20px;margin-top:10px}
+.cs-kv>div{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid var(--line-2);font-size:13px}
+.cs-kv span{color:var(--muted)}
+.cs-kv b{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.cs-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.cs-chip{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:12.5px;color:var(--muted)}
+.cs-chip b{color:var(--fg);margin-left:4px;font-variant-numeric:tabular-nums}
+.cs-funnel{display:grid;gap:7px;max-width:680px;margin-top:8px}
+.cs-funnel>div{display:grid;grid-template-columns:96px 1fr 48px 44px;align-items:center;gap:10px;font-size:13px}
+.cs-funnel i{height:12px;border-radius:6px;background:var(--accent);opacity:.85;display:block;min-width:2px}
+.cs-funnel b{font-variant-numeric:tabular-nums}
+.cs-funnel em{font-style:normal;color:var(--muted);font-size:11.5px;text-align:right}
+
+/* ---- buttons / chips (controls) */
+.btn{font-family:inherit;font-size:13px;font-weight:600;color:var(--on-accent);background:var(--fg);border:1px solid var(--fg);border-radius:var(--radius);padding:7px 13px;cursor:pointer;line-height:1.3}
+.btn:hover{opacity:.9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.ghost{background:var(--panel);color:var(--fg);border-color:var(--line)}
+.btn.ghost:hover{background:var(--surface);opacity:1}
+.btn.g-buy{background:var(--accent);border-color:var(--accent)}
+.btn.sm{padding:4px 9px;font-size:12px}
+.chip{font-family:inherit;font-size:12.5px;font-weight:600;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:5px 11px;cursor:pointer;line-height:1.3}
+.chip:hover{background:var(--surface)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.full{width:100%;display:block}
+
+/* ---- pills */
+.g-pill{display:inline-block;font-size:11px;font-weight:700;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:2px 9px;color:var(--muted)}
+.g-pill.gold{background:#fffaeb;border-color:#fde9c8;color:var(--warn)}
+
+/* ---- toast */
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,10px);background:var(--fg);color:#fff;font-size:13px;font-weight:600;padding:9px 16px;border-radius:20px;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;transition:opacity .18s,transform .18s;z-index:80;max-width:90vw}
+.toast.in{opacity:1;transform:translate(-50%,0)}
+
+/* ---- modal + the borrowed auth / account sheet (g-*) */
+.modal{position:fixed;inset:0;background:rgba(16,24,40,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:60}
+.modal.on{display:flex}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);width:100%;max-width:400px;max-height:90vh;overflow:auto;padding:22px;box-shadow:0 16px 48px rgba(16,24,40,.24)}
+.g-co h2{font-size:18px;margin:0 0 4px}
+.g-co .g-sku{font-size:12px;color:var(--muted);margin-bottom:14px}
+.g-lbl{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:12px 0 5px}
+.g-in{width:100%}
+.g-err{color:var(--down);font-size:13px;font-weight:600;margin-top:10px}
+.g-err.sm{font-size:12px;margin-top:8px}
+.g-eta{font-size:12px;color:var(--muted);line-height:1.55;margin-top:8px}
+.g-escrow{margin-top:14px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid var(--line-2);border-radius:var(--radius);padding:9px 11px;line-height:1.5}
+.g-paybox{background:var(--surface);border:1px solid var(--line-2);border-radius:var(--radius);padding:12px 14px;margin:12px 0;text-align:center}
+.g-amt{display:block;font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.g-pay{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.g-pay>div{flex:1;min-width:80px;text-align:center;font-size:12.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--radius);padding:7px 8px;cursor:pointer;background:var(--panel)}
+.g-pay>div.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
+/* ---- responsive */
 @media (max-width:900px){
   body.console #app{grid-template-columns:1fr}
   .cs-side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:0;border-bottom:1px solid var(--line)}
-  .cs-side nav{flex-direction:row;display:flex;overflow-x:auto;flex:1 0 100%;order:9}
-  .cs-me,.cs-build{border:0;padding:10px 14px}
+  .cs-brand{border-bottom:0;flex:1}
+  .cs-side nav{display:flex;flex-wrap:nowrap;overflow-x:auto;order:9;flex:1 0 100%;gap:2px}
+  .cs-side nav a{white-space:nowrap}
+  .cs-me,.cs-build{display:none}
   .cs-main{padding:0 14px 40px}
   .cs-th{display:none}
-  .cs-tr{grid-template-columns:1fr}
+  .cs-tr{grid-template-columns:1fr;gap:4px;padding:12px 14px}
+  .cs-tr>span:first-child{font-weight:650}
 }

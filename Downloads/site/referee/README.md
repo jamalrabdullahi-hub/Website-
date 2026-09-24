@@ -183,14 +183,27 @@ A consumer product is sold under exactly one of these. They differ in **who owns
 | Garsoore earns | Procurement margin + service | Fulfilment fees + commission |
 | Customer sees supplier? | **Never** — internal relationship | Yes, the merchant is the seller |
 
-**Garsoore Official Procurement** is a made-to-order chain: customer pays → funds confirmed → approved supplier selected → purchase order raised → supplier ships to the Garsoore China facility → received, scanned, matched to the PO, verified, weighed → consolidated → shipped → arrives. Garsoore is the seller of record the whole way; the Chinese distributor behind it is an internal procurement relationship and its name never reaches a consumer page. Implemented in `procurement` (`deploy/schema-4.sql`) and surfaced to staff only.
+**Garsoore Official Procurement** is a made-to-order chain: customer pays → funds confirmed → approved supplier selected → purchase order raised → supplier ships to the **forwarder's China warehouse** → received, consolidated onto **one AWB/BL** → air to **Aden Adde (MGQ)** or sea to the **Port of Mogadishu** → import clearance run by Garsoore → port pickup → last mile. Garsoore is the seller of record the whole way; the Chinese distributor behind it is an internal procurement relationship and its name never reaches a consumer page. Implemented in `procurement` (`deploy/schema-4.sql`) and surfaced to staff only.
 
 **FBG** is fulfilment for somebody else's inventory (`deploy/schema-3.sql`). The merchant owns it, sets the price and carries the risk; Garsoore receives, stores, picks, packs, delivers, tracks, handles eligible returns and settles. Here the merchant's name *is* the honest answer to "who am I buying from", so it is shown, with Garsoore credited for the fulfilment.
 
 `RF.catalog.seller(p)` is the single place that decides which label a product carries, and `sellerLabel` / `official` are exported to the server so no page can invent a different answer.
 
-## China facility
-The consolidation and receiving point is **Guangzhou, Guangdong**. It is infrastructure, not a seller: it receives from approved distributors, wholesalers, manufacturers and procurement partners, then receives → scans → matches the PO → verifies the SKU → inspects for obvious damage → photographs when needed → records actual weight and dimensions → assigns a shipment → consolidates → hands cargo to the contracted logistics provider. The customer sees the words **Garsoore China Facility** and nothing about the warehouse company behind it.
+## Consolidation & the forwarder (`deploy/logistics-engine.js`, `deploy/schema-16.sql`)
+Garsoore owns **no China warehouse and no carrier**. The consolidation point is a China→Somalia freight forwarder's
+warehouse in **Guangzhou** (or Yiwu): they give Garsoore a receiving address and a client code, suppliers ship to it,
+the forwarder consolidates and issues **one AWB (air) or Bill of Lading (sea)**, and the batch lands at
+**Aden Adde / MGQ** (air cargo) or the **Port of Mogadishu** (sea).
+
+Garsoore runs the leg the forwarder does not: **import clearance** (customs entry, duty, broker, terminal) and **port
+or airport pickup**, then the last mile to Km4. That is why the commercial terms are **FOB / EXW / port-to-port — never
+DDP**: DDP would put the clearance, and the duty, on the forwarder, which is exactly the work Garsoore does itself.
+
+A consignment is the batch several paid orders ride in. It moves `OPEN → SEALED → HANDED_OVER → IN_TRANSIT →
+ARRIVED_PORT → IN_CLEARANCE → CLEARED → COLLECTED`, and the customer's order state is **derived** from it, never set by
+hand. Tracking arrives by forwarder **webhook** (HMAC-verified at `/webhooks/forwarder/<id>`), by poll, or typed by a
+person — all three land as the same event shape. The forwarder is a swappable adapter (`deploy/logistics.js`): pick one
+for the lane, not six; the day a provider has no API at all, `manual` still runs the whole engine end to end.
 
 ## Shipping: contracted rate cards, never spot quotes (`assets/shipping.js`, `data/rate-cards.json`)
 **The rule: if Garsoore shows a customer a shipping price, Garsoore already knows how that shipment moves and which contracted rate produced the number.** No market averages, no guessing, and no "shipping went up 40%" after the fact.
@@ -342,8 +355,8 @@ only admin reaches `business.<domain>/admin.html`). Business accounts carry a pr
 
 ## FBG — Fulfilment by Garsoore (`assets/fbg.js`, `deploy/schema-3.sql`)
 Import → consolidate → store → sell, with the importer owning the goods the whole way.
-1. The importer enrols and gets a **suite code**; Chinese suppliers ship to the Garsoore China address (`vars.FBG_CHINA_ADDRESS`,
-   `{suite}` is replaced) with that code on every carton.
+1. The importer enrols and gets a **suite code**; Chinese suppliers ship to the **forwarder's China receiving address**
+   (`vars.FBG_CHINA_ADDRESS`, `{suite}` replaced with the importer's code) with that code on every carton.
 2. They declare each expected shipment (supplier, platform, tracking, value, and what to do with it).
 3. Staff (ops console → **FBG**) receive: cartons, weight, cbm, count, photos → receiving fee charged; inspect; flag problems.
 4. Several inbounds are **consolidated** into one air or sea consignment; on shipping, the freight cost is split across

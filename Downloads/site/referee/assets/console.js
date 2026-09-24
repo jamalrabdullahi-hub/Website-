@@ -14,7 +14,7 @@ var call = null, app = null, view = "money";
 var NAV = [
   ["money", "💰", "Money"], ["accounts", "👥", "Accounts"], ["business", "🏢", "Businesses"],
   ["buy", "🛒", "Buying"], ["fbg", "📦", "FBG"], ["agents", "🤝", "Agents"], ["catalogue", "🏷", "Catalogue"],
-  ["shipping", "🛩", "Shipping"], ["treasury", "💱", "Treasury"], ["manifest", "📋", "Manifest"], ["calibration", "🎯", "Calibration"], ["ops", "⚙", "Operations"], ["log", "📜", "Log"]
+  ["shipping", "🛩", "Shipping"], ["manifest", "📋", "Manifest"], ["freight", "🚢", "Freight"], ["calibration", "🎯", "Calibration"], ["ops", "⚙", "Operations"], ["log", "📜", "Log"]
 ];
 var ROLE = { consumer: "Consumer", business: "Business", agent: "Agent", staff: "Staff", admin: "Admin" };
 var STATE = { AWAITING_PAYMENT: "Awaiting payment", PAYMENT_REVIEW: "Payment review", PLACED: "Paid", CONFIRMED: "Confirmed", SOURCING: "Sourcing", IN_TRANSIT: "In transit", ARRIVED: "Arrived", READY: "Ready", COMPLETED: "Completed", CANCELLED: "Cancelled", EXPIRED: "Expired" };
@@ -86,7 +86,7 @@ function render() {
   location.hash = view;
   [].forEach.call(app.querySelectorAll(".cs-side nav a"), function (a) { a.classList.toggle("on", a.dataset.v === view); });
   panel('<div class="cs-boot">⏳</div>');
-  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, treasury: treasury, manifest: manifest, calibration: calibration, ops: ops, log: log }[view] || money_)();
+  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, treasury: treasury, manifest: manifest, freight: freight, calibration: calibration, ops: ops, log: log }[view] || money_)();
 }
 
 /* ---------------------------------------------------------------- treasury
@@ -521,6 +521,91 @@ function catalogue() {
       '<div class="cs-note">The catalogue is harvested from Chinese suppliers (<code>tools/harvest-mic.py</code>) — every price is the supplier’s asking price until a person confirms it. With <code>REQUIRE_VERIFIED=1</code>, unconfirmed items route to a quote instead.</div>' +
       '<h2>FBG stock on sale</h2>' + table([["Item", "1.6fr"], ["Owner", "1fr"], ["Price", ".6fr"], ["Stock", ".5fr"]],
         l.map(function (x) { return ['<b>' + e(x.title) + '</b><br><i class="cs-dim">' + x.id + '</i>', e(x.seller), money(x.price), x.qty]; })));
+  }).catch(fail);
+}
+
+/* ---------------------------------------------------------------- freight
+   The lane: paid China orders → a consignment at the forwarder's China warehouse → one AWB/BL → Mogadishu → import
+   clearance → port pickup. Grouping the lines is the only real decision here; after that it is one button at a time,
+   and the customer's order state follows the batch rather than being set by hand. */
+function freight() {
+  head("Freight", '<span class="cs-note2">China → consolidate → Mogadishu → clear → collect</span>');
+  call("GET", "/ops/consignments").then(function (j) {
+    var S = { OPEN: ["Open", ""], SEALED: ["Sealed", ""], HANDED_OVER: ["Handed over", ""], IN_TRANSIT: ["In transit", ""],
+      ARRIVED_PORT: ["At port", "good"], IN_CLEARANCE: ["Clearing", ""], HELD: ["Held", "bad"],
+      CLEARED: ["Cleared", "good"], COLLECTED: ["Collected", "good"], CLOSED: ["Closed", ""], CANCELLED: ["Cancelled", "bad"] };
+    var fwIds = (j.forwarders && j.forwarders.length ? j.forwarders.map(function (f) { return f.id; }) : (j.providers || []).map(function (p) { return p.id; }));
+    function btn(id, a, label) { return '<button class="chip" data-cn="' + e(id) + '" data-act="' + a + '">' + label + '</button>'; }
+    var live = j.consignments.filter(function (c) { return ["CLOSED", "CANCELLED"].indexOf(c.state) < 0; });
+    panel(
+      '<div class="cs-kpis">' +
+        card("Open lines", j.open.length, "paid, not yet batched") +
+        card("In flight", live.length, "consignments open") +
+        card("At port", j.consignments.filter(function (c) { return c.state === "ARRIVED_PORT" || c.state === "IN_CLEARANCE"; }).length, "awaiting clearance", "good") +
+      '</div>' +
+      '<h2>Open China purchase lines (' + j.open.length + ')</h2>' +
+      (j.open.length ? table([["", ".2fr"], ["PO", "1.1fr"], ["Item", "2fr"], ["Qty", ".4fr"], ["Kg", ".4fr"], ["Customer", "1fr"]],
+        j.open.map(function (p) { return ['<input type="checkbox" data-pos="' + e(p.id) + '">',
+          '<code>' + e(p.id) + '</code>', e(String(p.title || "").slice(0, 40)), p.qty, p.kg != null ? p.kg : "—",
+          e((p.customer && p.customer.name) || "")]; }))
+        : '<div class="cs-note2">Nothing waiting — lines appear here as soon as an order is paid.</div>') +
+      '<div style="display:flex;gap:10px;align-items:end;margin:12px 0;flex-wrap:wrap">' +
+        '<label>Mode <select id="frMode"><option value="air">Air (MGQ)</option><option value="sea">Sea (Mogadishu port)</option></select></label>' +
+        '<label>Forwarder <select id="frFwd">' + fwIds.map(function (f) { return '<option value="' + e(f) + '">' + e(f) + '</option>'; }).join("") + '</select></label>' +
+        '<button class="btn" id="frCreate">Group into a consignment</button></div>' +
+      '<h2>Consignments</h2>' +
+      table([["Consignment", "1.2fr"], ["Mode", ".6fr"], ["Forwarder", ".9fr"], ["State", ".9fr"], ["Doc", ".9fr"], ["Kg", ".5fr"], ["ETA", ".6fr"], ["Actions", "2fr"]],
+        j.consignments.map(function (c) {
+          var st = S[c.state] || [c.state, ""];
+          var actions = [];
+          if (c.state === "OPEN") actions.push(btn(c.id, "seal", "Seal"));
+          if (c.state === "SEALED") actions.push(btn(c.id, "handover", "Hand over"));
+          if (["SEALED", "HANDED_OVER", "IN_TRANSIT", "ARRIVED_PORT"].indexOf(c.state) >= 0) actions.push(btn(c.id, "refresh", "↻ Track"));
+          if (["ARRIVED_PORT", "IN_CLEARANCE"].indexOf(c.state) >= 0) actions.push(btn(c.id, "clearance", "Clearance"));
+          if (c.state === "CLEARED") actions.push(btn(c.id, "collect", "Collected"));
+          return ['<b>' + e(c.id) + '</b><br><i class="cs-dim">' + e(c.receiveCode || "") + '</i>',
+            e(c.mode), e(c.forwarder), '<span class="' + (st[1] === "bad" ? "bad" : st[1] === "good" ? "ok" : "") + '">' + e(st[0]) + '</span>',
+            c.docNo ? e((c.docType || "") + " " + c.docNo) : '<i class="cs-dim">—</i>', c.chargeableKg || "—", c.eta || "—",
+            actions.join(" ") || '<i class="cs-dim">—</i>'];
+        })) +
+      '<div id="frClear"></div>');
+
+    $("frCreate").onclick = function () {
+      var pos = [].map.call($("csBody").querySelectorAll("[data-pos]:checked"), function (x) { return x.dataset.pos; });
+      if (!pos.length) return toast("Select at least one line.");
+      var b = this; b.disabled = true;
+      call("POST", "/ops/consignments", { pos: pos, mode: $("frMode").value, forwarder: $("frFwd").value })
+        .then(function (r) { toast("Consignment " + r.id + (r.cost ? " · est " + money(r.cost.total) : "")); render(); })
+        .catch(function (x) { toast(x.message); b.disabled = false; });
+    };
+    [].forEach.call($("csBody").querySelectorAll("[data-cn]"), function (b) {
+      b.onclick = function () {
+        var id = b.dataset.cn, a = b.dataset.act;
+        if (a === "clearance") return clearanceForm(id);
+        if (a === "handover" && !confirm("Hand " + id + " to the forwarder and issue the carriage document?")) return;
+        b.disabled = true;
+        call("POST", "/ops/consignments/" + id, { action: a })
+          .then(function (r) { toast(a + " → " + (r.state || "ok")); render(); badges(); })
+          .catch(function (x) { toast(x.message); b.disabled = false; });
+      };
+    });
+    function clearanceForm(id) {
+      var box = $("frClear");
+      function inp(i, ph) { return '<label>' + ph + ' <input class="g-in" id="' + i + '" style="width:110px"></label>'; }
+      box.innerHTML = '<h2>Clearance — ' + e(id) + '</h2>' +
+        '<div class="cs-note">Duty is ad valorem on CIF; broker, terminal and documents are a fixed cost. Recording this pays it into the books and releases the orders to the customer.</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">' +
+          inp("clEntry", "Entry no") + inp("clBroker", "Broker") + inp("clDuty", "Duty $") + inp("clTerm", "Terminal $") + inp("clHand", "Handling $") + inp("clOther", "Other $") +
+        '</div><button class="btn" id="clSave">Save</button> <button class="btn g-buy" id="clRelease">Release → orders ready</button>';
+      function save(release) {
+        call("POST", "/ops/consignments/" + id + "/clearance", { entryNo: $("clEntry").value, broker: $("clBroker").value,
+          duty: +$("clDuty").value || 0, terminal: +$("clTerm").value || 0, handling: +$("clHand").value || 0, other: +$("clOther").value || 0, release: release })
+          .then(function (r) { toast(release ? "Released · " + money(r.total) + " booked" : "Saved"); render(); badges(); })
+          .catch(function (x) { toast(x.message); });
+      }
+      $("clSave").onclick = function () { save(false); };
+      $("clRelease").onclick = function () { if (confirm("Release " + id + "? Duty + fees enter the treasury and the orders become ready.")) save(true); };
+    }
   }).catch(fail);
 }
 
