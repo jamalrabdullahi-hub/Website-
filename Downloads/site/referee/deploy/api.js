@@ -300,6 +300,89 @@ async function waafiPurchase(env, { phone, amount, reference, description }) {
   };
 }
 
+/* Compare secrets without leaking their length or prefix through timing. Any string that guards money gets this,
+   even when the realistic attacker is not measuring microseconds. */
+function timingSafeEq(a, b) {
+  const x = new TextEncoder().encode(String(a)), y = new TextEncoder().encode(String(b));
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
+  return diff === 0;
+}
+
+/* ---------------------------------------------------------------- payment SMS
+   EVC Plus sends the merchant a confirmation message for every payment, whether or not anybody has approved an
+   API account. A handset in the office forwarding those messages is therefore a payment feed that needs no
+   gateway, no merchant agreement and nobody's signature — which is the whole point of it.
+
+   It is a bridge, not a destination. A gateway tells us a payment succeeded; an SMS tells us a message arrived
+   that looks like a payment. Everything below is built around that difference. */
+
+/* Operators word these differently and change them without notice, so the parser reads loosely and records what
+   it could not understand rather than guessing. A null here is honest; a wrong number is not. */
+function parsePaymentSms(body) {
+  const s = String(body || "").replace(/ /g, " ");
+  const out = { amount: null, currency: "USD", payer: null, payerName: null, reference: null, receipt: false };
+
+  /* A balance notification also contains a dollar figure. Treating one as a payment would credit an order
+     against money nobody sent, so a message has to actually say something arrived before any amount is read
+     off it. English and Somali wordings both, because the operator uses whichever it feels like. */
+  const RECEIPT = /\b(received|credited|deposit|payment|paid|heshay|lagu\s*shubay|ayaa\s*lagugu\s*shubay|waxaad\s*heshay|la\s*helay)\b/i;
+  const BALANCE_ONLY = /\bbalance\b|\bhadhaagu\b|\bharaagaagu\b/i;
+  out.receipt = RECEIPT.test(s);
+  if (!out.receipt) return out;                 // nothing else is read: no amount, no payer, no reference
+  if (BALANCE_ONLY.test(s) && !RECEIPT.test(s.replace(BALANCE_ONLY, ""))) return out;
+
+  /* $12.50 | USD 12.50 | 12.50 USD. Take the FIRST, because the trailing figure in these messages is the new
+     balance and crediting that would be spectacular. */
+  let m = s.match(/(?:\$|\bUSD\b)\s*([0-9]+(?:[.,][0-9]{1,2})?)/i) || s.match(/([0-9]+(?:[.,][0-9]{1,2})?)\s*(?:\$|\bUSD\b)/i);
+  if (m) out.amount = +String(m[1]).replace(",", ".");
+
+  /* 252615551234, +252 61 555 1234, 0615551234, or a bare 615551234 */
+  m = s.match(/(?:\+?252|00252|\b0)?(6[0-9]{8}|9[0-9]{8}|7[0-9]{8})\b/);
+  if (m) out.payer = "252" + m[1];
+
+  /* the operator's transaction id, however they label it; trailing punctuation is not part of it */
+  const clean = v => String(v).replace(/[^A-Za-z0-9]+$/, "");
+  m = s.match(/\b(?:ref(?:erence)?|txn|transaction(?:\s*id)?|trx|receipt|tid|lambarka\s*macaamilka)\b[^A-Za-z0-9]{0,4}([A-Za-z0-9._-]{4,40})/i);
+  if (m) out.reference = clean(m[1]);
+  else {
+    /* fall back to a long number, but never the payer's own phone wearing a different hat */
+    const digits = (out.payer || "").slice(3);
+    const longs = s.match(/\b[0-9]{8,20}\b/g) || [];
+    const pick = longs.find(n => n !== digits && !("252" + digits).includes(n) && n !== out.payer);
+    if (pick) out.reference = pick;
+  }
+
+  m = s.match(/\bfrom\s+([A-Za-z][A-Za-z .'-]{2,40})/i) || s.match(/\(([A-Za-z][A-Za-z .'-]{2,40})\)/);
+  if (m) out.payerName = m[1].trim();
+
+  return out;
+}
+
+/* Only ever auto-credits when the money and the person both line up.
+   Amount alone is never enough: a catalogue with a $10 median will happily produce two customers owing the same
+   figure within the same minute, and crediting the wrong one is worse than crediting neither. */
+async function matchSms(env, sms) {
+  if (!sms.receipt) return { state: "IGNORED", order: null, why: "not a payment message" };
+  if (!(sms.amount > 0)) return { state: "REVIEW", order: null, why: "no amount" };
+  const cents = Math.round(sms.amount * 100);
+
+  const cand = (await env.DB.prepare(
+    `SELECT o.*, u.phone AS user_phone FROM orders o JOIN users u ON u.id = o.user_id
+     WHERE o.state = 'AWAITING_PAYMENT' AND CAST(ROUND(o.total * 100) AS INTEGER) = ?
+     ORDER BY o.created_at DESC LIMIT 10`).bind(cents).all()).results;
+  if (!cand.length) return { state: "NEW", order: null, why: "no order for that amount" };
+
+  if (sms.payer) {
+    const exact = cand.filter(o => normPhone(o.pay_phone) === sms.payer || normPhone(o.user_phone) === sms.payer);
+    if (exact.length === 1) return { state: "MATCHED", order: exact[0], why: "amount and payer" };
+    if (exact.length > 1) return { state: "REVIEW", order: null, why: "same payer, same amount, more than one order" };
+  }
+  /* right money, wrong or missing number: somebody paid from a relative's phone, which is ordinary here and
+     still needs a person to look at it */
+  return { state: "REVIEW", order: cand.length === 1 ? cand[0] : null, why: sms.payer ? "payer does not match" : "no payer in message" };
+}
+
 /* ---------------------------------------------------------------- shipping manifest
    What a forwarder and a customs broker ask for, per line, per consignment.
 
@@ -707,6 +790,52 @@ export async function handleApi(req, env, url) {
       const row = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
       return json({ user: pubUser(row) }, 200, { "set-cookie": await newSession(env, url, u.id) });
     }
+    /* Ingest. Called by the forwarder app on the handset that holds the Garsoore merchant line.
+       Public by necessity - a phone cannot hold a session - so the shared secret is the ONLY thing standing
+       between a stranger and a free order. It is compared in constant time, the sender id must look like the
+       operator, and every message is deduplicated by hash so a forwarder retrying cannot credit twice. */
+    if (path === "/pay/sms" && M === "POST") {
+      const key = env.SMS_INGEST_KEY;
+      if (!key) return err("SMS ingestion is not enabled.", 503);
+      const given = req.headers.get("x-garsoore-key") || "";
+      if (!timingSafeEq(given, key)) return err("Unauthorised.", 401);
+
+      const b = await body(req);
+      const smsBody = String(b.text || b.body || "").slice(0, 1000);
+      if (smsBody.length < 8) return err("Empty message.");
+      const sender = String(b.from || b.sender || "").slice(0, 40);
+      /* Only the operator sends payment confirmations. Anything else is somebody's cousin or a marketing blast,
+         and letting those through the parser is how a promotional message becomes a paid order. */
+      if (env.SMS_SENDER_ALLOW && !env.SMS_SENDER_ALLOW.split(",").some(a => sender.toLowerCase().includes(a.trim().toLowerCase())))
+        return json({ ok: true, ignored: "sender not allowed" });
+
+      const receivedAt = String(b.receivedAt || b.at || new Date().toISOString()).slice(0, 40);
+      const smsHash = await sha(sender + "|" + smsBody + "|" + receivedAt);
+      const dup = await env.DB.prepare("SELECT id, state, order_id FROM payment_sms WHERE sms_hash = ?").bind(smsHash).first();
+      if (dup) return json({ ok: true, duplicate: true, id: dup.id, state: dup.state });
+
+      const t = now(), id = rid("PS-", 6);
+      const p = parsePaymentSms(smsBody);
+      const sms = { id, amount: p.amount, payer: p.payer, reference: p.reference, receipt: p.receipt };
+      const mr = await matchSms(env, sms);
+
+      const stmts = [env.DB.prepare(`INSERT INTO payment_sms
+        (id,received_at,ingested_at,sender,body,sms_hash,amount,currency,payer,payer_name,reference,state,order_id,matched_at,matched_by)
+        VALUES (?,?,?,?,?,?,?, 'USD', ?,?,?,?,?,?,?)`).bind(
+        id, receivedAt, t, sender, smsBody, smsHash, p.amount, p.payer, p.payerName, p.reference,
+        mr.state, mr.state === "MATCHED" ? mr.order.id : (mr.order ? mr.order.id : null),
+        mr.state === "MATCHED" ? t : null, mr.state === "MATCHED" ? "sms" : null)];
+
+      if (mr.state === "MATCHED") {
+        const o = mr.order;
+        o.pay_txn = p.reference || id;
+        stmts.push(env.DB.prepare("UPDATE orders SET pay_txn = ? WHERE id = ?").bind(o.pay_txn, o.id));
+        stmts.push(...(await placeStmts(env, o, t, "sms")));
+      }
+      await env.DB.batch(stmts);
+      return json({ ok: true, id, state: mr.state, why: mr.why, orderId: mr.order ? mr.order.id : null });
+    }
+
     /* "I forgot my PIN". Deliberately says the same thing whether or not the number has an account: answering
        truthfully would turn this into a way to test which phone numbers are Garsoore customers. Nothing is changed
        here — it only puts the request in front of a human who will ring the number back. */
