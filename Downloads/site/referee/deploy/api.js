@@ -361,26 +361,58 @@ function parsePaymentSms(body) {
 
 /* Only ever auto-credits when the money and the person both line up.
    Amount alone is never enough: a catalogue with a $10 median will happily produce two customers owing the same
-   figure within the same minute, and crediting the wrong one is worse than crediting neither. */
-async function matchSms(env, sms) {
-  if (!sms.receipt) return { state: "IGNORED", order: null, why: "not a payment message" };
-  if (!(sms.amount > 0)) return { state: "REVIEW", order: null, why: "no amount" };
-  const cents = Math.round(sms.amount * 100);
+   figure within the same minute, and crediting the wrong one is worse than crediting neither.
 
-  const cand = (await env.DB.prepare(
+   A basket is one wallet transaction but several orders. The customer taps once and pays $34; the database holds
+   $7, $13 and $14. Matching only on a single order's total therefore misses every multi-item purchase, which is
+   the normal case rather than an edge — so baskets are matched on their summed total and credited together. */
+async function matchSms(env, sms) {
+  if (!sms.receipt) return { state: "IGNORED", orders: [], why: "not a payment message" };
+  if (!(sms.amount > 0)) return { state: "REVIEW", orders: [], why: "no amount" };
+  const cents = Math.round(sms.amount * 100);
+  const phoneOf = o => [normPhone(o.pay_phone), normPhone(o.user_phone)].filter(Boolean);
+
+  /* a whole basket, summed, still entirely unpaid */
+  const baskets = (await env.DB.prepare(
+    `SELECT o.basket, SUM(o.total) AS sum_total, COUNT(*) AS n,
+            MAX(o.pay_phone) AS pay_phone, MAX(u.phone) AS user_phone
+       FROM orders o JOIN users u ON u.id = o.user_id
+      WHERE o.basket IS NOT NULL AND o.state = 'AWAITING_PAYMENT'
+      GROUP BY o.basket
+     HAVING CAST(ROUND(SUM(o.total) * 100) AS INTEGER) = ?
+      LIMIT 10`).bind(cents).all()).results;
+
+  /* or a single order bought on its own */
+  const singles = (await env.DB.prepare(
     `SELECT o.*, u.phone AS user_phone FROM orders o JOIN users u ON u.id = o.user_id
-     WHERE o.state = 'AWAITING_PAYMENT' AND CAST(ROUND(o.total * 100) AS INTEGER) = ?
-     ORDER BY o.created_at DESC LIMIT 10`).bind(cents).all()).results;
-  if (!cand.length) return { state: "NEW", order: null, why: "no order for that amount" };
+      WHERE o.state = 'AWAITING_PAYMENT' AND o.basket IS NULL
+        AND CAST(ROUND(o.total * 100) AS INTEGER) = ?
+      ORDER BY o.created_at DESC LIMIT 10`).bind(cents).all()).results;
+
+  const cand = [
+    ...baskets.map(b => ({ kind: "basket", key: b.basket, phones: phoneOf(b) })),
+    ...singles.map(o => ({ kind: "order", key: o.id, phones: phoneOf(o) }))
+  ];
+  if (!cand.length) return { state: "NEW", orders: [], why: "no order or basket for that amount" };
+
+  const load = async c => (await env.DB.prepare(
+    c.kind === "basket"
+      ? "SELECT * FROM orders WHERE basket = ? AND state = 'AWAITING_PAYMENT'"
+      : "SELECT * FROM orders WHERE id = ? AND state = 'AWAITING_PAYMENT'").bind(c.key).all()).results;
 
   if (sms.payer) {
-    const exact = cand.filter(o => normPhone(o.pay_phone) === sms.payer || normPhone(o.user_phone) === sms.payer);
-    if (exact.length === 1) return { state: "MATCHED", order: exact[0], why: "amount and payer" };
-    if (exact.length > 1) return { state: "REVIEW", order: null, why: "same payer, same amount, more than one order" };
+    const exact = cand.filter(c => c.phones.includes(sms.payer));
+    if (exact.length === 1) return { state: "MATCHED", orders: await load(exact[0]), why: "amount and payer", ref: exact[0].key };
+    if (exact.length > 1) return { state: "REVIEW", orders: [], why: "same payer, same amount, more than one purchase" };
   }
   /* right money, wrong or missing number: somebody paid from a relative's phone, which is ordinary here and
      still needs a person to look at it */
-  return { state: "REVIEW", order: cand.length === 1 ? cand[0] : null, why: sms.payer ? "payer does not match" : "no payer in message" };
+  return {
+    state: "REVIEW",
+    orders: cand.length === 1 ? await load(cand[0]) : [],
+    why: sms.payer ? "payer does not match" : "no payer in message",
+    ref: cand.length === 1 ? cand[0].key : null
+  };
 }
 
 /* ---------------------------------------------------------------- shipping manifest
@@ -822,21 +854,24 @@ export async function handleApi(req, env, url) {
       const sms = { id, amount: p.amount, payer: p.payer, reference: p.reference, receipt: p.receipt };
       const mr = await matchSms(env, sms);
 
+      const ref = mr.ref || (mr.orders[0] && mr.orders[0].id) || null;
       const stmts = [env.DB.prepare(`INSERT INTO payment_sms
         (id,received_at,ingested_at,sender,body,sms_hash,amount,currency,payer,payer_name,reference,state,order_id,matched_at,matched_by)
         VALUES (?,?,?,?,?,?,?, 'USD', ?,?,?,?,?,?,?)`).bind(
         id, receivedAt, t, sender, smsBody, smsHash, p.amount, p.payer, p.payerName, p.reference,
-        mr.state, mr.state === "MATCHED" ? mr.order.id : (mr.order ? mr.order.id : null),
-        mr.state === "MATCHED" ? t : null, mr.state === "MATCHED" ? "sms" : null)];
+        mr.state, ref, mr.state === "MATCHED" ? t : null, mr.state === "MATCHED" ? "sms" : null)];
 
       if (mr.state === "MATCHED") {
-        const o = mr.order;
-        o.pay_txn = p.reference || id;
-        stmts.push(env.DB.prepare("UPDATE orders SET pay_txn = ? WHERE id = ?").bind(o.pay_txn, o.id));
-        stmts.push(...(await placeStmts(env, o, t, "sms")));
+        /* one wallet debit, every order in the basket: the customer paid once and should not be chased for
+           the other two lines of their own purchase */
+        for (const o of mr.orders) {
+          o.pay_txn = p.reference || id;
+          stmts.push(env.DB.prepare("UPDATE orders SET pay_txn = ? WHERE id = ?").bind(o.pay_txn, o.id));
+          stmts.push(...(await placeStmts(env, o, t, "sms")));
+        }
       }
       await env.DB.batch(stmts);
-      return json({ ok: true, id, state: mr.state, why: mr.why, orderId: mr.order ? mr.order.id : null });
+      return json({ ok: true, id, state: mr.state, why: mr.why, ref, orders: mr.orders.map(o => o.id) });
     }
 
     /* "I forgot my PIN". Deliberately says the same thing whether or not the number has an account: answering
