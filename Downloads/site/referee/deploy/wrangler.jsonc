@@ -16,7 +16,9 @@
   ],
   "vars": {
     // Garsoore merchant numbers shown at payment. Leave "" until the merchant accounts exist (the site then says so).
-    "MERCHANT_EVC": "",
+    // EVC is the account money is sent to; MERCHANT_NAME is the name the customer sees, so it is the parent company.
+    "MERCHANT_EVC": "635465",
+    "MERCHANT_NAME": "FTL-IT",
     "MERCHANT_ZAAD": "",
     "MERCHANT_SAHAL": "",
     "MERCHANT_PREMIER": "",

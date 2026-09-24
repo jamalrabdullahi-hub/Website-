@@ -360,9 +360,10 @@ function checkout(items, fromCart) {
    the only way money arrives, so it is a first-class flow, not a fallback. */
 function payStep(r) {
   var box = $("modalBox");
+  var MN = (RF.api.config && RF.api.config.merchantName) || "FTL-IT";
   box.innerHTML = '<div class="g-co"><h2>Hal tallaabo oo kale</h2><div class="g-sku">Dalabka ' + e(r.reference) + ' waa la kaydiyay · waxaa loo hayaa ' + r.expiresHours + ' saac</div>' +
     '<div class="g-paybox"><div class="g-lbl" style="margin:0">U dir ' + e(r.pay) + '</div><b class="g-amt">' + money(r.amount) + '</b>' +
-      (r.merchant ? '<div>Lambarka ganacsiga Garsoore: <b class="g-mno">' + e(r.merchant) + '</b></div>' : '<div class="g-err sm">⚠ (Dev) Lambarka ganacsiga ' + e(r.pay) + ' weli lama dejin — ha dirin lacag dhab ah. Ku qor lambar tijaabo ah si aad u tijaabiso.</div>') +
+      (r.merchant ? '<div>Waxaad lacag u diraysaa <b>' + e(MN) + '</b> (' + e(r.pay) + ')</div><div>Lambarka: <b class="g-mno">' + e(r.merchant) + '</b></div>' : '<div class="g-err sm">⚠ Lambarka ganacsiga ' + e(r.pay) + ' weli lama dejin — ha dirin lacag dhab ah.</div>') +
       '<div class="g-eta">Tixraac: ' + e(r.reference) + '</div></div>' +
     '<ol class="g-steps v"><li>Fur ' + e(r.pay) + ' taleefankaaga oo u dir <b>' + money(r.amount) + '</b>' + (r.merchant ? ' lambarka <b>' + e(r.merchant) + '</b>' : "") + '.</li><li>Fariinta xaqiijinta ka koobbi <b>lambarka macaamilka</b> (transaction ID).</li><li>Halkan ku dheji — waan hubinaynaa, badanaa 30 daqiiqo gudahood.</li></ol>' +
     '<input class="g-in" id="payTxn" placeholder="Lambarka macaamilka, tusaale 5238XXXX">' +

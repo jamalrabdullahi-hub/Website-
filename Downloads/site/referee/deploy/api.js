@@ -848,7 +848,7 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
-    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING, plans: PLANS,
+    if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", merchantName: env.MERCHANT_NAME || "", agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING, plans: PLANS,
       /* the lanes a customer may choose, and nothing about who flies or sails them */
       shipping: { lanes: RATES.cards.filter(c => c.status !== "expired").map(c => ({ mode: c.mode, transitMin: c.transitMinDays, transitMax: c.transitMaxDays })),
         facility: "Garsoore · Guangzhou (consolidation)" }, econ: { deliveryFee: ECON.deliveryFee, freeDeliveryOver: ECON.freeDeliveryOver, refReward: ECON.refReward, unpaidHours: ECON.unpaidHours }, merchants: merchants(env), flows: FLOW });
