@@ -13,7 +13,7 @@ var call = null, app = null, view = "money";
 
 var NAV = [
   ["money", "💰", "Money"], ["accounts", "👥", "Accounts"], ["business", "🏢", "Businesses"],
-  ["buy", "🛒", "Buying"], ["fbg", "📦", "FBG"], ["agents", "🤝", "Agents"], ["catalogue", "🏷", "Catalogue"],
+  ["buy", "🛒", "Buying"], ["fbg", "📦", "FBG"], ["agents", "🤝", "Agents"], ["reps", "🧑‍💼", "Reps"], ["catalogue", "🏷", "Catalogue"],
   ["shipping", "🛩", "Shipping"], ["manifest", "📋", "Manifest"], ["freight", "🚢", "Freight"], ["calibration", "🎯", "Calibration"], ["ops", "⚙", "Operations"], ["log", "📜", "Log"]
 ];
 var ROLE = { consumer: "Consumer", business: "Business", agent: "Agent", staff: "Staff", admin: "Admin" };
@@ -86,7 +86,7 @@ function render() {
   location.hash = view;
   [].forEach.call(app.querySelectorAll(".cs-side nav a"), function (a) { a.classList.toggle("on", a.dataset.v === view); });
   panel('<div class="cs-boot">⏳</div>');
-  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, catalogue: catalogue, shipping: shipping, treasury: treasury, manifest: manifest, freight: freight, calibration: calibration, ops: ops, log: log }[view] || money_)();
+  ({ money: money_, accounts: accounts, business: business, buy: buy, fbg: fbg, agents: agents, reps: reps, catalogue: catalogue, shipping: shipping, treasury: treasury, manifest: manifest, freight: freight, calibration: calibration, ops: ops, log: log }[view] || money_)();
 }
 
 /* ---------------------------------------------------------------- treasury
@@ -606,6 +606,54 @@ function freight() {
       $("clSave").onclick = function () { save(false); };
       $("clRelease").onclick = function () { if (confirm("Release " + id + "? Duty + fees enter the treasury and the orders become ready.")) save(true); };
     }
+  }).catch(fail);
+}
+
+/* ---------------------------------------------------------------- reps — the purchaser-agent service
+   Sales agents own a book of clients; China agents work the sourcing desk. Both are paid out of the goods
+   commission. This is where ops approves them, and where the client book can be reassigned — a client with no agent
+   is a sale nobody is paid for. */
+function reps() {
+  head("Reps", '<span class="cs-note2">Sales agents · China agents · commission</span>');
+  Promise.all([call("GET", "/ops/reps"), call("GET", "/ops/clients"), call("GET", "/ops/commission")]).then(function (a) {
+    var R = a[0].reps, C = a[1].clients, K = a[2], KIND = { sales: "Sales", china: "China" };
+    var pend = R.filter(function (r) { return r.status === "pending"; });
+    var earned = K.ledger.filter(function (x) { return x.kind === "commission"; }).reduce(function (s, x) { return s + x.amount; }, 0);
+    var salesReps = R.filter(function (r) { return r.kind === "sales" && r.status === "approved"; });
+    panel('<div class="cs-kpis">' +
+        card("Sales agents", R.filter(function (r) { return r.kind === "sales"; }).length, salesReps.length + " approved") +
+        card("China agents", R.filter(function (r) { return r.kind === "china"; }).length, R.filter(function (r) { return r.kind === "china" && r.status === "approved"; }).length + " approved") +
+        card("Pending", pend.length, "awaiting approval", pend.length ? "bad" : "") +
+        card("Commission", money(earned), "earned by reps") +
+      '</div>' +
+      '<h2>Reps' + (pend.length ? ' — ' + pend.length + ' waiting' : '') + '</h2>' +
+      table([["Rep", "1.3fr"], ["Kind", ".6fr"], ["City", ".7fr"], ["Status", ".7fr"], ["Clients/Jobs", ".8fr"], ["Earned", ".7fr"], ["Action", "1.7fr"]],
+        R.map(function (r) {
+          return ['<b>' + e(r.name) + '</b><br><i class="cs-dim">' + e(r.phone) + ' · ' + r.id + '</i>', KIND[r.kind] || r.kind, e(r.city || "—"),
+            r.status === "approved" ? '<span class="cs-ok">approved</span>' : r.status === "pending" ? '<span class="cs-warn">pending</span>' : '<span class="cs-bad">' + e(r.status) + '</span>',
+            r.kind === "sales" ? r.clients + ' clients' : r.jobs + ' jobs', money(r.earned),
+            (r.status !== "approved" ? '<button class="btn sm" data-rap="' + r.id + '">approve</button>' : '<button class="btn ghost sm" data-rac="' + r.id + '">pause</button>') +
+            '<button class="btn ghost sm" data-rex="' + r.id + '">share</button>'];
+        })) +
+      '<h2>Client book</h2>' +
+      table([["Client", "1.4fr"], ["Phone", ".9fr"], ["Plan", ".7fr"], ["Agent", "1.1fr"], ["Reqs", ".4fr"], ["Comm", ".6fr"]],
+        C.slice(0, 60).map(function (c) {
+          return ['<b>' + e(c.name) + '</b>' + (c.kind ? ' <i class="cs-dim">' + e(c.kind) + '</i>' : ''), e(c.phone),
+            c.subscriber ? '<span class="cs-ok">subscriber</span>' : '<span class="cs-dim">deposit</span>',
+            '<select class="cs-in sm" data-cl="' + c.id + '"><option value="">— none —</option>' +
+              salesReps.map(function (r) { return '<option value="' + r.userId + '"' + (r.userId === c.agentId ? " selected" : "") + '>' + e(r.name) + '</option>'; }).join("") + '</select>',
+            c.requests, money(c.commission)];
+        })) +
+      '<h2>Commission ledger</h2>' +
+      table([["When", ".8fr"], ["Rep", "1fr"], ["Amount", ".6fr"], ["Ref", ".8fr"], ["Note", "1.4fr"]],
+        K.ledger.slice(0, 50).map(function (x) { return [when(x.at), e(x.name), money(x.amount), e(x.ref || ""), e(x.note || "")]; })));
+
+    act("[data-rap]", function (b) { return call("POST", "/ops/reps/" + b.dataset.rap, { status: "approved" }); });
+    act("[data-rac]", function (b) { return call("POST", "/ops/reps/" + b.dataset.rac, { status: "paused" }); });
+    act("[data-rex]", function (b) { var v = prompt("Share of goods commission (%):", "0"); if (v === null) return null; return call("POST", "/ops/reps/" + b.dataset.rex, { sharePct: +v }); });
+    [].forEach.call($("csBody").querySelectorAll("[data-cl]"), function (sel) {
+      sel.onchange = function () { sel.disabled = true; call("POST", "/ops/clients/" + sel.dataset.cl, { agent: sel.value }).then(function () { toast("✓"); render(); }).catch(function (x) { sel.disabled = false; toast(x.message); }); };
+    });
   }).catch(fail);
 }
 

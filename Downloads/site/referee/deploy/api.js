@@ -75,8 +75,30 @@ export const SOURCING = {
   cancelDecayPctPerDay: 5,   // % of the deposit kept per day elapsed once sourcing started
   cancelDecayCapPct: 100,    // ...never more than the deposit itself
   minDeposit: 20,            // below this the paperwork costs more than the deposit protects
-  quoteValidDays: 7
+  quoteValidDays: 7,
+  /* nothing below is a deposit rule — it is who gets paid for the sourcing itself. See docs/AGENT-SERVICE.md. */
+  commission: { tiers: [{ from: 0, rate: 5 }, { from: 5000, rate: 3 }], salesPct: 50, chinaPct: 25, minGoods: 500 }
 };
+/* ---- purchaser-agent commission. On the GOODS value only, never the shipping: a trader who overpays freight should
+   not also pay a bigger agency fee for it. The rate steps down with size (5% small, 3% large) because finding and
+   vetting a supplier is a fixed job that a big order does not make bigger. Of what is collected, the sales agent who
+   owns the client keeps half, the China agent who actually sourced takes a cut, and Garsoore keeps the remainder. */
+export const COMM = SOURCING.commission;
+export function goodsCommission(goods) {
+  const g = Math.max(0, +goods || 0);
+  let rate = COMM.tiers[0].rate;
+  for (const t of COMM.tiers) { if (g >= t.from) rate = t.rate; }
+  return { goods: g, rate, commission: Math.round(g * rate) / 100 };
+}
+/* Divide one commission. Each share is rounded to the cent and the platform takes the remainder, so the three parts
+   always sum to the commission exactly — a split that does not add up is a books-that-disagree bug, not a rounding
+   footnote. */
+export function splitCommission(commission) {
+  const c = Math.round((+commission || 0) * 100) / 100;
+  const sales = Math.round(c * COMM.salesPct) / 100;
+  const china = Math.round(c * COMM.chinaPct) / 100;
+  return { commission: c, sales, china, platform: Math.round((c - sales - china) * 100) / 100 };
+}
 /* What Garsoore keeps if the trader cancels. Day 0 costs them nothing: changing your mind the same hour is not the
    behaviour this is here to discourage. After that it is 5% a day, capped at the whole deposit. */
 function forfeitOf(sr, at) {
@@ -107,6 +129,8 @@ const ROLES = {
   consumer: "Macmiil",
   business: "Ganacsi",
   agent: "Wakiil",
+  sales: "Wakiil Iib (sales agent)",
+  china: "Wakiil Shiinaha (China agent)",
   staff: "Shaqaale Garsoore",
   admin: "Maamule"
 };
@@ -201,6 +225,40 @@ async function expireUnpaid(env) {
 }
 
 async function body(req) { try { return await req.json(); } catch { return {}; } }
+
+/* Assign a client to a sales agent: the one they picked if it is a real approved rep, otherwise the approved sales
+   rep carrying the fewest clients. A client with no agent is a sale nobody is paid for, so this never returns null
+   while any approved rep exists. */
+async function assignAgentTo(env, wanted) {
+  if (wanted) {
+    const r = await env.DB.prepare("SELECT user_id FROM agent_reps WHERE user_id = ? AND kind = 'sales' AND status = 'approved'").bind(String(wanted)).first();
+    if (r) return r.user_id;
+  }
+  const r = await env.DB.prepare(`SELECT ar.user_id FROM agent_reps ar WHERE ar.kind = 'sales' AND ar.status = 'approved'
+    ORDER BY (SELECT COUNT(*) FROM users c WHERE c.client_agent = ar.user_id) ASC LIMIT 1`).first();
+  return r ? r.user_id : null;
+}
+
+/* Commission is earned the moment a sourcing request becomes a real order. It is computed on the goods the agent
+   actually sourced (the quote), never the shipping, and split across the sales agent who owns the client, the China
+   agent who sourced it, and Garsoore. Returns statements so it rides in the SAME batch as the state change — a
+   commission that lands without the order, or an order that lands without the commission, is a books bug. */
+async function commissionStmts(env, sr, goods, t) {
+  const g = goodsCommission(goods), split = splitCommission(g.commission);
+  const stmts = [env.DB.prepare("UPDATE sourcing SET commission_goods = ?, commission_split = ?, updated_at = ? WHERE id = ?")
+    .bind(g.goods, JSON.stringify(split), t, sr.id)];
+  for (const pair of [["sales_agent_id", split.sales], ["china_agent_id", split.china]]) {
+    const uid = sr[pair[0]], amount = pair[1];
+    if (!uid || !(amount > 0)) continue;
+    const rep = await env.DB.prepare("SELECT id, kind FROM agent_reps WHERE user_id = ?").bind(uid).first();
+    if (!rep) continue;
+    stmts.push(env.DB.prepare("INSERT INTO agent_ledger (id,rep_id,user_id,at,kind,amount,ref,note) VALUES (?,?,?,?, 'commission', ?,?,?)")
+      .bind(rid("AL-", 6), rep.id, uid, t, amount, sr.id, rep.kind + " · " + g.rate + "%"));
+    stmts.push(notify(env, uid, "money", "Komishan $" + amount + " ayaa la helay",
+      "Codsiga " + sr.id + " waa la dalbaday — waxaad kasbatay $" + amount + ".", "agent.html"));
+  }
+  return stmts;
+}
 
 /* A notification is a fact the person would otherwise have to discover by refreshing. Returns a statement so it can
    ride along in the same batch as the change that caused it — no notification without the event, and none lost. */
@@ -808,10 +866,23 @@ export async function handleApi(req, env, url) {
       if (b.ref) { const r = await env.DB.prepare("SELECT id FROM users WHERE ref_code = ?").bind(String(b.ref).toUpperCase().trim()).first(); ref = r && r.id; }
       const staffList = String(env.STAFF_PHONES || "").split(",").map(normPhone).filter(Boolean);
       const adminList = String(env.ADMIN_PHONES || "").split(",").map(normPhone).filter(Boolean);
-      const role = adminList.includes(phone) ? "admin" : staffList.includes(phone) ? "staff" : "consumer";
+      /* a rep signs up as a rep; anyone else is a client. A phone on the staff/admin list always wins, so nobody can
+         self-promote past the ops desk by picking a role on the form. */
+      const wantRep = (b.role === "sales" || b.role === "china") ? b.role : null;
+      const role = adminList.includes(phone) ? "admin" : staffList.includes(phone) ? "staff" : (wantRep || "consumer");
       const u = { id: rid("U-"), phone, name, role, ref: rid("", 6) };
       await env.DB.prepare("INSERT INTO users (id, phone, name, pin_hash, role, ref_code, referred_by, credit, created_at) VALUES (?,?,?,?,?,?,?,0,?)")
         .bind(u.id, phone, name, await pinHash(String(b.pin)), u.role, u.ref, ref, now()).run();
+      const created = now();
+      if (wantRep && (role === "sales" || role === "china")) {
+        /* a rep account is only useful once ops approve it; until then it sits pending */
+        await env.DB.prepare("INSERT INTO agent_reps (id,user_id,kind,city,status,created_at,updated_at) VALUES (?,?,?,?,'pending',?,?)")
+          .bind(rid("AR-", 6), u.id, wantRep, wantRep === "china" ? "Guangzhou" : String(b.city || "").slice(0, 40), created, created).run();
+      } else {
+        /* a client: assign the sales agent they chose, or the approved one with the fewest clients */
+        const agentId = await assignAgentTo(env, b.agent);
+        if (agentId) await env.DB.prepare("UPDATE users SET client_agent = ?, cust_kind = ? WHERE id = ?").bind(agentId, b.legacy ? "legacy" : "new", u.id).run();
+      }
       const row = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
       return json({ user: pubUser(row) }, 200, { "set-cookie": await newSession(env, url, u.id) });
     }
@@ -945,6 +1016,16 @@ export async function handleApi(req, env, url) {
         price: x.price, qty: x.qty_available, seller: x.seller })) });
     }
 
+    /* public: the approved sales / China agent roster — so a client can pick an agent, and the storefront can show them */
+    if (path === "/reps" && M === "GET") {
+      const kind = url.searchParams.get("kind") === "china" ? "china" : "sales";
+      const r = await env.DB.prepare(`SELECT ar.id, ar.user_id, ar.kind, ar.city, u.name,
+          (SELECT COUNT(*) FROM users c WHERE c.client_agent = ar.user_id) clients
+        FROM agent_reps ar JOIN users u ON u.id = ar.user_id
+        WHERE ar.kind = ? AND ar.status = 'approved' ORDER BY clients ASC, u.name ASC LIMIT 100`).bind(kind).all();
+      return json({ reps: r.results.map(x => ({ id: x.id, userId: x.user_id, kind: x.kind, name: x.name, city: x.city || "", clients: x.clients })) });
+    }
+
     if (!user) return err("Fadlan gal (login).", 401);
     if (user.status === "suspended") return err("Akoonkan waa la hakiyay.", 403);
 
@@ -1073,7 +1154,15 @@ export async function handleApi(req, env, url) {
     /* ---------------------------------------------------------------- managed sourcing (customer) */
     if (path === "/sourcing" && M === "GET") {
       const r = await env.DB.prepare("SELECT * FROM sourcing WHERE user_id = ? ORDER BY created_at DESC LIMIT 100").bind(user.id).all();
-      return json({ requests: r.results.map(x => srcOut(x)), sub: { active: subActive(user), until: user.sub_until || null }, terms: SOURCING });
+      /* who owns this client. The name and number are the honest answer to "who am I talking to" — shown to the
+         client only, never to anyone else. */
+      let agent = null;
+      if (user.client_agent) {
+        const a = await env.DB.prepare("SELECT name, phone FROM users WHERE id = ?").bind(user.client_agent).first();
+        if (a) agent = { name: a.name, phone: "+" + a.phone };
+      }
+      return json({ requests: r.results.map(x => srcOut(x)), sub: { active: subActive(user), until: user.sub_until || null },
+        agent, commission: COMM, terms: SOURCING });
     }
     if (path === "/sourcing" && M === "POST") {
       const b = await body(req), t = now();
@@ -1084,17 +1173,28 @@ export async function handleApi(req, env, url) {
       const goods = Math.round((+b.goodsEst || 0) * 100) / 100;
       if (!(goods > 0)) return err("Ku qor qiyaasta qiimaha alaabta (lacagta rarka ha ku darin).");
       const waived = subActive(user, t);
+      /* The gate the whole service turns on: a subscriber can send anything; a non-subscriber must clear the goods
+         minimum, because below it the agent's investigation costs Garsoore more than the trade is worth. */
+      if (!waived && goods < COMM.minGoods)
+        return err("Waxa ugu yaraan $" + COMM.minGoods + " oo alaab ah (rarka lama tirinayo) — ama qaado rukniiga $" + SOURCING.subscriptionUsd + "/bishii.", 402);
       /* the deposit is a share of the GOODS only — shipping is quoted later and never sits in the deposit base */
       const due = waived ? 0 : Math.max(SOURCING.minDeposit, Math.round(goods * SOURCING.depositPct) / 100);
+      /* assign the sales agent who owns this request: the client's existing agent, else the one they chose, else the
+         approved rep with the fewest clients. A request nobody owns is a commission nobody is paid. */
+      let salesAgent = user.client_agent || null;
+      if (!salesAgent) { salesAgent = await assignAgentTo(env, b.agent); if (salesAgent) await env.DB.prepare("UPDATE users SET client_agent = ? WHERE id = ?").bind(salesAgent, user.id).run(); }
+      const split = splitCommission(goodsCommission(goods).commission);
       const id = rid("SR-", 6);
-      await env.DB.prepare(`INSERT INTO sourcing (id,user_id,created_at,updated_at,state,title,url,platform,qty,unit,target_unit,goods_est,city,notes,deposit_due,waived,history)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+      await env.DB.prepare(`INSERT INTO sourcing
+        (id,user_id,created_at,updated_at,state,title,url,platform,qty,unit,target_unit,goods_est,city,notes,deposit_due,waived,history,sales_agent_id,customer_kind,commission_goods,commission_split)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
         id, user.id, t, t, waived ? "SOURCING" : "AWAITING_DEPOSIT", title,
         /^https?:\/\//.test(b.url || "") ? String(b.url).slice(0, 500) : null, String(b.platform || "").slice(0, 20) || null,
         qty, String(b.unit || "xabbo").slice(0, 20), +b.targetUnit || null, goods,
         String(b.city || "Muqdisho").slice(0, 60), String(b.notes || "").slice(0, 800) || null,
-        due, waived ? 1 : 0, JSON.stringify([{ state: waived ? "SOURCING" : "AWAITING_DEPOSIT", at: t }])).run();
-      return json({ id, depositDue: due, waived, terms: SOURCING });
+        due, waived ? 1 : 0, JSON.stringify([{ state: waived ? "SOURCING" : "AWAITING_DEPOSIT", at: t }]),
+        salesAgent || null, user.cust_kind || "new", goods, JSON.stringify(split)).run();
+      return json({ id, depositDue: due, waived, agent: salesAgent, commission: split, terms: SOURCING });
     }
     if ((m = path.match(/^\/sourcing\/(SR-[A-Z0-9]+)\/(deposit|cancel|accept)$/)) && M === "POST") {
       const sr = await env.DB.prepare("SELECT * FROM sourcing WHERE id = ? AND user_id = ?").bind(m[1], user.id).first();
@@ -1952,6 +2052,77 @@ export async function handleApi(req, env, url) {
         FROM agents a WHERE a.status = 'approved' ORDER BY done DESC LIMIT 100`).all();
       return json({ agents: r.results.map(x => ({ id: x.id, name: x.name, cats: J(x.cats) || [], cities: J(x.cities) || [], capacity: x.capacity, live: x.live, done: x.done, since: x.created_at })) });
     }
+    /* ---- a rep's own desk: profile, status, what they have earned */
+    if (path === "/rep/me" && M === "GET") {
+      const me = await env.DB.prepare("SELECT * FROM agent_reps WHERE user_id = ?").bind(user.id).first();
+      if (!me) return json({ rep: null });
+      const bal = await env.DB.prepare("SELECT COALESCE(SUM(amount),0) b FROM agent_ledger WHERE rep_id = ?").bind(me.id).first();
+      const clients = me.kind === "sales" ? (await env.DB.prepare("SELECT COUNT(*) n FROM users WHERE client_agent = ?").bind(user.id).first()).n : 0;
+      const open = me.kind === "china" ? (await env.DB.prepare("SELECT COUNT(*) n FROM sourcing WHERE china_agent_id = ? AND state NOT IN ('DELIVERED','CANCELLED','UNSOURCEABLE','DECLINED')").bind(user.id).first()).n : 0;
+      return json({ rep: { id: me.id, kind: me.kind, city: me.city, status: me.status, sharePct: me.share_pct, capacity: me.capacity }, balance: bal.b, clients, open });
+    }
+    /* an existing account applies to become a sales or China agent; ops approves before it counts */
+    if (path === "/rep/apply" && M === "POST") {
+      const b = await body(req), kind = b.kind === "china" ? "china" : "sales";
+      const ex = await env.DB.prepare("SELECT id FROM agent_reps WHERE user_id = ?").bind(user.id).first();
+      if (ex) return json({ ok: true, id: ex.id, status: "exists" });
+      const id = rid("AR-", 6), t = now();
+      await env.DB.prepare("INSERT INTO agent_reps (id,user_id,kind,city,status,created_at,updated_at) VALUES (?,?,?,?,'pending',?,?)")
+        .bind(id, user.id, kind, kind === "china" ? "Guangzhou" : String(b.city || "").slice(0, 40), t, t).run();
+      await env.DB.prepare("UPDATE users SET role = ? WHERE id = ? AND role = 'consumer'").bind(kind, user.id).run();
+      return json({ ok: true, id, status: "pending" });
+    }
+    /* ---- a sales agent's book: the clients they own, and where each one stands */
+    if (path === "/rep/clients" && M === "GET") {
+      const me = await env.DB.prepare("SELECT * FROM agent_reps WHERE user_id = ? AND kind = 'sales'").bind(user.id).first();
+      if (!me) return err("Ma tihid wakiil iib.", 403);
+      const clients = (await env.DB.prepare(`SELECT u.id, u.name, u.phone, u.cust_kind, u.sub_until,
+          (SELECT COUNT(*) FROM sourcing s WHERE s.user_id = u.id) reqs,
+          (SELECT COUNT(*) FROM sourcing s WHERE s.user_id = u.id AND s.state NOT IN ('DELIVERED','CANCELLED','UNSOURCEABLE','DECLINED')) live,
+          (SELECT COALESCE(SUM(al.amount),0) FROM agent_ledger al WHERE al.user_id = ? AND al.ref IN (SELECT id FROM sourcing s2 WHERE s2.user_id = u.id)) earned
+        FROM users u WHERE u.client_agent = ? ORDER BY u.created_at DESC LIMIT 300`).bind(user.id, user.id).all()).results;
+      const bal = await env.DB.prepare("SELECT COALESCE(SUM(amount),0) b FROM agent_ledger WHERE user_id = ?").bind(user.id).first();
+      return json({ rep: { id: me.id, status: me.status, sharePct: me.share_pct },
+        clients: clients.map(c => ({ id: c.id, name: c.name, phone: "+" + c.phone, kind: c.cust_kind || "new",
+          subscriber: !!(c.sub_until && Date.parse(c.sub_until) > Date.now()), requests: c.reqs, live: c.live, earned: c.earned })),
+        commission: COMM, balance: bal.b });
+    }
+    /* ---- the China desk: requests to source. A china agent sees the unclaimed queue plus their own. */
+    if (path === "/rep/work" && M === "GET") {
+      const me = await env.DB.prepare("SELECT * FROM agent_reps WHERE user_id = ? AND kind = 'china'").bind(user.id).first();
+      if (!me) return err("Ma tihid wakiil Shiinaha.", 403);
+      const r = (await env.DB.prepare(`SELECT id, state, title, url, platform, qty, unit, goods_est, city, notes, quote_total, china_agent_id, created_at
+        FROM sourcing WHERE state IN ('SOURCING','QUOTED','ACCEPTED','ORDERED') AND (china_agent_id IS NULL OR china_agent_id = ?)
+        ORDER BY china_agent_id IS NOT NULL, created_at ASC LIMIT 200`).bind(user.id).all()).results;
+      return json({ work: r.map(x => ({ id: x.id, state: x.state, title: x.title, url: x.url, platform: x.platform, qty: x.qty, unit: x.unit,
+        goodsEst: x.goods_est, city: x.city, notes: x.notes, quoteTotal: x.quote_total, mine: x.china_agent_id === user.id, at: x.created_at })), commission: COMM });
+    }
+    if ((m = path.match(/^\/rep\/work\/(SR-[A-Z0-9]+)\/(claim|quote)$/)) && M === "POST") {
+      const me = await env.DB.prepare("SELECT * FROM agent_reps WHERE user_id = ? AND kind = 'china' AND status = 'approved'").bind(user.id).first();
+      if (!me) return err("Ma tihid wakiil Shiinaha oo la ansixiyay.", 403);
+      const sr = await env.DB.prepare("SELECT * FROM sourcing WHERE id = ?").bind(m[1]).first();
+      if (!sr) return err("Codsigan lama helin.", 404);
+      const b = await body(req), t = now(), h = J(sr.history) || [];
+      if (m[2] === "claim") {
+        if (sr.china_agent_id && sr.china_agent_id !== user.id) return err("Wakiil kale ayaa haysata.");
+        h.push({ state: sr.state, at: t, by: "china", claim: true });
+        await env.DB.prepare("UPDATE sourcing SET china_agent_id = ?, history = ?, updated_at = ? WHERE id = ?").bind(user.id, JSON.stringify(h), t, sr.id).run();
+        return json({ ok: true });
+      }
+      const goods = Math.round((+b.goods || 0) * 100) / 100, ship = Math.round((+b.ship || 0) * 100) / 100;
+      if (!(goods > 0)) return err("Ku qor qiimaha alaabta.");
+      const total = Math.round((goods + ship) * 100) / 100;
+      h.push({ state: "QUOTED", at: t, by: "china", total });
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE sourcing SET state = 'QUOTED', quote_goods = ?, quote_ship = ?, quote_total = ?, quote_unit = ?,
+          quote_eta = ?, quote_note = ?, supplier = ?, quoted_at = ?, china_agent_id = COALESCE(china_agent_id, ?), history = ?, updated_at = ? WHERE id = ?`)
+          .bind(goods, ship, total, Math.round(goods / Math.max(1, sr.qty) * 100) / 100,
+            Math.max(1, Math.round(+b.etaDays || 30)), String(b.note || "").slice(0, 600) || null,
+            String(b.supplier || "").slice(0, 160) || null, t, user.id, JSON.stringify(h), t, sr.id),
+        notify(env, sr.user_id, "quote", "Qiimahaagii waa diyaar: $" + total, sr.title + " — " + SOURCING.quoteValidDays + " maalmood ayuu shaqaynayaa.", "sourcing.html")
+      ]);
+      return json({ ok: true, total });
+    }
     if (path === "/agent/me" && M === "GET") {
       const me = await env.DB.prepare("SELECT * FROM agents WHERE user_id = ?").bind(user.id).first();
       return json({ agent: me ? { id: me.id, name: me.name, cats: J(me.cats), cities: J(me.cities), capacity: me.capacity, status: me.status, note: me.note } : null });
@@ -2303,8 +2474,15 @@ export async function handleApi(req, env, url) {
           .bind(t, String(b.why || "").slice(0, 300), +sr.deposit_paid || 0, push("DECLINED"), t, sr.id).run();
         return json({ ok: true });
       }
-      await env.DB.prepare("UPDATE sourcing SET state = 'ORDERED', order_id = ?, history = ?, updated_at = ? WHERE id = ?")
-        .bind(String(b.orderId || "").slice(0, 40) || null, push("ORDERED"), t, sr.id).run();
+      if (sr.state === "ORDERED" || sr.state === "DELIVERED") return err("Codsigan horey ayaa loo dalbaday.");
+      /* ORDERED is the moment it becomes a real trade, so it is the moment commission is earned — computed on the
+         goods the agent sourced (the quote), never the shipping, and written to the two reps' ledgers in the same
+         batch as the state change. */
+      const goods = +sr.quote_goods || +sr.commission_goods || +sr.goods_est || 0;
+      const stmts = [env.DB.prepare("UPDATE sourcing SET state = 'ORDERED', order_id = ?, history = ?, updated_at = ? WHERE id = ?")
+        .bind(String(b.orderId || "").slice(0, 40) || null, push("ORDERED"), t, sr.id)];
+      stmts.push(...(await commissionStmts(env, sr, goods, t)));
+      await env.DB.batch(stmts);
       return json({ ok: true });
     }
 
@@ -2404,6 +2582,55 @@ export async function handleApi(req, env, url) {
       if (!st) return err("Xaalad aan sax ahayn.");
       await env.DB.prepare("UPDATE agents SET status = ?, note = ? WHERE id = ?").bind(st, String(b.note || "").slice(0, 200), m[1]).run();
       return json({ ok: true });
+    }
+    /* ---- purchaser-agent service: approve reps, own the client book, read the commission */
+    if (path === "/ops/reps" && M === "GET") {
+      const r = (await env.DB.prepare(`SELECT ar.*, u.name, u.phone,
+          (SELECT COUNT(*) FROM users c WHERE c.client_agent = ar.user_id) clients,
+          (SELECT COUNT(*) FROM sourcing s WHERE s.china_agent_id = ar.user_id AND s.state NOT IN ('DELIVERED','CANCELLED','UNSOURCEABLE','DECLINED')) jobs,
+          (SELECT COALESCE(SUM(al.amount),0) FROM agent_ledger al WHERE al.rep_id = ar.id) earned
+        FROM agent_reps ar JOIN users u ON u.id = ar.user_id ORDER BY (ar.status='pending') DESC, ar.created_at DESC LIMIT 300`).all()).results;
+      return json({ reps: r.map(x => ({ id: x.id, userId: x.user_id, kind: x.kind, name: x.name, phone: "+" + x.phone, city: x.city,
+        status: x.status, sharePct: x.share_pct, capacity: x.capacity, clients: x.clients, jobs: x.jobs, earned: x.earned, at: x.created_at })),
+        commission: COMM });
+    }
+    if ((m = path.match(/^\/ops\/reps\/(AR-[A-Z0-9]+)$/)) && M === "POST") {
+      const b = await body(req), set = [], vals = [];
+      if (["pending", "approved", "paused", "blocked"].includes(b.status)) { set.push("status = ?"); vals.push(b.status); }
+      if (b.sharePct != null) { set.push("share_pct = ?"); vals.push(Math.max(0, Math.min(100, +b.sharePct))); }
+      if (b.capacity != null) { set.push("capacity = ?"); vals.push(Math.max(1, Math.min(1000, Math.round(+b.capacity)))); }
+      if (b.city != null) { set.push("city = ?"); vals.push(String(b.city).slice(0, 40)); }
+      if (b.note != null) { set.push("note = ?"); vals.push(String(b.note).slice(0, 200)); }
+      if (!set.length) return err("Wax la beddeli lahaa ma jiro.");
+      set.push("updated_at = ?"); vals.push(now());
+      await env.DB.prepare("UPDATE agent_reps SET " + set.join(", ") + " WHERE id = ?").bind(...vals, m[1]).run();
+      return json({ ok: true });
+    }
+    if (path === "/ops/clients" && M === "GET") {
+      const q = String(url.searchParams.get("q") || "").trim(), like = "%" + q + "%";
+      const rows = (await env.DB.prepare(`SELECT u.id, u.name, u.phone, u.role, u.cust_kind, u.sub_until, u.client_agent,
+          a.name agent_name, (SELECT COUNT(*) FROM sourcing s WHERE s.user_id = u.id) reqs,
+          (SELECT COALESCE(SUM(al.amount),0) FROM agent_ledger al WHERE al.ref IN (SELECT id FROM sourcing s2 WHERE s2.user_id = u.id)) commission
+        FROM users u LEFT JOIN users a ON a.id = u.client_agent
+        WHERE u.role IN ('consumer','business') AND (? = '' OR u.name LIKE ? OR u.phone LIKE ?)
+        ORDER BY u.created_at DESC LIMIT 300`).bind(q, like, like).all()).results;
+      return json({ clients: rows.map(c => ({ id: c.id, name: c.name, phone: "+" + c.phone, role: c.role, kind: c.cust_kind || "",
+        subscriber: !!(c.sub_until && Date.parse(c.sub_until) > Date.now()), agentId: c.client_agent, agentName: c.agent_name || null, requests: c.reqs, commission: c.commission })) });
+    }
+    if ((m = path.match(/^\/ops\/clients\/(U-[A-Z0-9]+)$/)) && M === "POST") {
+      const b = await body(req), agentId = b.agent ? String(b.agent) : null;
+      if (agentId) { const ok = await env.DB.prepare("SELECT 1 FROM agent_reps WHERE user_id = ? AND kind = 'sales' AND status = 'approved'").bind(agentId).first(); if (!ok) return err("Wakiilkan lama helin ama lama ansixin."); }
+      await env.DB.prepare("UPDATE users SET client_agent = ? WHERE id = ?").bind(agentId, m[1]).run();
+      return json({ ok: true });
+    }
+    if (path === "/ops/commission" && M === "GET") {
+      const bal = (await env.DB.prepare(`SELECT ar.id, ar.kind, u.name, u.phone, COALESCE(SUM(al.amount),0) balance
+        FROM agent_reps ar JOIN users u ON u.id = ar.user_id LEFT JOIN agent_ledger al ON al.rep_id = ar.id
+        GROUP BY ar.id ORDER BY balance DESC LIMIT 300`).all()).results;
+      const led = (await env.DB.prepare("SELECT al.*, u.name FROM agent_ledger al JOIN users u ON u.id = al.user_id ORDER BY al.at DESC LIMIT 300").all()).results;
+      return json({ balances: bal.map(x => ({ rep: x.id, kind: x.kind, name: x.name, phone: "+" + x.phone, balance: x.balance })),
+        ledger: led.map(x => ({ id: x.id, rep: x.rep_id, name: x.name, at: x.at, kind: x.kind, amount: x.amount, ref: x.ref, note: x.note })),
+        commission: COMM });
     }
     if (path === "/ops/stats" && M === "GET") {
       const days = Math.min(365, Math.max(1, +url.searchParams.get("days") || 30)), since = new Date(Date.now() - days * 864e5).toISOString();
