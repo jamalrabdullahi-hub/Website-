@@ -484,9 +484,12 @@ async function placeStmts(env, o, t, by) {
     notify(env, o.user_id, "order", "Lacagtaadu waa la hubiyay", o.title + " — Garsoore ayaa lacagta hayn doona ilaa aad alaabta qaadato.", "orders.html"),
     /* the mobile-money payment is now real cash in the Somali pool. Escrow says whose it is;
        the treasury says where it physically sits, and those are different questions. */
-    env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'SO_USD', 'collection', ?,?,?,?)")
-      .bind(rid("TR-", 6), t, +(+o.total).toFixed(2), o.id, (o.pay || "mobile money") + " · " + (o.pay_txn || ""), by)
   ];
+  /* Only real money reaches the treasury. An order covered by credit or a discount moves nothing into the Somali
+     pool, and a zero-value collection row would be a transaction that never happened sitting in the books. */
+  if (+o.total > 0) stmts.push(
+    env.DB.prepare("INSERT INTO treasury (id,at,account,kind,amount,ref,note,by) VALUES (?,?, 'SO_USD', 'collection', ?,?,?,?)")
+      .bind(rid("TR-", 6), t, +(+o.total).toFixed(2), o.id, (o.pay || "mobile money") + " · " + (o.pay_txn || ""), by));
   /* a paid China order becomes a purchase task for the buying agent (FBG stock and local goods need none) */
   if (o.flow === "china" && !o.fbg_id) {
     const cat = CATALOG[o.sku], v = cat && cat.variants.filter(x => x.vsku === o.vsku)[0];
@@ -927,6 +930,9 @@ export async function handleApi(req, env, url) {
       let creditLeft = b.useCredit ? Math.min(user.credit, sub - discLeft + fee) : 0;
       const creditTotal = creditLeft;
       const basket = items.length > 1 ? rid("B-", 6) : null, t = now(), stmts = [], orders = [];
+      /* orders born PLACED because credit or a discount covered them: they skip the payment step, and therefore
+         skip everything the payment step sets up */
+      const freeOrders = [];
       items.forEach((it, k) => {
         const gross = it.lineTotal != null ? it.lineTotal : it.unit * it.qty;
         const disc = k === items.length - 1 ? discLeft : Math.min(discLeft, Math.round(gross * pct)); discLeft -= disc;
@@ -954,6 +960,16 @@ export async function handleApi(req, env, url) {
       stmts.push(env.DB.prepare("UPDATE users SET pay_method = ?, pay_phone = ?, address = COALESCE(NULLIF(?, ''), address) WHERE id = ?").bind(b.pay, payPhone, delivery ? address : "", user.id));
       stmts.push(env.DB.prepare("INSERT INTO events (name, sid, at) VALUES ('order', ?, ?)").bind(String(b.sid || "").slice(0, 40), t));
       await env.DB.batch(stmts);
+      /* Free to us is not free to ship. An order covered entirely by credit still has to be bought in China and
+         declared to a carrier, so it gets the same purchase order and manifest line a paid one would. Without
+         this it is a real order that procurement and the forwarder never see. */
+      if (freeOrders.length) {
+        const rows = (await env.DB.prepare(
+          `SELECT * FROM orders WHERE id IN (${freeOrders.map(() => "?").join(",")})`).bind(...freeOrders).all()).results;
+        const after = [];
+        for (const o of rows) after.push(...(await placeStmts(env, o, t, "credit")));
+        if (after.length) await env.DB.batch(after);
+      }
       const amount = sub - Math.min(Math.round(sub * pct), cap) + fee - creditTotal;
       return json({ ids: orders, basket, amount, pay: b.pay, merchant: merchants(env)[b.pay] || "", reference: basket || orders[0], expiresHours: ECON.unpaidHours, payPhone: b.payPhone || "" });
     }
