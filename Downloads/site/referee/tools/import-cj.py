@@ -24,8 +24,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV = os.path.join(ROOT, "data", "catalog.csv")
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--keywords", default="power bank,rechargeable fan,women dress,bluetooth earbuds,phone charger",
-                help="comma-separated search terms")
+ap.add_argument("--keywords", default="",
+                help="comma-separated search terms (omit to use the full curated KEYWORDS list below)")
+ap.add_argument("--kw-file", default="", help="a text file of search terms, one per line (# comments ignored)")
 ap.add_argument("--per", type=int, default=40, help="products per keyword (max 100)")
 ap.add_argument("--max-price", type=float, default=200.0, help="skip anything dearer than this, in USD")
 ap.add_argument("--dry", action="store_true", help="print the rows, write nothing")
@@ -56,19 +57,64 @@ if not TOKEN:
         sys.exit("CJ would not issue a token: %s" % j.get("message"))
     print("authenticated as %s" % email)
 
+# The curated search set. This IS the breadth of the catalogue: every term is one CJ search, and CJ holds the
+# price, weight and China stock for what it returns. Grouped so the catalogue grows in the shapes Somali buyers
+# actually shop. Phones and laptops are deliberately absent — CJ does not carry them (confirmed by probing their API).
+KEYWORDS = [
+    # home & kitchen
+    "electric kettle", "blender", "rice cooker", "air fryer", "coffee maker", "electric iron", "toaster",
+    "sandwich maker", "food processor", "juicer", "water dispenser", "vacuum cleaner", "humidifier",
+    "air purifier", "mosquito killer lamp", "thermos flask", "dinnerware set", "cookware set", "kitchen knife set",
+    "storage box", "laundry basket", "mop", "wall clock", "photo frame", "scented candle", "spice rack", "trash can",
+    # electric & electronics accessories
+    "rechargeable fan", "mini fan", "desk fan", "power bank", "wireless charger", "bluetooth earbuds",
+    "bluetooth speaker", "smart watch", "car charger", "usb cable", "charging cable", "selfie stick", "ring light",
+    "mini camera", "webcam", "mouse", "keyboard", "usb hub", "memory card", "led strip", "wifi router",
+    "laptop stand", "phone screen protector", "phone case", "phone holder", "phone stand", "tv box",
+    "bluetooth receiver", "headphone", "speaker light", "smart plug", "surge protector", "extension cord", "power strip",
+    # computers
+    "flash drive", "mousepad", "laptop bag", "computer speaker", "hdmi cable", "usb adapter", "card reader",
+    # clothing & accessories
+    "women dress", "men shirt", "t-shirt", "hoodie", "jeans", "leggings", "abaya", "hijab", "sneakers", "sandals",
+    "handbag", "backpack", "wallet", "belt", "scarf", "hat", "cap", "sunglasses", "wrist watch", "jewelry necklace",
+    "earrings", "socks", "underwear", "kids clothing", "baby romper", "men suit",
+    # furniture & storage
+    "office chair", "storage rack", "shoe rack", "wardrobe", "bedside table", "wall shelf", "folding table",
+    "laundry hamper", "bookshelf", "clothes hanger", "drawer organizer", "kitchen cabinet",
+    # tools, hardware, security, lighting
+    "led bulb", "flashlight", "camping light", "work light", "tool set", "screwdriver set", "wrench set", "drill",
+    "tape measure", "door lock", "padlock", "cctv camera", "security camera", "night light", "desk lamp", "floor lamp",
+    # auto & moto
+    "car phone holder", "car vacuum cleaner", "led car light", "tire inflator", "motorcycle phone mount",
+    "car seat cover", "steering wheel cover", "dash cam", "car cleaning kit", "bike light",
+    # solar
+    "solar panel", "solar inverter", "solar battery", "solar charge controller", "solar street light",
+    "solar garden light", "solar power station", "solar lamp", "solar generator",
+    # beauty & care
+    "perfume", "face mask", "makeup brush", "hair comb", "hair curler", "nail kit", "skincare set", "lipstick",
+    "eyelash", "trimming machine", "hair dryer",
+    # baby, kids & school
+    "baby bottle", "diaper bag", "baby toy", "kids backpack", "school backpack", "pencil case", "stationery set",
+    "calculator", "notebook set", "water bottle",
+    # pets & misc
+    "pet food storage", "pet bowl", "pet leash",
+]
+
 # ---- CJ category name -> Garsoore category. Anything unmapped is skipped rather than guessed into the wrong place.
 CATMAP = [
     # Specific things first, matched against the product NAME before the category path: CJ files a rechargeable
     # fan under "Home Office Storage", so their taxonomy is the fallback, not the source of truth.
-    (r"solar", "SOL"),
-    (r"(^|[ -])fan([ s-]|$)|blender|kettle|cooker|rice ?cook|humidifier|air fry|vacuum|juicer|toaster|kitchen|household|home applian", "HOM"),
-    (r"power ?bank|charger|earbud|headphone|speaker|smartwatch|camera|audio|consumer electronic", "ELC"),
-    (r"phone|mobile|cell", "PHN"),
-    (r"computer|laptop|tablet|office electronics", "CMP"),
-    (r"women|clothing|apparel|dress|shirt|shoe|hoodie|jacket", "CLO"),
-    (r"sofa|chair|desk|bed |wardrobe|furniture|storage", "FRN"),
-    (r"automotive|motorcycle|vehicle", "VEH"),
-    (r"tool|hardware|security|light|lamp|torch", "BLD"),
+    (r"solar|inverter|charge controller", "SOL"),
+    (r"perfume|cosmetic|makeup|skincare|lipstick|hair (dryer|curler)|nail|beauty|eyelash|trimming", "BEA"),
+    (r"baby|infant|diaper|toddler|kids|child|school ?bag|pencil case|stationer|notebook", "KID"),
+    (r"power ?bank|charger|earbud|headphone|earphone|speaker|smart ?watch|camera|audio|usb|hdmi|adapter|hub|memory card|keyboard|mouse|ring light|selfie|led strip|router|tv box", "ELC"),
+    (r"\bphone\b|mobile|cell(phone)?|screen protector", "PHN"),
+    (r"computer|laptop|tablet|mousepad|flash drive|card reader", "CMP"),
+    (r"women|men|clothing|apparel|dress|shirt|t-shirt|hoodie|jacket|jeans|legging|abaya|hijab|shoe|sneaker|sandal|boot|handbag|backpack|wallet|purse|belt|scarf|hat|cap|sunglass|watch|jewel|earring|sock|underwear|garment", "CLO"),
+    (r"(^|[ -])fan([ s-]|$)|blender|kettle|cooker|rice ?cook|coffee|humidifier|air ?fry|air ?purif|vacuum|juicer|toaster|iron|dinnerware|cookware|kitchen|household|home applian|mop|wall clock|frame|candle|thermos|dispenser|storage box|laundry", "HOM"),
+    (r"sofa|chair|table|bed|wardrobe|furniture|shelf|rack|hamper|bookshelf|cabinet|drawer|hanger", "FRN"),
+    (r"car|auto(motive)?|motorcycle|bike|truck|vehicle|tire|dash cam", "VEH"),
+    (r"tool|hardware|security|cctv|lock|light|lamp|torch|bulb|drill|wrench|screwdriver|tape measure|extension", "BLD"),
 ]
 def cat_of(name):
     """CJ gives a path like "Home Garden & Furniture/Household Appliances/Fan". Read it from the most specific
@@ -79,6 +125,14 @@ def cat_of(name):
             if re.search(rx, seg):
                 return c
     return None
+
+# which search terms to run: an explicit list, a file, or the full curated set
+KWS = [k.strip() for k in a.keywords.split(",") if k.strip()]
+if not KWS and a.kw_file:
+    KWS = [l.strip() for l in io.open(a.kw_file, encoding="utf-8") if l.strip() and not l.startswith("#")]
+if not KWS:
+    KWS = KEYWORDS
+print("running %d keyword(s)" % len(KWS))
 
 def get(path, params, tries=4):
     """A long import is thousands of calls over half an hour, so a single dropped connection must not be fatal.
@@ -142,7 +196,7 @@ def usd(v):
     try: return float(str(v).split("-")[0].strip())
     except (TypeError, ValueError, AttributeError): return 0.0
 
-for kw in [k.strip() for k in a.keywords.split(",") if k.strip()]:
+for kw in KWS:
     j = get("/product/listV2", {"keyWord": kw, "pageNum": 1, "pageSize": min(100, max(1, a.per))})
     if not j.get("result"):
         print("  ! %s: %s" % (kw, j.get("message"))); continue

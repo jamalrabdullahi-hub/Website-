@@ -15,7 +15,9 @@ var CATS = [
   { id: "SOL", so: "Solar", en: "Solar", icon: "☀️" },
   { id: "HOM", so: "Guriga & jikada", en: "Home & kitchen", icon: "🍳" },
   { id: "CLO", so: "Dhar & kabo", en: "Clothing", icon: "👘" },
-  { id: "BLD", so: "Dhismo & amni", en: "Building & security", icon: "🔧" }
+  { id: "BLD", so: "Dhismo & amni", en: "Building & security", icon: "🔧" },
+  { id: "BEA", so: "Qurux & daryeel", en: "Beauty & care", icon: "💄" },
+  { id: "KID", so: "Carruur & dugsiga", en: "Kids & school", icon: "🧸" }
 ];
 
 /* ---------------------------------------------------------------- canonical products

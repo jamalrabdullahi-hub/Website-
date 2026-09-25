@@ -10,10 +10,10 @@ Rules enforced: cost_cny and kg must be numbers, sku unique per model_no, catego
 Rows that break a rule are reported and skipped; nothing is silently guessed."""
 import csv, json, re, sys, collections
 
-CATS = {"PHN", "CMP", "APL", "FRN", "VEH", "ELC", "SOL", "HOM", "CLO", "BLD"}
+CATS = {"PHN", "CMP", "APL", "FRN", "VEH", "ELC", "SOL", "HOM", "CLO", "BLD", "BEA", "KID"}
 BATTERY = {"unknown", "none", "in_equipment", "with_equipment", "standalone"}
 PLATS = {"mic", "jd", "1688", "taobao", "pdd", "alibaba", "aliexpress", "shein", "cj", "sunsky"}
-ICON = {"PHN": "📱", "CMP": "💻", "SOL": "☀️", "APL": "🧊", "HOM": "🍳", "FRN": "🪑", "CLO": "👘", "BLD": "🔧", "VEH": "🛺", "ELC": "🎧"}
+ICON = {"PHN": "📱", "CMP": "💻", "SOL": "☀️", "APL": "🧊", "HOM": "🍳", "FRN": "🪑", "CLO": "👘", "BLD": "🔧", "VEH": "🛺", "ELC": "🎧", "BEA": "💄", "KID": "🧸"}
 PLAT_NAME = {"mic": "Made-in-China", "jd": "JD", "1688": "1688", "taobao": "Taobao", "pdd": "Pinduoduo", "alibaba": "Alibaba", "aliexpress": "AliExpress", "shein": "SHEIN", "cj": "CJdropshipping", "sunsky": "SUNSKY"}
 
 def ref_from_url(u, plat=""):
