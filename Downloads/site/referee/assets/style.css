@@ -2,9 +2,12 @@
 /* Garsoore — cream / beige primary, dark-brown ink, gold accent, silver neutrals.
    --pri is a FILL (buttons, hero panels) so text on it uses --pri-ink; --link is the readable text colour for links/prices on cream. */
 :root{
-  --bg:#F6EEDC; --fg:#3A2E26; --muted:#7F7060; --faint:#B09F8C;
-  --line:#D9C7A0; --line-2:#E8DBBE; --surface:#EBDDBF; --chip:#EFE2C6;
-  --card:#FFFBF1; --inverse-fg:#3A2E26; --btn:#DCC79B;
+  /* Light beige. The ground lifted (#F6EEDC -> #FBF7EE) and cards went to pure white, so a card now reads as a
+     card rather than as a slightly different beige. Ink, gold and link are untouched: the brand did not change,
+     the room did. */
+  --bg:#FBF7EE; --fg:#3A2E26; --muted:#7F7060; --faint:#B09F8C;
+  --line:#E5D9BF; --line-2:#EFE6D2; --surface:#F2E9D8; --chip:#F4EDDD;
+  --card:#FFFFFF; --inverse-fg:#3A2E26; --btn:#DCC79B;
   --pri:#DCC79B; --pri-2:#D0B985; --pri-soft:#F0E4C8; --pri-ink:#3A2E26; --pri-line:#B39558; --link:#7E5F27;
   --gold:#B8912F; --gold-soft:#F1E3B9; --gold-ink:#2A2016; --silver:#CBCDD1; --silver-soft:#ECEEF1;
   --up:#3E7D52; --down:#B0413A;
@@ -15,7 +18,7 @@
    garsoore (consumer): warm cream, gold accent.   ganacsi (business): cool stone-silver, blue accent.
    Every business page carries the blue top bar, blue active switch and a cooler page tone, so you always know which side you are on. */
 :root[data-surface="business"]{
-  --bg:#EDEBE3; --card:#FBFAF6; --surface:#E0DDD1; --chip:#E6E3D8; --line:#CBC8B9; --line-2:#DEDBCF; --muted:#6C6A60; --faint:#A7A598;
+  --bg:#F4F2EC; --card:#FFFFFF; --surface:#E8E5DA; --chip:#EDEBE2; --line:#D5D2C5; --line-2:#E4E1D6; --muted:#6C6A60; --faint:#A7A598;
   --pri:#D6D3C4; --pri-2:#C9C5B2; --pri-soft:#E2E7EE; --pri-line:#8E98A5; --btn:#D6D3C4;
   --gold:#2F5D8A; --gold-soft:#DBE5F0; --gold-ink:#FFFFFF; --link:#244C73;
 }
@@ -919,3 +922,62 @@ footer.site b{color:var(--fg);font-weight:650}
 .bulkcta{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 14px}
 .bulkwrap .fine{font-size:11.5px;color:var(--muted);opacity:.85;line-height:1.6;margin:0}
 @media(prefers-color-scheme:dark){.bulkchart{--gs-bar:#3a3a3a}}
+
+.g-ship-sm.free{color:var(--ok,#1a8f4c);font-weight:700}
+
+/* ---- Gacan ka Gacan (hand to hand) */
+.h2h-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:22px 0 6px}
+.h2h-head h1{font-family:var(--fd);font-size:clamp(26px,4.4vw,36px);margin:0;letter-spacing:-.02em}
+.h2h-lede{margin:8px 0 0;max-width:680px;font-size:14.5px;line-height:1.65;color:var(--muted)}
+.h2h-noimg{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font:800 34px/1 var(--fb);color:var(--faint);background:var(--surface)}
+.h2h-noimg.big{font-size:72px;border-radius:var(--r)}
+.h2h-neg{font-size:15px;font-weight:600;color:var(--muted)}
+.h2h-price{font-size:clamp(24px,4vw,34px);font-weight:800;letter-spacing:-.02em;margin:10px 0 4px}
+.h2h-row{display:flex;gap:10px}
+.h2h-row>*{flex:1;min-width:0}
+/* The warning is not decoration. Everything else on this site is escrowed and this is not, so it is stated in a
+   box people cannot mistake for a footer. */
+.h2h-warn{margin:22px 0;padding:14px 16px;border:1px solid var(--line);border-left:3px solid var(--gold);
+  border-radius:12px;background:var(--surface);font-size:13.5px;line-height:1.65;color:var(--muted)}
+.h2h-warn b{color:var(--fg)}
+.h2h-own{margin:16px 0;padding:12px 14px;border:1px dashed var(--line);border-radius:12px;font-size:13.5px;color:var(--muted)}
+.linkbtn{font:inherit;color:var(--link);background:none;border:none;padding:0;text-decoration:underline;cursor:pointer}
+
+/* ---- Garsoore Ganacsi front door */
+.bh-hero{display:flex;gap:40px;align-items:flex-start;flex-wrap:wrap;margin:26px 0 22px}
+.bh-heroL{flex:1 1 440px;min-width:0}
+.bh-kicker{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+.bh-hero h1{font-family:var(--fd);font-size:clamp(30px,5vw,46px);line-height:1.13;margin:10px 0 0;letter-spacing:-.02em}
+.bh-lede{margin:16px 0 0;max-width:560px;font-size:15.5px;line-height:1.65;color:var(--muted)}
+.bh-cta{display:flex;gap:12px;margin-top:22px;flex-wrap:wrap}
+.bh-calc{flex:0 0 340px;max-width:100%;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+.bh-calcT{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.bh-out{margin:14px 0 6px;padding-top:12px;border-top:1px solid var(--line-2)}
+.bh-outRow{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.bh-outRow span{font-size:13px;color:var(--muted)}
+.bh-outRow b{font-size:26px;font-weight:800;letter-spacing:-.02em}
+.bh-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin:0 0 20px}
+.bh-card{display:block;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;color:var(--gold);text-decoration:none}
+.bh-card:hover{border-color:var(--pri-line)}
+.bh-card b{display:block;margin-top:12px;font-size:15px;color:var(--fg)}
+.bh-card span{display:block;margin-top:6px;font-size:13px;line-height:1.6;color:var(--muted)}
+.bh-pro{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin:0 0 26px;padding:20px 24px;
+  background:var(--gold-soft);border:1px solid var(--pri-line);border-radius:16px}
+.bh-pro>div:first-child{flex:1 1 320px}
+.bh-pro b{font-size:17px}
+.bh-pro div div{font-size:13.5px;line-height:1.6;color:var(--link);margin-top:4px}
+.bh-feelH{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px}
+.bh-feelH h2{font-family:var(--fd);font-size:clamp(20px,3vw,25px);margin:0}
+.bh-feel{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.bh-fc{display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;padding:18px;color:var(--gold);text-decoration:none}
+.bh-fc.on{border-color:var(--pri-line)}
+.bh-fc:hover{border-color:var(--pri-line)}
+.bh-fc b{font-size:15.5px;color:var(--fg)}
+.bh-fc span{font-size:12.5px;line-height:1.55;color:var(--muted)}
+.bh-fc em{margin-top:auto;padding-top:8px;font-style:normal;font-size:12px;font-weight:800;color:var(--link)}
+.bh-fc.on em{color:var(--up)}
+.bh-ask{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 0 30px;padding:14px 18px;
+  border:1px dashed var(--pri-line);border-radius:12px;background:var(--card)}
+.bh-ask span{flex:1 1 320px;font-size:13px;line-height:1.55;color:var(--muted)}
+.bh-ask b{color:var(--fg)}

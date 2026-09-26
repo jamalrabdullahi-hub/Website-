@@ -180,11 +180,15 @@ function chrome() {
       '<a class="brand" href="' + (biz ? "index.html" : "index.html") + '">' + FLAG + '<span class="bname"> Garsoore</span>' + (biz ? ' <span class="bizmark">Ganacsi</span>' : '') + '</a>' +
       '<nav class="nav">' +
         (biz
-          ? nl("index.html", "Suuqa ganacsiga", cur === "b2b") + nl("sourcing.html", "Naga iibso", window.SHOP === "sourcing") + nl("pro.html", "Pro", window.SHOP === "pro") + nl("china.html", "Iibsi Shiinaha", window.SHOP === "bizchina", "cnlink") + nl("fbg.html", "FBG", window.SHOP === "fbg") + nl("agents.html", "Wakiillo", window.SHOP === "agents") + nl("agent.html", "Bogga wakiilka", window.SHOP === "agent") + nl("contracts.html", "Qandaraasyo", cur === "tenders") +
+          /* index.html is the front door now; the trading board moved to board.html, and china.html became
+             market.html (the old address still redirects, because those links are already in WhatsApp threads). */
+          ? nl("index.html", "Bilow", window.SHOP === "bizhome") + nl("market.html", "Suuqa jumlada", window.SHOP === "bizchina" || window.SHOP === "product", "cnlink") + nl("sourcing.html", "Naga iibso", window.SHOP === "sourcing") + nl("fbg.html", "FBG", window.SHOP === "fbg") + nl("pro.html", "Pro", window.SHOP === "pro") + nl("board.html", "Suuqa ganacsiga", cur === "b2b") + nl("agents.html", "Wakiillo", window.SHOP === "agents") + nl("agent.html", "Bogga wakiilka", window.SHOP === "agent") + nl("contracts.html", "Qandaraasyo", cur === "tenders") +
             nl("logistics.html", "Rar", cur === "logi") + nl("exchange.html", "Suuqa badeecada", cur === "exchange") +
             nl("activity.html", "Hawlaha shirkadda", cur === "activity")
-          : nl("index.html", "Suuqa", sp === "home") + nl("marketplace.html", "Xayeysiis", cur === "classifieds") +
-            nl("services.html", "Adeegyo", cur === "services") + nl("jobs.html", "Shaqooyin", cur === "jobs") +
+          /* Four doors, not six. Xayeysiis, Adeegyo and Shaqooyin were three empty rooms, and an empty room on a
+             marketplace reads as an abandoned marketplace. Gacan ka Gacan takes their place: it earns nothing,
+             which is the point - it gives the site a reason to be opened on a day nobody is importing. */
+          : nl("index.html", "Suuqa", sp === "home") + nl("h2h.html", "Gacan ka Gacan", sp === "h2h") +
             nl("china.html", "Ka iibso Shiinaha", sp === "china", "cnlink") + nl("orders.html", "Dalabyadayda", sp === "orders")) +
       '</nav>' +
       '<span class="spacer"></span>' +
@@ -1542,6 +1546,8 @@ document.addEventListener("DOMContentLoaded", function () {
   else if (window.BOARD === "logi") logiPage();
   /* the calculator and the sourcing desk are standalone pages: they do not load the whole shop bundle, so they
      dispatch before the RF.shopUI branch rather than through it */
+  else if (window.SHOP === "bizhome" && RF.bizHomeUI) RF.bizHomeUI(document.getElementById("app"));
+  else if (window.SHOP === "h2h" && RF.h2hUI) RF.api.ready.then(function () { RF.h2hUI(document.getElementById("app")); });
   else if (window.SHOP === "bulk" && RF.bulkUI) RF.bulkUI(document.getElementById("app"));
   else if (window.SHOP === "calculator" && RF.calcUI) RF.calcUI(document.getElementById("app"));
   else if (window.SHOP === "pro" && RF.proUI) RF.api.ready.then(function () { RF.proUI(document.getElementById("app")); });

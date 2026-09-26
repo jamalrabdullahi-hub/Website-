@@ -18,9 +18,10 @@ function cardHTML(p) {
   return '<a class="g-pc" href="product.html?sku=' + c.sku + '"><div class="g-pimg"><span class="g-bd ' + (c.china ? "cn" : "lo") + '">' +
     (c.china ? "SHIINAHA" : "GUDAHA") + '</span><button class="g-heart' + (sv ? " on" : "") + '" data-save="' + c.sku + '" aria-label="Kaydi" title="Kaydi">' + (sv ? "♥" : "♡") + '</button>' +
     (c.image ? '<img class="g-pimgi" loading="lazy" src="' + e(c.image) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(\'' + c.icon + '\'))">' : c.icon) + '</div><div class="g-pb"><div class="g-pn">' + e(c.title) + '</div>' +
-    /* the item first, the shipping immediately under it — never one without the other */
-    '<div class="g-pr">' + money(c.china && c.shipping ? c.item : c.total) + (c.moq > 1 ? '<small class="g-moq"> / xabbo</small>' : "") + '</div>' +
-    (c.china && c.shipping ? '<div class="g-ship-sm">+ ' + money(c.shipping) + ' gaarsiin' + (c.moq > 1 ? ' · ugu yaraan ' + c.moq : "") + '</div>' : "") +
+    /* one number, and the reason it is one number directly under it */
+    '<div class="g-pr">' + money(c.total) + (c.moq > 1 ? '<small class="g-moq"> / xabbo</small>' : "") + '</div>' +
+    (c.china ? '<div class="g-ship-sm free">✓ Rar BILAASH' + (c.moq > 1 ? ' · ugu yaraan ' + c.moq : "") + '</div>'
+             : (c.moq > 1 ? '<div class="g-ship-sm">ugu yaraan ' + c.moq + '</div>' : "")) +
     (rt ? '<div class="g-eta">' + stars(rt.avg) + ' ' + rt.n + '</div>' : "") +
     '<div class="g-eta"><span class="g-v">✓</span> ' + eta(c.etaDays) + ' · ' + e(c.where) + '</div></div></a>';
 }
@@ -119,14 +120,17 @@ function bulkHTML(p, v, pr, bp, qty, moq) {
       'Sidaa darteed mid kastaa wuu raqiisanayaa marka tiradu kordho.' +
       '<table class="g-ladder"><tr><th>Tirada</th><th>Halkii</th><th>Wadarta</th><th>Kaydsi</th></tr>' + rows + '</table></div>';
   }
-  /* consumer: only when the shipment minimum is genuinely what is hurting */
-  if (qty !== 1 || !(bp.freight >= 10)) return "";
-  var u10 = perUnit(p, v, 10, pr.mode);
-  if (u10 == null || !(u10 < bp.total * 0.8)) return "";
+  /* consumer: shipping is inside the price now, so the pitch is the per-unit price rather than a freight line.
+     The saving is real either way — a shipment's fixed costs are shared by whatever travels in it — but a screen
+     that still said "rarka hal xabbo waa $0" would be quoting a number we deliberately stopped showing. */
+  if (qty !== 1) return "";
+  var one = perUnit(p, v, 1, pr.mode), u10 = perUnit(p, v, 10, pr.mode);
+  if (one == null || u10 == null || !(u10 < one * 0.8)) return "";
+  var cut = Math.round(100 * (1 - u10 / one));
   var href = (RF.sources ? RF.sources.crossHref("product.html?sku=" + encodeURIComponent(p.sku) + "&qty=10", "business") : "#");
-  return '<div class="g-bulk">😅 <b>Rarka hal xabbo waa ' + money(bp.shipping) + '</b> — isla shixnaddaas ayaa qaadi karta 10. ' +
-    'Iibso 10 oo 9-da sii saaxiibbadaa… lacag yar dul saar :)' +
-    '<div class="g-bulkrow"><span>10 xabbo = <b>' + money(Math.round(u10)) + '</b> midkii</span>' +
+  return '<div class="g-bulk">😅 <b>Hal xabbo waa ' + money(one) + ' — tobankii waa ' + money(u10) + ' midkii</b>, ' +
+    Math.abs(cut) + '% ka raqiisan. Rarku hal shixnad ayuu ku baxaa, ee ma aha xabbada.' +
+    '<div class="g-bulkrow"><span>Iibso 10 oo 9-da sii saaxiibbadaa… lacag yar dul saar :)</span>' +
     '<a class="btn ghost" href="' + href + '">Ku iibso jumlad →</a></div>' +
     '<small>Garsoore Ganacsi · isla alaabta, isla qiimaha, tiro badan</small></div>';
 }
@@ -168,9 +172,8 @@ function productView(p, host, quoteId) {
     /* Only offer a lane the customer could sensibly want. Air is always faster, so sea earns its place on the page
        only by being cheaper; for a 0.5 kg phone the sea minimum makes it both slower AND dearer, and showing it would
        be a worse page, not a more complete one. */
+    /* shipping is shown as free, so there is no lane to choose — the price is one number either way */
     var lanes = [];
-    if (opts && opts.air) lanes.push(["air", opts.air]);
-    if (opts && opts.sea && (!opts.air || opts.sea.total < opts.air.total)) lanes.push(["sea", opts.sea]);
     var LANE_SO = { air: ["✈ Cirka", "degdeg"], sea: ["🚢 Badda", "raqiis"] };
     host.innerHTML =
       '<div class="g-phero"><div class="g-pic">' + (p.image ? '<img src="' + e(p.image) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(\'' + p.icon + '\'))">' : p.icon) + '</div><div>' +
@@ -187,7 +190,7 @@ function productView(p, host, quoteId) {
         }).join("") + '</div>' : "") +
       '</div></div>' +
       '<div class="g-specs">' + p.specs.map(function (s) { return '<div><span>' + e(s[0]) + '</span><b>' + e(s[1]) + '</b></div>'; }).join("") + '</div>' +
-      '<div class="g-trust"><div><b>Hal qiimo</b>Kharash qarsoon ma jiro</div><div><b>Lacag la xajiyo</b>Garsoore ayaa haya ilaa aad hesho</div><div><b>Celin 7 maalmood</b>Haddii aysan ahayn sidii la sheegay</div></div>' +
+      '<div class="g-trust"><div><b>Rar BILAASH</b>Qiimaha rarku wuu ku jiraa</div><div><b>Lacag la xajiyo</b>Garsoore ayaa haya ilaa aad hesho</div><div><b>Celin 7 maalmood</b>Haddii aysan ahayn sidii la sheegay</div></div>' +
       (lanes.length > 1 && !isReq ? '<div class="g-ship"><div class="g-lbl">Sidee ayaad u rabtaa?</div><div class="g-shopts">' +
         lanes.map(function (L) {
           var k = L[0], b = L[1];
@@ -207,7 +210,7 @@ function productView(p, host, quoteId) {
       (bp && bp.shipping ? '<div class="g-incl">✓ <b>' + money(bp.item) + ' alaabta + ' + money(bp.shipping) + ' gaarsiin = ' + money(lineTotal) + '</b> — ' +
         'gaarsiintu waxay ku jirtaa rarka Shiinaha → Muqdisho, canshuurta iyo gudbinta. Wax kale lagaama qaadayo. ' +
         'Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +
-      (pr.total != null && !isReq && !(bp && bp.shipping) ? '<div class="g-incl">✓ <b>' + money(pr.total) + ' waa qiimaha oo dhan</b> — ' + (china ? "alaabta, rarka Shiinaha → Muqdisho, canshuurta iyo adeegga" : "alaabta iyo adeegga") + ' way ku jiraan. Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +
+      (pr.total != null && !isReq && !(bp && bp.shipping) ? '<div class="g-incl">✓ <b>Rar BILAASH · ' + money(pr.total) + ' waa qiimaha oo dhan</b> — ' + (china ? "alaabta, rarka Shiinaha → Muqdisho, canshuurta iyo adeegga" : "alaabta iyo adeegga") + ' way ku jiraan. Ka qaado Km4 bilaash, ama gaarsiin guriga $' + DELIV.fee + ' (bilaash haddii ay ka badato $' + DELIV.free + ').</div>' : "") +
       '<div class="g-buybar"><div class="g-bi">' + p.icon + '</div><div class="g-bt"><b>' + e(p.model) + (v.label && v.label !== "Standard" ? " · " + e(v.label) : "") + '</b>' +
         '<div class="g-eta">' + (china ? "🚚 " + (pr.transitMin ? pr.transitMin + "–" + pr.transitMax + " maalmood" : eta(pr.etaDays)) + " · Pickup Muqdisho" : "Diyaar maanta · Muqdisho") + ' · 🔒 Lacag la xajiyo</div></div>' +
         '<div class="g-price"' + (pr.total == null ? ' style="font-size:19px"' : "") + '>' +
@@ -406,7 +409,7 @@ function cart(app) {
             '<div class="g-qty"><button data-q="' + it.i + '" data-d="-1">−</button><span>' + it.line.qty + '</span><button data-q="' + it.i + '" data-d="1">+</button></div>' +
             '<div class="g-price sm">' + money(it.price.total) + '</div><button class="g-x" data-rm="' + it.i + '" aria-label="Ka saar">×</button></div>' +
             /* the lane the customer picked, still changeable here — and the price moves in front of them */
-            (it.price.mode ? '<div class="g-clane">' + ["air", "sea"].map(function (m) {
+            (!RF.catalog.freeShipping && it.price.mode ? '<div class="g-clane">' + ["air", "sea"].map(function (m) {
               /* each option is priced with the REST of the basket held still, so the number on the chip is the number
                  the customer will actually pay if they tap it */
               var alt = C.basketPrice(items.map(function (o, k) { return { product: o.product, variant: o.variant, qty: o.line.qty, mode: k === it.i ? m : o.line.mode }; }));

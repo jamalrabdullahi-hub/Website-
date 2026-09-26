@@ -405,6 +405,15 @@ async function matchSms(env, sms) {
   };
 }
 
+/* Gacan ka Gacan. Kept beside the other constants so the category list has exactly one home: the browser filter,
+   the server validation and the post form all read the same five letters. */
+const H2H_CATS = ["PHN", "ELC", "HOM", "FRN", "VEH", "CLO", "OTHER"];
+const h2hOut = r => ({
+  id: r.id, title: r.title, price: r.price, currency: r.currency || "USD", cat: r.cat,
+  condition: r.condition, city: r.city, district: r.district,
+  images: J(r.images) || [], views: r.views, at: r.bumped_at || r.created_at
+});
+
 /* ---------------------------------------------------------------- shipping manifest
    What a forwarder and a customs broker ask for, per line, per consignment.
 
@@ -848,6 +857,88 @@ export async function handleApi(req, env, url) {
     let m;
 
     if (path === "/health") return json({ ok: true, time: now() });
+    /* ---------------------------------------------------------------- Gacan ka Gacan (hand to hand)
+       People selling to each other. Garsoore takes no fee and holds no money, so nothing here touches the order
+       engine, the treasury or the manifest. Browsing is public because a marketplace nobody can look into is not
+       a marketplace; posting needs an account, and the seller's phone number is shown only to a signed-in viewer,
+       because a public number harvested at scale is the one thing this page could cost somebody. */
+    if (path === "/h2h" && M === "GET") {
+      const cat = (url.searchParams.get("cat") || "").toUpperCase().slice(0, 8);
+      const q = (url.searchParams.get("q") || "").trim().slice(0, 60);
+      const where = ["state = 'LIVE'"], binds = [];
+      if (H2H_CATS.includes(cat)) { where.push("cat = ?"); binds.push(cat); }
+      if (q) { where.push("(title LIKE ? OR descr LIKE ?)"); binds.push("%" + q + "%", "%" + q + "%"); }
+      const rows = (await env.DB.prepare(
+        `SELECT id, title, price, currency, cat, condition, city, district, images, views, bumped_at
+           FROM h2h_listings WHERE ${where.join(" AND ")} ORDER BY bumped_at DESC LIMIT 60`).bind(...binds).all()).results;
+      return json({ cats: H2H_CATS, listings: rows.map(h2hOut) });
+    }
+    if ((m = path.match(/^\/h2h\/(HH-[A-Z0-9]+)$/)) && M === "GET") {
+      const r = await env.DB.prepare("SELECT * FROM h2h_listings WHERE id = ? AND state IN ('LIVE','SOLD')").bind(m[1]).first();
+      if (!r) return err("Alaabtan lama helin.", 404);
+      await env.DB.prepare("UPDATE h2h_listings SET views = views + 1 WHERE id = ?").bind(r.id).run();
+      const out = h2hOut(r);
+      out.descr = r.descr;
+      out.state = r.state;
+      out.views = r.views + 1;
+      /* not much of a wall, but a scraper has to become an account first, and an account can be stopped */
+      out.phone = user ? r.phone : null;
+      out.mine = !!(user && user.id === r.user_id);
+      return json({ listing: out, needLogin: !user });
+    }
+    if (path === "/h2h" && M === "POST") {
+      if (!user) return err("Gal si aad alaab u dhigto.", 401);
+      const b = await body(req), t = now();
+      const title = String(b.title || "").trim().slice(0, 90);
+      if (title.length < 3) return err("Ku qor magaca alaabta.");
+      const phone = normPhone(b.phone) || user.phone;
+      if (!phone) return err("Ku qor lambar taleefan oo sax ah.");
+      const cat = H2H_CATS.includes(String(b.cat || "").toUpperCase()) ? String(b.cat).toUpperCase() : "OTHER";
+      const cond = ["new", "used", "parts"].includes(b.condition) ? b.condition : "used";
+      const price = b.price == null || b.price === "" ? null : Math.max(0, +b.price || 0);
+      /* A cap, not a fee. Nothing is charged here, so the only way to keep the page usable is to stop one person
+         filling it: twenty live listings is more than an honest seller needs and less than a flooder wants. */
+      const mine = (await env.DB.prepare("SELECT COUNT(*) n FROM h2h_listings WHERE user_id = ? AND state = 'LIVE'").bind(user.id).first()).n;
+      if (mine >= 20) return err("Waxaad hore u dhigtay 20 alaab. Mid iibi ama qari ka hor inta aanad mid kale dhigin.");
+      const id = rid("HH-", 6);
+      await env.DB.prepare(`INSERT INTO h2h_listings
+        (id,user_id,title,descr,price,currency,cat,condition,city,district,phone,images,state,bumped_at,created_at,updated_at)
+        VALUES (?,?,?,?,?, 'USD', ?,?,?,?,?,?, 'LIVE', ?,?,?)`).bind(
+        id, user.id, title, String(b.descr || "").slice(0, 900), price, cat, cond,
+        String(b.city || "Muqdisho").slice(0, 40), String(b.district || "").slice(0, 40), phone,
+        JSON.stringify((Array.isArray(b.images) ? b.images : []).slice(0, 6).map(x => String(x).slice(0, 300))),
+        t, t, t).run();
+      return json({ id });
+    }
+    if ((m = path.match(/^\/h2h\/(HH-[A-Z0-9]+)\/(sold|hide|bump|remove)$/)) && M === "POST") {
+      if (!user) return err("Gal marka hore.", 401);
+      const r = await env.DB.prepare("SELECT * FROM h2h_listings WHERE id = ?").bind(m[1]).first();
+      if (!r) return err("Lama helin.", 404);
+      if (r.user_id !== user.id && !staff) return err("Adigu ma lihid alaabtan.", 403);
+      const t = now(), act = m[2];
+      const state = act === "sold" ? "SOLD" : act === "hide" ? "HIDDEN" : act === "remove" ? "REMOVED" : "LIVE";
+      /* a bump is free and therefore has to be rationed by time, or "recent" stops meaning anything */
+      if (act === "bump" && r.bumped_at > new Date(Date.now() - 864e5).toISOString())
+        return err("Hal mar maalintii ayaad kor u qaadi kartaa.");
+      await env.DB.prepare("UPDATE h2h_listings SET state = ?, bumped_at = ?, updated_at = ? WHERE id = ?")
+        .bind(state, act === "bump" ? t : r.bumped_at, t, r.id).run();
+      return json({ ok: true, state });
+    }
+    /* No money passes through here, so the only harm a listing can do is be a lie or be illegal. Reports are the
+       whole moderation system: three and it drops out of the listing until somebody looks. */
+    if ((m = path.match(/^\/h2h\/(HH-[A-Z0-9]+)\/report$/)) && M === "POST") {
+      const r = await env.DB.prepare("SELECT id, reports FROM h2h_listings WHERE id = ?").bind(m[1]).first();
+      if (!r) return err("Lama helin.", 404);
+      const b = await body(req), t = now();
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO h2h_reports (id,listing_id,user_id,reason,at) VALUES (?,?,?,?,?)")
+          .bind(rid("HR-", 6), r.id, user ? user.id : null, String(b.reason || "").slice(0, 200), t),
+        env.DB.prepare("UPDATE h2h_listings SET reports = reports + 1, state = CASE WHEN reports + 1 >= 3 THEN 'HIDDEN' ELSE state END, updated_at = ? WHERE id = ?")
+          .bind(t, r.id)
+      ]);
+      return json({ ok: true });
+    }
+
     if (path === "/config") return json({ requireVerified: env.REQUIRE_VERIFIED === "1", merchantName: env.MERCHANT_NAME || "", agent: AGENT, fbg: FBG, services: SERVICES, sourcing: SOURCING, plans: PLANS,
       /* the lanes a customer may choose, and nothing about who flies or sails them */
       shipping: { lanes: RATES.cards.filter(c => c.status !== "expired").map(c => ({ mode: c.mode, transitMin: c.transitMinDays, transitMax: c.transitMaxDays })),

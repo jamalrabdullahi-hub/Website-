@@ -75,29 +75,32 @@
   function consumer(host) {
     var p = subject();
     if (!p) { host.innerHTML = '<div class="g-empty">Katalogga weli lama soo dejin.</div>'; return; }
+    /* Shipping is inside the price now, so this page charts the PER-UNIT PRICE rather than a freight line. The
+       saving is the same fact either way - a shipment's fixed costs are shared by whatever travels in it - but a
+       chart of a number we deliberately stopped showing would be a chart of zeroes. */
     var rows = steps(p), one = rows[0], ten = rows.filter(function (r) { return r.qty === 10; })[0] || rows[rows.length - 1];
-    var cut = one.ship > 0 ? Math.round(100 * (1 - ten.ship / one.ship)) : 0;
-    var max = Math.max.apply(null, rows.map(function (r) { return r.ship; }));
+    var cut = one.unit > 0 ? Math.round(100 * (1 - ten.unit / one.unit)) : 0;
+    var max = Math.max.apply(null, rows.map(function (r) { return r.unit; }));
 
     host.innerHTML =
       '<div class="bulkwrap">' +
-      '<h1>Rarku wuxuu ku baxaa <em>shixnadda</em> — ma aha xabbada</h1>' +
+      '<h1>Rarku <em>bilaash</em> ayuu yahay — oo tiro badan way ka raqiisan tahay</h1>' +
       '<p class="lede">Markaad hal shay iibsato, adigu kaligaa ayaa qaadaya kharashka shixnad oo dhan. ' +
       'Markaad toban iibsato, isla kharashkaas ayaa u qaybsanaya toban. Taasi waa sababta rarku u raqiisanayo ' +
       'marka tiradu kordho — <b>oo faa’iidadaadu u kordho</b>… haddii aad caqli leedahay 😉</p>' +
 
-      '<div class="bignum"><b>−' + cut + '%</b><span>rar halkii xabbo, marka aad 10 iibsato 1 beddelkeed</span></div>' +
+      '<div class="bignum"><b>−' + cut + '%</b><span>qiimaha halkii xabbo, marka aad 10 iibsato 1 beddelkeed</span></div>' +
 
       '<div class="chartcard">' +
-        '<div class="chead"><b>Rar halkii xabbo</b><span>' + e((p.brand ? p.brand + " " : "") + p.model).slice(0, 52) + ' · ' + p.kg + 'kg</span></div>' +
+        '<div class="chead"><b>Qiimaha halkii xabbo</b><span>' + e((p.brand ? p.brand + " " : "") + p.model).slice(0, 52) + ' · ' + p.kg + 'kg</span></div>' +
         bars(rows, max, function (r) { return r.qty + (r.qty === 1 ? " xabbo" : ""); },
-                    function (r) { return r.ship; }, function (r) { return money(r.ship); }) +
+                    function (r) { return r.unit; }, function (r) { return money(r.unit); }) +
       '</div>' +
 
-      '<table class="bulktbl"><tr><th>Tirada</th><th>Alaabta</th><th>Rar</th><th>Halkii xabbo</th><th>Wadarta</th></tr>' +
+      '<table class="bulktbl"><tr><th>Tirada</th><th>Halkii xabbo</th><th>Wadarta</th><th>Rar</th></tr>' +
       rows.map(function (r) {
-        return '<tr' + (r.qty === 10 ? ' class="on"' : "") + '><td>' + r.qty + '</td><td>' + money(r.item) + '</td>' +
-          '<td>' + money(r.ship) + '</td><td><b>' + money(r.unit) + '</b></td><td>' + money(r.total) + '</td></tr>';
+        return '<tr' + (r.qty === 10 ? ' class="on"' : "") + '><td>' + r.qty + '</td><td><b>' + money(r.unit) + '</b></td>' +
+          '<td>' + money(r.total) + '</td><td class="ok">BILAASH</td></tr>';
       }).join("") + '</table>' +
 
       '<div class="bulknote"><b>Tusaale</b> — iibso ' + ten.qty + ', mid iska hay, 9-da kale sii saaxiibbadaa ' +

@@ -35,12 +35,20 @@ if (window.RF_CATALOG_DATA) P = P.concat(window.RF_CATALOG_DATA);
    that rate for life. Everything else (China-side collection, consolidation, duty, Garsoore's margin) is a Garsoore
    cost and stays in this file. */
 var FX = 7.2;             // CNY per USD
-var RULES = { cnFreight: 0.04, consolidation: 3, duty: 0.05, margin: 0.10 };
+/* One all-in price. `margin` is the whole markup over Garsoore's landed cost (goods + China freight + consolidation
+   + international freight + duty + clearance), and shipping is presented to the customer as free — a single number,
+   no shipping line. Currently 1.45x cost. */
+/* margin is the whole markup over Garsoore's landed cost. Retail and wholesale get different ones on purpose:
+   a consumer buying one power bank is not comparing it against anything, while a trader buying five hundred is
+   comparing it against flying to Guangzhou himself. 45% on a carton of 500 would lose that comparison every
+   time, so the business surface keeps the old 10%. */
+var RULES = { cnFreight: 0.04, consolidation: 3, duty: 0.05, margin: 0.45, marginWholesale: 0.10 };
+function marginFor(retail) { return retail === false ? RULES.marginWholesale : RULES.margin; }
 function isChina(p) { return p.sources.some(function (s) { return s.channel !== "domestic"; }); }
 
 /* landed cost for one lane. Returns null when the lane cannot be priced — the caller then offers a quote instead of
    inventing a number, which is the whole point of the exercise. */
-function breakdown(costCny, kg, cat, mode, qty, at) {
+function breakdown(costCny, kg, cat, mode, qty, at, retail) {
   var S = RF.shipping;
   var goods = (costCny / FX) * (qty || 1), cn = goods * RULES.cnFreight;
   var ship = S && S.quote({ kg: kg, cat: cat, qty: qty || 1, mode: mode || "air", at: at });
@@ -48,7 +56,7 @@ function breakdown(costCny, kg, cat, mode, qty, at) {
   var clr = S.clearanceFee ? S.clearanceFee(ship.mode, ship.chargeable) : 0;
   var rate = S.dutyRate ? S.dutyRate(cat) : RULES.duty;
   var duty = (goods + ship.cost) * rate, sub = goods + cn + RULES.consolidation + ship.cost + duty + clr;
-  var margin = sub * RULES.margin;
+  var margin = sub * marginFor(retail);
   return { goods: goods, chinaFreight: cn, consolidation: RULES.consolidation, intlFreight: ship.cost, duty: duty, dutyRate: rate, clearance: clr, margin: margin,
            total: Math.ceil(sub + margin), etaDays: ship.transitMax, transitMin: ship.transitMin, transitMax: ship.transitMax,
            mode: ship.mode, rateCardId: ship.rateCardId, rateCardStatus: ship.rateCardStatus,
@@ -59,7 +67,7 @@ function breakdown(costCny, kg, cat, mode, qty, at) {
    Kept separate from breakdown() because in a basket the freight is not this line's own — it is this line's SHARE of
    one shipment. Consolidation is charged once per line rather than per unit: the facility handles a SKU once, whether
    the carton holds one shirt or ten, and charging it per unit was quietly taxing bulk buyers. */
-function lineTotal(costCny, qty, freight, cat, clearance) {
+function lineTotal(costCny, qty, freight, cat, clearance, retail) {
   qty = Math.max(1, qty || 1);
   clearance = clearance || 0;
   var goods = (costCny / FX) * qty, cn = goods * RULES.cnFreight;
@@ -67,7 +75,7 @@ function lineTotal(costCny, qty, freight, cat, clearance) {
   var rate = RF.shipping && RF.shipping.dutyRate ? RF.shipping.dutyRate(cat) : RULES.duty;
   var duty = (goods + freight) * rate;
   var sub = goods + cn + RULES.consolidation + freight + duty + clearance;
-  var margin = sub * RULES.margin;
+  var margin = sub * marginFor(retail);
   var total = Math.ceil(sub + margin);
 
   /* ---- the two numbers the customer is shown.
@@ -79,11 +87,9 @@ function lineTotal(costCny, qty, freight, cat, clearance) {
      They ALWAYS sum to exactly the total charged — shipping is derived by subtraction so rounding cannot open a gap.
      This is partitioned pricing, not drip pricing: both halves are on the product page and the card, before anyone
      commits. Revealing shipping only at checkout is the dark pattern; showing it beside the price is not. */
-  var itemBase = goods + cn, shipBase = RULES.consolidation + freight + duty + clearance;
-  var base = itemBase + shipBase;
-  var item = base > 0 ? Math.round(itemBase + margin * (itemBase / base)) : total;
-  if (item > total) item = total;
-  return { total: total, item: item, shipping: Math.max(0, total - item),
+  /* one all-in price: the customer sees a single number and the shipping is presented as free. The item/shipping
+     split is gone, so no screen can add a shipping line the customer did not already see. */
+  return { total: total, item: total, shipping: 0,
            goods: goods, chinaFreight: cn, consolidation: RULES.consolidation,
            intlFreight: freight, duty: duty, dutyRate: rate, clearance: clearance, margin: margin };
 }
@@ -104,7 +110,7 @@ function basketPrice(entries, at) {
     if (!(v.cost > 0)) { meta[i] = { quote: true, reason: "no-purchase-price" }; return; }
     var mode = en.mode === "sea" || en.mode === "air" ? en.mode : (price(p, v).mode || "air");
     qty = Math.max(qty, moqOf(p, v));                     /* below the supplier's minimum there is no price to show */
-    meta[i] = { cny: v.cost, qty: qty, mode: mode, kg: p.kg, cat: p.cat };
+    meta[i] = { cny: v.cost, qty: qty, mode: mode, kg: p.kg, cat: p.cat, retail: surfaceOfProduct(p) !== "business" };
     ship.push({ idx: i, kg: p.kg, cat: p.cat, qty: qty, mode: mode });
   });
 
@@ -120,7 +126,7 @@ function basketPrice(entries, at) {
       etaDays: m.etaDays, freight: 0, seller: seller(en.product) };
     var sh = byIdx[i];
     if (!sh) return { quote: true, reason: "no-shippable-rate", total: null, seller: seller(en.product) };
-    var g = b.groups[sh.mode], L = lineTotal(m.cny, m.qty, sh.freight, m.cat, sh.clearance);
+    var g = b.groups[sh.mode], L = lineTotal(m.cny, m.qty, sh.freight, m.cat, sh.clearance, m.retail);
     return { total: L.total, item: L.item, shipping: L.shipping,
       unit: Math.round(L.total / m.qty * 100) / 100, itemUnit: Math.round(L.item / m.qty * 100) / 100,
       qty: m.qty, moq: moqOf(en.product, en.variant), mode: sh.mode,
@@ -264,7 +270,7 @@ function price(p, v, mode) {
   if (p.ship && p.ship.battery === "standalone") lanes = ["sea"];
   var opts = {}, any = false;
   lanes.forEach(function (m) {
-    var b = breakdown(v.cost, p.kg, p.cat, m, 1);
+    var b = breakdown(v.cost, p.kg, p.cat, m, 1, null, surfaceOfProduct(p) !== "business");
     if (b) { opts[m] = b; any = true; }
   });
   if (!any) return { total: null, etaDays: 0, local: false, unknown: true, quote: true, reason: "no-shippable-rate", seller: seller(p) };
@@ -298,7 +304,7 @@ function card(p) {
 
 RF.catalog = {
   CATS: CATS, products: P, isChina: isChina, price: price, sameVariant: sameVariant, card: card, _breakdown: breakdown,
-  seller: seller, eligible: eligible, moqOf: moqOf, retailOK: retailOK, wholesaleOK: wholesaleOK, surfaceOfProduct: surfaceOfProduct, viability: viability, SHIP_RATIO_MAX: SHIP_RATIO_MAX, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX,
+  seller: seller, eligible: eligible, moqOf: moqOf, retailOK: retailOK, wholesaleOK: wholesaleOK, surfaceOfProduct: surfaceOfProduct, viability: viability, SHIP_RATIO_MAX: SHIP_RATIO_MAX, basketPrice: basketPrice, lineTotal: lineTotal, _rules: RULES, _fx: FX, freeShipping: true,
   get: function (sku) { return P.filter(function (p) { return p.sku === sku; })[0]; },
   search: function (q, opts) {
     opts = opts || {}; q = (q || "").toLowerCase().trim();

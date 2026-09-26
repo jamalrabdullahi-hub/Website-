@@ -40,11 +40,14 @@ a = ap.parse_args()
 TOKEN = os.environ.get("CJ_ACCESS_TOKEN", "").strip()
 if not TOKEN:
     email, key = os.environ.get("CJ_EMAIL", "").strip(), os.environ.get("CJ_API_KEY", "").strip()
-    if not (email and key):
-        sys.exit("Set CJ_EMAIL and CJ_API_KEY (CJ -> Authorization -> API) in your shell. "
-                 "Do not paste either into a file or into chat.")
+    if not key:
+        sys.exit("Set CJ_API_KEY (CJ -> Authorization -> API; the CJxxxx@api@... value) in your shell. "
+                 "Do not paste it into a file or into chat.")
+    # CJ accepts the API key on its own; email (if present) is sent too but is not required.
+    body = {"apiKey": key}
+    if email: body["email"] = email
     req = urllib.request.Request(API + "/authentication/getAccessToken",
-                                 data=json.dumps({"email": email, "apiKey": key}).encode("utf-8"),
+                                 data=json.dumps(body).encode("utf-8"),
                                  headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
@@ -55,7 +58,7 @@ if not TOKEN:
     if not TOKEN:
         # CJ allows one token request every 5 minutes; that limit arrives here as a plain failure message
         sys.exit("CJ would not issue a token: %s" % j.get("message"))
-    print("authenticated as %s" % email)
+    print("authenticated" + (" as %s" % email if email else ""))
 
 # The curated search set. This IS the breadth of the catalogue: every term is one CJ search, and CJ holds the
 # price, weight and China stock for what it returns. Grouped so the catalogue grows in the shapes Somali buyers

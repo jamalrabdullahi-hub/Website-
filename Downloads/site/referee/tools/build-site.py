@@ -19,7 +19,7 @@ for name in os.listdir(OUT):          # empty it in place (a running `wrangler d
     pth = os.path.join(OUT, name)
     shutil.rmtree(pth) if os.path.isdir(pth) else os.remove(pth)
 
-for f in glob.glob("*.html"):
+for f in glob.glob("*.html") + glob.glob("*.svg"):
     shutil.copy(f, OUT)
 shutil.copytree("assets", os.path.join(OUT, "assets"))
 shutil.copytree("business", os.path.join(OUT, "business"))
@@ -46,9 +46,21 @@ cfg = os.path.join(OUT, "assets", "config.js")
 open(cfg, "a", encoding="utf-8").write("\nwindow.GARSOORE_CONFIG.build = %s;\n" % json.dumps(stamp))
 ref = re.compile(r'((?:src|href)="(?:\.\./)?assets/[^"?]+\.(?:js|css))"')
 pages = glob.glob(os.path.join(OUT, "*.html")) + glob.glob(os.path.join(OUT, "business", "*.html")) + glob.glob(os.path.join(OUT, "admin", "*.html"))
+# One favicon line, injected here rather than pasted into 39 files by hand - a page added tomorrow gets it too.
+# Business pages point at the blue mark, because the icon in a browser tab is the only part of the surface split
+# that survives being 16 pixels wide.
 for f in pages:
     t = open(f, encoding="utf-8").read()
-    open(f, "w", encoding="utf-8").write(ref.sub(lambda m: m.group(1) + "?v=" + ver + '"', t))
+    t = ref.sub(lambda m: m.group(1) + "?v=" + ver + '"', t)
+    if "rel=\"icon\"" not in t and "</head>" in t:
+        biz = os.sep + "business" + os.sep in f
+        # each surface keeps its own mark BESIDE its pages, so the path is the same string either way:
+        # "../favicon.svg" from /business/ would resolve to the consumer one at the root
+        icon = "favicon.svg"
+        head = ('<link rel="icon" href="%s?v=%s" type="image/svg+xml">' + "\n"
+                + '<meta name="theme-color" content="%s">' + "\n" + "</head>")
+        t = t.replace("</head>", head % (icon, ver, "#2F5D8A" if biz else "#FBF7EE"), 1)
+    open(f, "w", encoding="utf-8").write(t)
 
 open(os.path.join(OUT, "_headers"), "w").write(
     "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: SAMEORIGIN\n")
